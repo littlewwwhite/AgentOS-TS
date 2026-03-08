@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "bun src/index.ts",
+    "sandbox": "bun src/sandbox.ts",
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "test": "vitest run",
@@ -19,6 +20,7 @@
     "@anthropic-ai/claude-agent-sdk": "latest",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "chalk": "^5.4.1",
+    "e2b": "^2.14.1",
     "minimatch": "^10.0.1",
     "ora": "^8.2.0",
     "yaml": "^2.7.1",
