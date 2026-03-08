@@ -229,6 +229,15 @@ async function workerLoop(
 // ---------- main ----------
 
 async function main(): Promise<void> {
+  // Clean host Claude Code env vars that break nested SDK subprocess
+  // CLAUDECODE: triggers "cannot launch inside another session" guard
+  // ANTHROPIC_BASE_URL: only clear if it's the Claude Code internal proxy (localhost)
+  //   — preserve legitimate external base URLs (e.g. PackyAPI)
+  delete process.env.CLAUDECODE;
+  if (process.env.ANTHROPIC_BASE_URL?.match(/^https?:\/\/(127\.0\.0\.1|localhost)/)) {
+    delete process.env.ANTHROPIC_BASE_URL;
+  }
+
   await loadEnvFile(path.resolve(".env"));
 
   const { projectPath: rawPath, skillsDir, model } = parseArgs(

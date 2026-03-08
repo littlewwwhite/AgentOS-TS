@@ -11,6 +11,7 @@
     "sandbox": "bun src/sandbox.ts",
     "dev": "tsx src/index.ts",
     "build": "tsc",
+    "build:e2b": "bun run build && bun e2b/build.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "biome check src/ tests/",
