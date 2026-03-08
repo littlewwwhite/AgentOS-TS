@@ -1,8 +1,3 @@
----
-name: video-create
-description: "通过 anime-material-workbench API 生成视频，支持图生视频、文生视频等操作与异步任务管理。"
----
-
 # Video Create Skill
 
 通过 anime-material-workbench 生成视频，并管理异步任务。
