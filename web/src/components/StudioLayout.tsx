@@ -30,15 +30,15 @@ export function StudioLayout() {
         </span>
       </header>
       <Group orientation="horizontal" className="flex-1">
-        <Panel minSize={15} maxSize={30} defaultSize={20}>
+        <Panel minSize="15%" maxSize="30%" defaultSize="20%">
           <PipelineExplorer />
         </Panel>
         <ResizeHandle />
-        <Panel minSize={30}>
+        <Panel minSize="30%">
           <ContentCanvas />
         </Panel>
         <ResizeHandle />
-        <Panel minSize={15} maxSize={35} defaultSize={25}>
+        <Panel minSize="15%" maxSize="35%" defaultSize="25%">
           <ConversationPanel />
         </Panel>
       </Group>
