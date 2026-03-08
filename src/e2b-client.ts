@@ -8,8 +8,8 @@ import type { SandboxCommand, SandboxEvent } from "./protocol.js";
 // ---------- Types ----------
 
 export interface SandboxClientOptions {
-  /** E2B template ID (from `e2b template build` or E2B dashboard) */
-  templateId: string;
+  /** E2B template ID (defaults to "agentos-sandbox") */
+  templateId?: string;
   /** E2B API key (defaults to E2B_API_KEY env var) */
   apiKey?: string;
   /** Sandbox timeout in ms (default: 5 min) */
@@ -20,6 +20,8 @@ export interface SandboxClientOptions {
   onStderr?: (data: string) => void;
   /** Start command override (defaults to standard sandbox entrypoint) */
   startCommand?: string;
+  /** Environment variables passed to the sandbox process (e.g. API keys) */
+  envs?: Record<string, string>;
 }
 
 interface CommandHandle {
@@ -49,20 +51,21 @@ export class SandboxClient {
    * The process runs in background mode so we get a PID for stdin/stdout.
    */
   async start(): Promise<void> {
-    this.sandbox = await Sandbox.create(this.opts.templateId, {
+    this.sandbox = await Sandbox.create(this.opts.templateId ?? "agentos-sandbox", {
       apiKey: this.opts.apiKey,
       timeoutMs: this.opts.timeoutMs ?? 300_000,
     });
 
     const cmd =
       this.opts.startCommand ??
-      "bun /app/dist/sandbox.js /app/workspace --skills /app/skills";
+      "bun /home/user/app/dist/sandbox.js /home/user/app/workspace --skills /home/user/app/skills";
 
     // background: true → returns CommandHandle immediately
     // stdin: true → keeps stdin open so sendStdin() works
     this.handle = (await this.sandbox.commands.run(cmd, {
       background: true,
       stdin: true,
+      envs: this.opts.envs,
       onStdout: (data: string) => this.handleStdout(data),
       onStderr: (data: string) => this.stderrCb?.(data),
     })) as unknown as CommandHandle;
