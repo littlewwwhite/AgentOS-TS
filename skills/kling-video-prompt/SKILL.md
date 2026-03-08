@@ -1,8 +1,3 @@
----
-name: kling-video-prompt
-description: 可灵视频提示词生成规范 - 基于剧本 JSON 结构的视频生成提示词格式化工具。当用户提到"可灵"、"kling"、"视频提示词"、"剧本格式"、"JSON 规范"时使用此 skill。
----
-
 # Kling Video Prompt Skill
 
 可灵视频提示词生成规范 - 基于剧本 JSON 结构的视频生成提示词格式化工具。
