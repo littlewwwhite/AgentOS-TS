@@ -1,0 +1,40 @@
+// input: PreToolUse events for mcp__storage__write_json
+// output: Allow or deny based on Zod schema validation
+// pos: Data integrity gate — validates JSON before it reaches disk
+
+import { schemaRegistry } from "../schemas/index.js";
+import type { PreToolUseHook } from "./types.js";
+
+export const schemaValidator: PreToolUseHook = async (input) => {
+  if (input.tool_name !== "mcp__storage__write_json") return {};
+
+  const filePath: string = (input.tool_input?.path as string) ?? "";
+
+  // Find matching schema by path suffix
+  let matchedSchema: (typeof schemaRegistry)[string] | undefined;
+  for (const [suffix, schema] of Object.entries(schemaRegistry)) {
+    if (filePath.endsWith(suffix)) {
+      matchedSchema = schema;
+      break;
+    }
+  }
+
+  if (!matchedSchema) return {};
+
+  const rawData = input.tool_input?.data;
+  const data = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
+
+  const result = matchedSchema.safeParse(data);
+  if (!result.success) {
+    const issues = result.error.issues
+      .slice(0, 5)
+      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .join("; ");
+    return {
+      permissionDecision: "deny",
+      reason: `Schema validation failed for ${filePath}: ${issues}`,
+    };
+  }
+
+  return {};
+};

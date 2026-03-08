@@ -1,0 +1,208 @@
+// input: Selected file path from workspace store
+// output: Type-appropriate content viewer with action toolbar
+// pos: Center panel — primary content display and manipulation area
+
+import {
+  ArrowClockwise,
+  PencilSimple,
+  MagnifyingGlassPlus,
+  Play,
+  Pause,
+  Copy,
+  FileText,
+  ImageSquare,
+  FilmSlate,
+  MusicNote,
+  Code,
+} from "@phosphor-icons/react";
+import { useStudioStore } from "@/stores/studio";
+import { inferContentType, type ContentType } from "@/lib/types";
+import { MOCK_JSON_CONTENT } from "@/lib/mock-data";
+
+function ContentIcon({ type }: { type: ContentType }) {
+  const map: Record<ContentType, React.ReactNode> = {
+    markdown: <FileText weight="duotone" className="size-5" />,
+    json: <Code weight="duotone" className="size-5" />,
+    image: <ImageSquare weight="duotone" className="size-5" />,
+    video: <FilmSlate weight="duotone" className="size-5" />,
+    audio: <MusicNote weight="duotone" className="size-5" />,
+    text: <FileText weight="duotone" className="size-5" />,
+    unknown: <FileText weight="duotone" className="size-5" />,
+  };
+  return <>{map[type]}</>;
+}
+
+function ActionToolbar({
+  type,
+  path,
+}: {
+  type: ContentType;
+  path: string;
+}) {
+  const baseBtn =
+    "flex items-center gap-1.5 rounded px-2 py-1 text-[12px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-primary)] active:scale-[0.98]";
+
+  return (
+    <div className="flex items-center gap-1 border-b border-[var(--color-border)] px-3 py-1.5">
+      <div className="flex items-center gap-1.5 text-[var(--color-text-muted)]">
+        <ContentIcon type={type} />
+        <span className="font-mono text-[12px]">{path}</span>
+      </div>
+      <div className="flex-1" />
+      <button type="button" className={baseBtn}>
+        <ArrowClockwise weight="bold" className="size-3.5" /> Regenerate
+      </button>
+      <button type="button" className={baseBtn}>
+        <PencilSimple weight="bold" className="size-3.5" /> Edit
+      </button>
+      {type === "image" && (
+        <button type="button" className={baseBtn}>
+          <MagnifyingGlassPlus weight="bold" className="size-3.5" /> Upscale
+        </button>
+      )}
+      <button type="button" className={baseBtn}>
+        <Copy weight="bold" className="size-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function JsonViewer({ content }: { content: string }) {
+  return (
+    <pre className="flex-1 overflow-auto p-4 font-mono text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
+      <code>{content}</code>
+    </pre>
+  );
+}
+
+function MarkdownViewer({ path }: { path: string }) {
+  const mockContent = `# Episode 01 - New Beginnings
+
+## Scene 1: Office Lobby
+**Location:** Startup Incubator, Main Hall
+**Time:** Morning
+
+### Actions
+
+**CHEN WEI** walks through the glass doors, carrying a leather briefcase.
+His eyes scan the open-plan workspace with a mixture of ambition and uncertainty.
+
+> *Inner thought: Three years of savings, one shot at making this work.*
+
+**LIN JIA** (from behind a standing desk):
+"You must be the new tenant in Suite 4B. Coffee machine is broken,
+but the WiFi password is on the whiteboard."
+
+---
+
+## Scene 2: Conference Room
+**Location:** Suite 4B, Small Meeting Room
+**Time:** Late Morning
+
+**ZHANG MING** spreads financial documents across the table.
+
+**ZHANG MING:**
+"The runway is exactly 47 days. Not 47 weeks. Days."
+`;
+  return (
+    <div className="flex-1 overflow-auto p-6">
+      <div className="prose prose-invert mx-auto max-w-[65ch] text-[14px] leading-relaxed text-[var(--color-text-secondary)]">
+        <pre className="whitespace-pre-wrap font-sans">{mockContent}</pre>
+      </div>
+    </div>
+  );
+}
+
+function ImageViewer({ path }: { path: string }) {
+  // In production, this would load real images from the workspace
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
+      <div className="grid max-w-2xl grid-cols-2 gap-4">
+        {["chenwei", "linjia", "zhangming", "suyan"].map((name) => (
+          <div
+            key={name}
+            className="group relative aspect-[3/4] overflow-hidden rounded-lg bg-[var(--color-surface-2)] transition-all hover:ring-1 hover:ring-[var(--color-accent-dim)]"
+          >
+            <div className="flex h-full items-center justify-center">
+              <ImageSquare weight="thin" className="size-16 text-[var(--color-text-muted)]" />
+            </div>
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[var(--color-surface-0)]/80 to-transparent px-3 py-2">
+              <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">
+                {name}.png
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VideoViewer({ path }: { path: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
+      <div className="aspect-video w-full max-w-xl overflow-hidden rounded-lg bg-[var(--color-surface-2)]">
+        <div className="flex h-full items-center justify-center">
+          <FilmSlate weight="thin" className="size-20 text-[var(--color-text-muted)]" />
+        </div>
+      </div>
+      <div className="flex w-full max-w-xl items-center gap-3">
+        <button
+          type="button"
+          className="flex size-8 items-center justify-center rounded-full bg-[var(--color-surface-2)] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-primary)]"
+        >
+          <Play weight="fill" className="size-4" />
+        </button>
+        <div className="h-1 flex-1 rounded-full bg-[var(--color-surface-2)]">
+          <div className="h-full w-[35%] rounded-full bg-[var(--color-accent-dim)]" />
+        </div>
+        <span className="font-mono text-[11px] tabular-nums text-[var(--color-text-muted)]">
+          0:00 / 2:34
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function EmptyCanvas() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-[var(--color-text-muted)]">
+      <FileText weight="thin" className="size-16" />
+      <p className="text-sm">Select a file to preview</p>
+      <p className="max-w-[40ch] text-center text-xs leading-relaxed">
+        Use the Pipeline Explorer to browse workspace files, or start a conversation to generate content.
+      </p>
+    </div>
+  );
+}
+
+export function ContentCanvas() {
+  const selectedPath = useStudioStore((s) => s.selectedPath);
+
+  if (!selectedPath) {
+    return (
+      <div className="flex h-full flex-col bg-[var(--color-surface-0)]">
+        <EmptyCanvas />
+      </div>
+    );
+  }
+
+  const contentType = inferContentType(selectedPath);
+
+  const viewers: Record<ContentType, React.ReactNode> = {
+    json: <JsonViewer content={MOCK_JSON_CONTENT} />,
+    markdown: <MarkdownViewer path={selectedPath} />,
+    image: <ImageViewer path={selectedPath} />,
+    video: <VideoViewer path={selectedPath} />,
+    audio: <VideoViewer path={selectedPath} />,
+    text: <MarkdownViewer path={selectedPath} />,
+    unknown: <JsonViewer content={`// ${selectedPath}\n// Content preview not available`} />,
+  };
+
+  return (
+    <div className="flex h-full flex-col bg-[var(--color-surface-0)]">
+      <ActionToolbar type={contentType} path={selectedPath} />
+      {viewers[contentType]}
+    </div>
+  );
+}

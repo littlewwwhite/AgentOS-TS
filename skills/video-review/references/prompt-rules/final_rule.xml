@@ -1,0 +1,4 @@
+<!-- 固定 -->
+<final_rule>
+只输出 JSON，不要任何解释、前后缀或 Markdown。
+</final_rule>
