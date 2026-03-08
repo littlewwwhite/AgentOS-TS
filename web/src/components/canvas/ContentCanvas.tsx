@@ -7,7 +7,6 @@ import {
   PencilSimple,
   MagnifyingGlassPlus,
   Play,
-  Pause,
   Copy,
   FileText,
   ImageSquare,
@@ -18,6 +17,10 @@ import {
 import { useStudioStore } from "@/stores/studio";
 import { inferContentType, type ContentType } from "@/lib/types";
 import { MOCK_JSON_CONTENT } from "@/lib/mock-data";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 function ContentIcon({ type }: { type: ContentType }) {
   const map: Record<ContentType, React.ReactNode> = {
@@ -39,43 +42,47 @@ function ActionToolbar({
   type: ContentType;
   path: string;
 }) {
-  const baseBtn =
-    "flex items-center gap-1.5 rounded px-2 py-1 text-[12px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-primary)] active:scale-[0.98]";
-
   return (
-    <div className="flex items-center gap-1 border-b border-[var(--color-border)] px-3 py-1.5">
-      <div className="flex items-center gap-1.5 text-[var(--color-text-muted)]">
+    <div className="flex items-center gap-1 border-b border-border px-3 py-1.5">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
         <ContentIcon type={type} />
         <span className="font-mono text-[12px]">{path}</span>
       </div>
       <div className="flex-1" />
-      <button type="button" className={baseBtn}>
+      <Button variant="ghost" size="sm">
         <ArrowClockwise weight="bold" className="size-3.5" /> Regenerate
-      </button>
-      <button type="button" className={baseBtn}>
+      </Button>
+      <Button variant="ghost" size="sm">
         <PencilSimple weight="bold" className="size-3.5" /> Edit
-      </button>
+      </Button>
       {type === "image" && (
-        <button type="button" className={baseBtn}>
+        <Button variant="ghost" size="sm">
           <MagnifyingGlassPlus weight="bold" className="size-3.5" /> Upscale
-        </button>
+        </Button>
       )}
-      <button type="button" className={baseBtn}>
-        <Copy weight="bold" className="size-3.5" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon-xs">
+            <Copy weight="bold" className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Copy</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
 
 function JsonViewer({ content }: { content: string }) {
   return (
-    <pre className="flex-1 overflow-auto p-4 font-mono text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
-      <code>{content}</code>
-    </pre>
+    <ScrollArea className="flex-1">
+      <pre className="p-4 font-mono text-[13px] leading-relaxed text-foreground">
+        <code>{content}</code>
+      </pre>
+    </ScrollArea>
   );
 }
 
-function MarkdownViewer({ path }: { path: string }) {
+function MarkdownViewer(_props: { path: string }) {
   const mockContent = `# Episode 01 - New Beginnings
 
 ## Scene 1: Office Lobby
@@ -105,29 +112,33 @@ but the WiFi password is on the whiteboard."
 "The runway is exactly 47 days. Not 47 weeks. Days."
 `;
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <div className="prose prose-invert mx-auto max-w-[65ch] text-[14px] leading-relaxed text-[var(--color-text-secondary)]">
-        <pre className="whitespace-pre-wrap font-sans">{mockContent}</pre>
+    <ScrollArea className="flex-1">
+      <div className="p-6">
+        <div className="prose prose-invert mx-auto max-w-[65ch] text-[14px] leading-relaxed text-foreground">
+          <pre className="whitespace-pre-wrap font-sans">{mockContent}</pre>
+        </div>
       </div>
-    </div>
+    </ScrollArea>
   );
 }
 
-function ImageViewer({ path }: { path: string }) {
-  // In production, this would load real images from the workspace
+function ImageViewer(_props: { path: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
       <div className="grid max-w-2xl grid-cols-2 gap-4">
         {["chenwei", "linjia", "zhangming", "suyan"].map((name) => (
           <div
             key={name}
-            className="group relative aspect-[3/4] overflow-hidden rounded-lg bg-[var(--color-surface-2)] transition-all hover:ring-1 hover:ring-[var(--color-accent-dim)]"
+            className={cn(
+              "group relative aspect-[3/4] overflow-hidden rounded-lg bg-secondary",
+              "transition-all hover:ring-1 hover:ring-ring"
+            )}
           >
             <div className="flex h-full items-center justify-center">
-              <ImageSquare weight="thin" className="size-16 text-[var(--color-text-muted)]" />
+              <ImageSquare weight="thin" className="size-16 text-muted-foreground" />
             </div>
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[var(--color-surface-0)]/80 to-transparent px-3 py-2">
-              <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/80 to-transparent px-3 py-2">
+              <span className="font-mono text-[11px] text-muted-foreground">
                 {name}.png
               </span>
             </div>
@@ -138,25 +149,22 @@ function ImageViewer({ path }: { path: string }) {
   );
 }
 
-function VideoViewer({ path }: { path: string }) {
+function VideoViewer(_props: { path: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
-      <div className="aspect-video w-full max-w-xl overflow-hidden rounded-lg bg-[var(--color-surface-2)]">
+      <div className="aspect-video w-full max-w-xl overflow-hidden rounded-lg bg-secondary">
         <div className="flex h-full items-center justify-center">
-          <FilmSlate weight="thin" className="size-20 text-[var(--color-text-muted)]" />
+          <FilmSlate weight="thin" className="size-20 text-muted-foreground" />
         </div>
       </div>
       <div className="flex w-full max-w-xl items-center gap-3">
-        <button
-          type="button"
-          className="flex size-8 items-center justify-center rounded-full bg-[var(--color-surface-2)] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-primary)]"
-        >
+        <Button variant="secondary" size="icon" className="rounded-full">
           <Play weight="fill" className="size-4" />
-        </button>
-        <div className="h-1 flex-1 rounded-full bg-[var(--color-surface-2)]">
-          <div className="h-full w-[35%] rounded-full bg-[var(--color-accent-dim)]" />
+        </Button>
+        <div className="h-1 flex-1 rounded-full bg-secondary">
+          <div className="h-full w-[35%] rounded-full bg-ring" />
         </div>
-        <span className="font-mono text-[11px] tabular-nums text-[var(--color-text-muted)]">
+        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
           0:00 / 2:34
         </span>
       </div>
@@ -166,7 +174,7 @@ function VideoViewer({ path }: { path: string }) {
 
 function EmptyCanvas() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-[var(--color-text-muted)]">
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
       <FileText weight="thin" className="size-16" />
       <p className="text-sm">Select a file to preview</p>
       <p className="max-w-[40ch] text-center text-xs leading-relaxed">
@@ -181,7 +189,7 @@ export function ContentCanvas() {
 
   if (!selectedPath) {
     return (
-      <div className="flex h-full flex-col bg-[var(--color-surface-0)]">
+      <div className="flex h-full flex-col bg-background">
         <EmptyCanvas />
       </div>
     );
@@ -200,7 +208,7 @@ export function ContentCanvas() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-[var(--color-surface-0)]">
+    <div className="flex h-full flex-col bg-background">
       <ActionToolbar type={contentType} path={selectedPath} />
       {viewers[contentType]}
     </div>

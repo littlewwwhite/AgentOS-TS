@@ -35,7 +35,7 @@ interface PanelSlice {
 
 type StudioStore = WorkspaceSlice & ConversationSlice & PipelineSlice & PanelSlice;
 
-export const useStudioStore = create<StudioStore>((set, get) => ({
+export const useStudioStore = create<StudioStore>((set) => ({
   // Workspace
   files: MOCK_FILE_TREE,
   selectedPath: null,
