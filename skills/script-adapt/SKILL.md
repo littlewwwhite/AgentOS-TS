@@ -1,16 +1,3 @@
----
-name: script-adapt
-description: "小说直转剧本流水线：将小说或原创概念通过三阶段（分析设计 → 写作 → 结构解析）转化为结构化 AI 漫剧剧本。当用户提到小说转剧本、简单改编、3阶段剧本、Phase 1/2/3 时使用。"
-allowed-tools:
-  - Read
-  - Write
-  - mcp__storage__write_json
-  - mcp__storage__read_json
-  - mcp__storage__list_assets
-  - mcp__script__parse_script
-model: sonnet
----
-
 # AI 漫剧剧本创作流水线
 
 创作 AI 漫剧剧本（抖音竖屏微短剧，单集 60 秒），支持两种输入：
@@ -36,9 +23,9 @@ Phase 1 分析设计  →  Phase 2 写作  →  Phase 3 结构解析
 
 | 阶段 | 参考预加载的 Reference Documents 中对应节 | 产物 |
 |------|------------------------------------------|------|
-| **Phase 1** 分析设计 | `## phase1-design.md` + `## shared-domain.md` + `## style-options.md` | design.json + catalog.json |
-| **Phase 2** 写作 | `## phase2-writing.md` + `## writing-rules.md` + `## script-format.md` | episodes/ep\*.md |
-| **Phase 3** 结构解析 | `## phase3-extraction.md` | script.json |
+| **Phase 1** 分析设计 | `## phase1-design.md` + `## shared-domain.md` + `## style-options.md` | draft/design.json + draft/catalog.json |
+| **Phase 2** 写作 | `## phase2-writing.md` + `## writing-rules.md` + `## script-format.md` | draft/episodes/ep\*.md |
+| **Phase 3** 结构解析 | `## phase3-extraction.md` | output/script.json |
 
 ---
 
@@ -53,11 +40,13 @@ Phase 1 分析设计  →  Phase 2 写作  →  Phase 3 结构解析
 ```
 {小说名}/                             <- 项目文件夹 = 小说名
 ├── source.txt                        <- 原文副本
-├── design.json                       <- Phase 1（世界观 + 分集大纲 + 视觉风格）
-├── catalog.json                      <- Phase 1（资产清单）
-├── episodes/
-│   └── ep{NN}.md                     <- Phase 2（场记格式）
-└── script.json                       <- Phase 3（结构化剧本）
+├── draft/
+│   ├── design.json                   <- Phase 1（世界观 + 分集大纲 + 视觉风格）
+│   ├── catalog.json                  <- Phase 1（资产清单）
+│   └── episodes/
+│       └── ep{NN}.md                 <- Phase 2（场记格式）
+└── output/
+    └── script.json                   <- Phase 3（结构化剧本）
 ```
 
 ### 工作区操作
@@ -70,9 +59,9 @@ Phase 1 分析设计  →  Phase 2 写作  →  Phase 3 结构解析
 
 当用户清理上下文（`/clear`）后继续时，按以下顺序检查工作区文件以恢复流水线状态：
 
-1. 检查 `design.json` + `catalog.json` → 存在则 Phase 1 完成
-2. 检查 `episodes/` 目录（至少一个 ep*.md）→ 存在则 Phase 2 完成
-3. 检查 `script.json` → 存在则 Phase 3 完成（NTS 完成）
+1. 检查 `draft/design.json` + `draft/catalog.json` → 存在则 Phase 1 完成
+2. 检查 `draft/episodes/` 目录（至少一个 ep*.md）→ 存在则 Phase 2 完成
+3. 检查 `output/script.json` → 存在则 Phase 3 完成（NTS 完成）
 
 根据恢复结果，提示用户进入下一阶段。
 
@@ -82,17 +71,17 @@ Phase 1 分析设计  →  Phase 2 写作  →  Phase 3 结构解析
 
 | 阶段 | 输入 | 输出 | 工作区文件 |
 |------|------|------|-----------|
-| Phase 1 分析设计 | source.txt | design.json + catalog.json | *.json |
-| Phase 2 写作 | design.json + catalog.json | ep\*.md | episodes/\*.md |
-| Phase 3 结构解析 | ep\*.md + catalog.json | script.json | script.json |
+| Phase 1 分析设计 | source.txt | design.json + catalog.json | draft/*.json |
+| Phase 2 写作 | draft/design.json + draft/catalog.json | ep\*.md | draft/episodes/\*.md |
+| Phase 3 结构解析 | draft/episodes/ep\*.md + draft/catalog.json | script.json | output/script.json |
 
 ### 依赖矩阵
 
 | 目标阶段 | 前置文件 |
 |---------|---------|
 | Phase 1 | source.txt |
-| Phase 2 | design.json + catalog.json |
-| Phase 3 | episodes/（至少 1 个 ep\*.md） |
+| Phase 2 | draft/design.json + draft/catalog.json |
+| Phase 3 | draft/episodes/（至少 1 个 ep\*.md） |
 
 ---
 
@@ -142,4 +131,3 @@ Phase 1 分析设计  →  Phase 2 写作  →  Phase 3 结构解析
 5. **无输入**：检查工作区是否存在 → 存在则展示状态，不存在则提示提供原文
 6. **阶段指令**（如"开始 Phase 2"、"进入写作"）：路由至对应阶段
 7. **"从第 N 集开始"**（Phase 2 期间）：传递给 Phase 2 执行分段写作
-
