@@ -120,11 +120,11 @@ function StageSection({
       <button
         type="button"
         onClick={() => setActiveStage(activeStage === stage.id ? null : stage.id)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
       >
         <span
           className={cn(
-            "size-1.5 rounded-full",
+            "size-2 rounded-full",
             hasActive
               ? "bg-status-active animate-pulse"
               : allDone

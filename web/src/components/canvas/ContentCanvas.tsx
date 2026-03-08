@@ -43,7 +43,7 @@ function ActionToolbar({
   path: string;
 }) {
   return (
-    <div className="flex items-center gap-1 border-b border-border px-3 py-1.5">
+    <div className="flex items-center gap-1 border-b border-border bg-card/40 px-3 py-1.5">
       <div className="flex items-center gap-1.5 text-muted-foreground">
         <ContentIcon type={type} />
         <span className="font-mono text-[12px]">{path}</span>
@@ -130,8 +130,8 @@ function ImageViewer(_props: { path: string }) {
           <div
             key={name}
             className={cn(
-              "group relative aspect-[3/4] overflow-hidden rounded-lg bg-secondary",
-              "transition-all hover:ring-1 hover:ring-ring"
+              "group relative aspect-[3/4] overflow-hidden rounded-lg border border-border bg-secondary",
+              "transition-all hover:border-ring/50"
             )}
           >
             <div className="flex h-full items-center justify-center">

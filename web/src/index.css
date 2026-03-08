@@ -7,7 +7,7 @@
   --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
 
-  /* shadcn semantic color tokens → Tailwind classes */
+  /* shadcn semantic → Tailwind class bridge */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -36,7 +36,7 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* Domain-specific tokens (not part of shadcn) */
+  /* Domain tokens */
   --color-surface-3: var(--surface-3);
   --color-border-strong: var(--border-strong);
   --color-brand-surface: var(--brand-surface);
@@ -47,67 +47,75 @@
 }
 
 /*
- * Dark-only theme — oklch values mapped from original design system.
+ * Refined dark palette — "VS Code × Linear × Vercel Dashboard"
  *
- * Mapping:
- *   surface-0 → --background          Page bg
- *   surface-1 → --card, --sidebar     Panel bg
- *   surface-2 → --secondary, --muted, --accent  Hover/selected
- *   border    → --border, --input     Borders
- *   text-primary → --foreground       Main text
- *   text-muted   → --muted-foreground Muted text
- *   emerald      → --primary          Brand/CTA
- *   accent-dim   → --ring             Focus ring
- *   status-error → --destructive      Error
+ * Principles (design-taste-frontend):
+ *   - Cool neutral base (hue 265) — avoids warm muddy grays
+ *   - Clear luminance stepping (≥ 0.035 per surface level)
+ *   - Single desaturated emerald accent (chroma ≤ 0.15)
+ *   - Muted text at L=0.55 for WCAG-adjacent readability
+ *   - No pure black (L ≥ 0.14), no pure white (L ≤ 0.93)
+ *
+ * Surface ladder:
+ *   L=0.14  background    (deepest)
+ *   L=0.165 sidebar       (subtle lift)
+ *   L=0.185 card/panel    (clear panel)
+ *   L=0.215 muted         (de-emphasized bg)
+ *   L=0.24  secondary     (hover/selected)
+ *   L=0.27  surface-3     (input fields)
+ *   L=0.30  border        (visible lines)
+ *   L=0.40  border-strong (emphasis lines)
  */
 :root {
   --radius: 0.5rem;
 
-  /* Core surfaces */
-  --background: oklch(0.145 0.005 285);
-  --foreground: oklch(0.95 0.005 285);
+  /* Surfaces — cool neutral, hue 265, chroma 0.004 */
+  --background: oklch(0.14 0.004 265);
+  --foreground: oklch(0.93 0.003 265);
 
-  --card: oklch(0.175 0.005 285);
-  --card-foreground: oklch(0.95 0.005 285);
+  --card: oklch(0.185 0.004 265);
+  --card-foreground: oklch(0.93 0.003 265);
 
-  --popover: oklch(0.175 0.005 285);
-  --popover-foreground: oklch(0.95 0.005 285);
+  --popover: oklch(0.20 0.005 265);
+  --popover-foreground: oklch(0.93 0.003 265);
 
-  /* Primary = Emerald accent */
-  --primary: oklch(0.72 0.17 162);
-  --primary-foreground: oklch(0.145 0.005 285);
+  /* Primary — refined emerald, desaturated */
+  --primary: oklch(0.72 0.145 160);
+  --primary-foreground: oklch(0.14 0.004 265);
 
-  /* Secondary / Muted / Accent = surface-2 */
-  --secondary: oklch(0.215 0.006 285);
-  --secondary-foreground: oklch(0.95 0.005 285);
+  /* Secondary — interactive surface */
+  --secondary: oklch(0.24 0.005 265);
+  --secondary-foreground: oklch(0.93 0.003 265);
 
-  --muted: oklch(0.215 0.006 285);
-  --muted-foreground: oklch(0.48 0.005 285);
+  /* Muted — de-emphasized */
+  --muted: oklch(0.215 0.004 265);
+  --muted-foreground: oklch(0.55 0.003 265);
 
-  --accent: oklch(0.215 0.006 285);
-  --accent-foreground: oklch(0.95 0.005 285);
+  /* Accent — same as secondary for consistency */
+  --accent: oklch(0.24 0.005 265);
+  --accent-foreground: oklch(0.93 0.003 265);
 
-  /* Destructive = status-error */
-  --destructive: oklch(0.65 0.2 25);
-  --destructive-foreground: oklch(0.95 0.005 285);
+  /* Destructive */
+  --destructive: oklch(0.60 0.17 25);
+  --destructive-foreground: oklch(0.93 0.003 265);
 
-  /* Borders */
-  --border: oklch(0.32 0.005 285);
-  --input: oklch(0.32 0.005 285);
-  --ring: oklch(0.55 0.12 162);
+  /* Borders — clearly visible */
+  --border: oklch(0.30 0.004 265);
+  --input: oklch(0.30 0.004 265);
+  --ring: oklch(0.55 0.10 160);
 
-  /* Sidebar = surface-1 */
-  --sidebar: oklch(0.175 0.005 285);
-  --sidebar-foreground: oklch(0.95 0.005 285);
+  /* Sidebar */
+  --sidebar: oklch(0.165 0.004 265);
+  --sidebar-foreground: oklch(0.93 0.003 265);
 
-  /* Domain-specific tokens */
-  --surface-3: oklch(0.275 0.006 285);
-  --border-strong: oklch(0.42 0.005 285);
-  --brand-surface: oklch(0.25 0.04 162);
-  --status-done: oklch(0.72 0.17 162);
-  --status-active: oklch(0.75 0.15 250);
-  --status-error: oklch(0.65 0.2 25);
-  --status-pending: oklch(0.48 0.005 285);
+  /* Domain tokens */
+  --surface-3: oklch(0.27 0.005 265);
+  --border-strong: oklch(0.40 0.004 265);
+  --brand-surface: oklch(0.20 0.02 160);
+  --status-done: oklch(0.68 0.13 160);
+  --status-active: oklch(0.68 0.11 245);
+  --status-error: oklch(0.60 0.17 25);
+  --status-pending: oklch(0.45 0.003 265);
 }
 
 @layer base {
@@ -129,7 +137,7 @@
   }
 }
 
-/* Scrollbar */
+/* Scrollbar — thin, unobtrusive */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

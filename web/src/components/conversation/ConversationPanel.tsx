@@ -58,7 +58,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           {timeStr}
         </span>
       </div>
-      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground">
+      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/70">
         {message.content}
       </p>
     </motion.div>
@@ -147,7 +147,7 @@ export function ConversationPanel() {
 
       {/* Messages */}
       <ScrollArea ref={scrollRef} className="flex-1">
-        <div className="flex flex-col gap-2 px-2 py-3">
+        <div className="flex flex-col gap-2.5 px-2.5 py-3">
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
@@ -162,7 +162,7 @@ export function ConversationPanel() {
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="border-t border-border p-2">
-        <div className="flex items-end gap-1.5 rounded-lg bg-secondary px-3 py-2">
+        <div className="flex items-end gap-1.5 rounded-lg border border-border bg-secondary px-3 py-2 transition-colors focus-within:border-ring/50">
           <textarea
             value={inputValue}
             onChange={(e) => setInput(e.target.value)}
