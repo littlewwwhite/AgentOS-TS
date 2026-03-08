@@ -1,23 +1,28 @@
-// input: Project path, skills dir, CLI flags
+// input: Project path, agents dir, skills dir, CLI flags
 // output: Configured SDK session, interactive REPL loop
 // pos: Infrastructure layer — provides tools, agents, hooks; LLM drives conversation
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
+import chalk from "chalk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { buildAgents, filePolicy } from "./agents.js";
 import { buildHooks, setWorkspaceRoot } from "./hooks/index.js";
-import { loadSkills } from "./loader.js";
+import { loadAgentConfigs, loadSkillContents } from "./loader.js";
 import { createCanUseTool } from "./permissions.js";
 import { toolServers } from "./tools/index.js";
 
 const VERSION = "0.1.0";
-const WORKSPACE_DIRS = ["draft", "episodes", "assets", "production", "output"];
+const WORKSPACE_DIRS = ["draft", "draft/episodes", "assets", "production", "output"];
 const SESSION_FILE = ".session";
 const AT_FILE_RE = /@(\S+)/g;
+
+function sessionFilePath(projectPath: string, agentName?: string | null): string {
+  return path.join(projectPath, agentName ? `.session-${agentName}` : SESSION_FILE);
+}
 
 // ---------- Small utilities ----------
 
@@ -44,6 +49,12 @@ async function describeWorkspace(projectPath: string): Promise<string> {
   } catch {
     lines.push("  (empty)");
   }
+  // List shared source materials
+  try {
+    const dataDir = path.resolve(projectPath, "../data");
+    const sources = (await fs.readdir(dataDir)).filter((f) => !f.startsWith(".")).sort();
+    if (sources.length > 0) lines.push(`  ../data/: ${sources.join(", ")}`);
+  } catch { /* no data dir */ }
   return lines.join("\n");
 }
 
@@ -61,7 +72,7 @@ async function expandAtMentions(text: string, projectPath: string): Promise<stri
       let content = await fs.readFile(full, "utf-8");
       if (content.length > 50_000) content = content.slice(0, 50_000) + "\n... (truncated)";
       result = result.slice(0, match.index!) + `\n<file path="${rel}">\n${content}\n</file>\n` + result.slice(match.index! + match[0].length);
-      console.log(`  + ${rel}`);
+      console.log(chalk.dim(`  + ${rel}`));
     } catch { /* file not found */ }
   }
   return result;
@@ -69,51 +80,190 @@ async function expandAtMentions(text: string, projectPath: string): Promise<stri
 
 // ---------- Streaming ----------
 
+const TODO_ICONS: Record<string, string> = {
+  pending: "○",
+  in_progress: "◐",
+  completed: "●",
+};
+
+function renderTodoList(inputJson: string, indent: string): void {
+  try {
+    const input = JSON.parse(inputJson) as {
+      todos?: { content: string; status: string }[];
+    };
+    if (!input.todos?.length) return;
+    console.log(`${indent}${chalk.dim("Plan:")}`);
+    for (const todo of input.todos) {
+      const icon = TODO_ICONS[todo.status] ?? "○";
+      const color = todo.status === "completed" ? chalk.green
+        : todo.status === "in_progress" ? chalk.yellow
+        : chalk.dim;
+      console.log(`${indent}  ${color(`${icon} ${todo.content}`)}`);
+    }
+  } catch { /* incomplete JSON */ }
+}
+
+function formatToolLabel(name: string, inputJson: string): string {
+  try {
+    const input = JSON.parse(inputJson);
+    // Agent/Task tool: show sub-agent name + short description
+    if (name === "Agent" || name === "Task") {
+      const agentName = input.subagent_type ?? input.name ?? input.agent ?? null;
+      const desc = typeof input.description === "string" ? input.description.slice(0, 50) : "";
+      if (agentName) return `${agentName}${desc ? ` — ${desc}` : ""}`;
+      if (desc) return `Agent(${desc})`;
+      return "Agent";
+    }
+    const arg =
+      input.file_path ?? input.command ?? input.pattern ??
+      input.project_path ?? input.url ??
+      (typeof input.prompt === "string" ? input.prompt.slice(0, 60) : null) ?? "";
+    if (arg) {
+      const short = typeof arg === "string" && arg.length > 80 ? arg.slice(0, 80) + "…" : arg;
+      return `${name}(${short})`;
+    }
+  } catch { /* incomplete JSON */ }
+  return name;
+}
+
 async function sendAndStream(
   prompt: string,
   options: Record<string, unknown>,
-  projectPath: string,
-): Promise<void> {
+  sessionFile: string,
+): Promise<string | undefined> {
   const t0 = Date.now();
+  let lastWasText = false;
+  const toolBlocks = new Map<number, { name: string; input: string }>();
+  let resultSessionId: string | undefined;
+
+  function ensureNewline(): void {
+    if (lastWasText) { process.stdout.write("\n"); lastWasText = false; }
+  }
+
   for await (const msg of query({ prompt, options }) as AsyncIterable<SDKMessage>) {
-    if (msg.type === "assistant") {
-      for (const b of msg.message.content) {
-        if (b.type === "text" && b.text) process.stdout.write(b.text);
+    switch (msg.type) {
+      case "stream_event": {
+        const ev = msg.event as Record<string, unknown>;
+        const isNested = !!(msg as { parent_tool_use_id?: string | null }).parent_tool_use_id;
+        const indent = isNested ? "    " : "  ";
+
+        if (ev.type === "content_block_start") {
+          const block = ev.content_block as { type?: string; name?: string; id?: string };
+          if (block?.type === "tool_use" && block.name) {
+            const idx = ev.index as number;
+            toolBlocks.set(idx, { name: block.name, input: "" });
+          }
+        } else if (ev.type === "content_block_delta") {
+          const delta = ev.delta as { type?: string; text?: string; partial_json?: string };
+          if (delta?.type === "text_delta" && delta.text) {
+            process.stdout.write(delta.text);
+            lastWasText = true;
+          } else if (delta?.type === "input_json_delta" && delta.partial_json) {
+            const idx = ev.index as number;
+            const tool = toolBlocks.get(idx);
+            if (tool) tool.input += delta.partial_json;
+          }
+        } else if (ev.type === "content_block_stop") {
+          const idx = ev.index as number;
+          const tool = toolBlocks.get(idx);
+          if (tool) {
+            ensureNewline();
+            if (tool.name === "TodoWrite") {
+              renderTodoList(tool.input, indent);
+            } else {
+              const label = formatToolLabel(tool.name, tool.input);
+              console.log(chalk.dim(`${indent}● ${label}`));
+            }
+            toolBlocks.delete(idx);
+          }
+        }
+        break;
       }
-    } else if (msg.type === "stream_event") {
-      const ev = msg.event as { type?: string; delta?: { type?: string; text?: string } };
-      if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
-        process.stdout.write(ev.delta.text ?? "");
+
+      case "assistant": {
+        // Text already streamed via stream_event; only surface errors
+        const m = msg as unknown as { error?: { message?: string } };
+        if (m.error?.message) {
+          ensureNewline();
+          console.error(chalk.red(`  ✗ ${m.error.message}`));
+        }
+        break;
       }
-    } else if (msg.type === "result") {
-      const r = msg as unknown as { total_cost_usd?: number; is_error?: boolean; result?: string; session_id?: string };
-      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      console.log();
-      console.log(`  ${r.total_cost_usd ? `$${r.total_cost_usd.toFixed(4)} · ` : ""}${elapsed}s`);
-      if (r.is_error) console.error(`  Error: ${r.result}`);
-      if (r.session_id) await fs.writeFile(path.join(projectPath, SESSION_FILE), r.session_id, "utf-8");
+
+      case "tool_use_summary": {
+        const s = msg as unknown as { summary: string };
+        if (s.summary) {
+          ensureNewline();
+          console.log(chalk.cyan(`  ▸ ${s.summary}`));
+        }
+        break;
+      }
+
+      case "result": {
+        const r = msg as unknown as {
+          total_cost_usd?: number; is_error?: boolean; result?: string;
+          session_id?: string; num_turns?: number;
+        };
+        ensureNewline();
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+        const parts: string[] = [];
+        if (r.total_cost_usd) parts.push(`$${r.total_cost_usd.toFixed(4)}`);
+        parts.push(`${elapsed}s`);
+        if (r.num_turns) parts.push(`${r.num_turns} turns`);
+        console.log(chalk.dim(`  ${parts.join(" · ")}`));
+        if (r.is_error) console.error(chalk.red(`  ✗ ${r.result}`));
+        if (r.session_id) {
+          resultSessionId = r.session_id;
+          await fs.writeFile(sessionFile, r.session_id, "utf-8");
+        }
+        break;
+      }
+
+      case "system": {
+        const sys = msg as unknown as {
+          subtype?: string;
+          status?: string | null;
+          compact_metadata?: { trigger: string; pre_tokens: number };
+        };
+        if (sys.subtype === "status" && sys.status === "compacting") {
+          ensureNewline();
+          console.log(chalk.yellow("  ⟳ compacting context..."));
+        } else if (sys.subtype === "compact_boundary" && sys.compact_metadata) {
+          const tokens = sys.compact_metadata.pre_tokens;
+          const trigger = sys.compact_metadata.trigger;
+          console.log(chalk.dim(`  ⟳ compacted (${trigger}, ${tokens} tokens before)`));
+        }
+        break;
+      }
+
+      default:
+        break;
     }
   }
+  return resultSessionId;
 }
 
 // ---------- Build SDK options ----------
 
-export async function buildOptions(projectPath: string, skillsDir: string, model?: string, resume?: string, continueConversation = false) {
+export async function buildOptions(
+  projectPath: string,
+  agentsDir: string,
+  skillsDir: string,
+  model?: string,
+  resume?: string,
+  continueConversation = false,
+) {
   setWorkspaceRoot(projectPath);
-  const skills = await loadSkills(skillsDir);
-  const agents = buildAgents(skills, toolServers);
+  const agentConfigs = await loadAgentConfigs(agentsDir);
+  const skillContents = await loadSkillContents(skillsDir);
+  const agents = buildAgents(agentConfigs, skillContents, toolServers, projectPath);
 
   return {
     agents,
     mcpServers: toolServers,
     allowedTools: [
-      "Task", "TodoWrite", "TaskCreate", "TaskGet", "TaskUpdate", "TaskList",
+      "Agent", "TodoWrite",
       "Read", "Write", "Bash", "Glob", "Grep",
-      "mcp__storage__write_json", "mcp__storage__read_json", "mcp__storage__save_asset", "mcp__storage__list_assets",
-      "mcp__image__generate_image", "mcp__image__upscale_image",
-      "mcp__video__generate_video", "mcp__video__check_video_status",
-      "mcp__audio__generate_tts", "mcp__audio__generate_sfx", "mcp__audio__generate_music",
-      "mcp__script__parse_script",
     ],
     hooks: buildHooks(),
     canUseTool: createCanUseTool(projectPath, filePolicy),
@@ -121,20 +271,25 @@ export async function buildOptions(projectPath: string, skillsDir: string, model
       type: "preset",
       preset: "claude_code",
       append:
-        "You are a video production workspace assistant.\n" +
+        "You are a video production orchestrator.\n" +
+        "Your ONLY job is to understand user intent and dispatch to the right sub-agent.\n" +
+        "Do NOT perform domain work (writing scripts, generating images, etc.) yourself.\n\n" +
         `Project workspace: ${projectPath}/\n` +
+        `Source materials: ${path.resolve(projectPath, "../data")}/\n` +
         `${await describeWorkspace(projectPath)}\n\n` +
-        `${describeSkillList(agents)}\n\n` +
+        `${describeAgentList(agents)}\n\n` +
         "## Rules\n" +
-        "- Route user intent to the right skill; do not do their work yourself\n" +
+        "- Dispatch domain tasks to the appropriate sub-agent via the Agent tool\n" +
         "- All content in Chinese (简体中文), structural keys in English\n" +
-        "- Use TodoWrite to show progress on multi-step tasks\n\n" +
-        "## Planning Requirement (CRITICAL)\n" +
-        "Before executing ANY multi-step task or expensive operations:\n" +
-        "1. Use TodoWrite to create a plan showing all steps\n" +
-        "2. Mark the first step as 'in_progress' and proceed\n" +
-        "3. Update TodoWrite as you complete each step",
+        "- Use TodoWrite to show progress on multi-step tasks\n" +
+        "- When user references a source file (e.g. '测0.txt'), copy it from source materials to workspace as source.txt, then dispatch\n\n" +
+        "## Planning Requirement\n" +
+        "Before dispatching any multi-step task:\n" +
+        "1. Use TodoWrite to outline the plan\n" +
+        "2. Dispatch to the sub-agent\n" +
+        "3. Update TodoWrite as steps complete",
     },
+    betas: ["context-1m-2025-08-07"],
     settingSources: ["project"],
     cwd: projectPath,
     permissionMode: "acceptEdits",
@@ -146,10 +301,11 @@ export async function buildOptions(projectPath: string, skillsDir: string, model
   };
 }
 
-function describeSkillList(agents: Record<string, { description: string }>): string {
+function describeAgentList(agents: Record<string, { description: string }>): string {
   const entries = Object.entries(agents);
   if (entries.length === 0) return "";
-  return "## Skills (dispatch via Task tool)\n" + entries.map(([n, d]) => `- ${n}: ${d.description}`).join("\n");
+  return "## Sub-Agents (dispatch via Agent tool, subagent_type = name)\n" +
+    entries.map(([n, d]) => `- **${n}**: ${d.description}`).join("\n");
 }
 
 // ---------- Slash commands ----------
@@ -158,41 +314,44 @@ type SlashHandler = (args: {
   agents: Record<string, { description: string }>;
   options: Record<string, unknown>;
   projectPath: string;
+  activeAgent: string | null;
 }) => Promise<boolean>; // true = handled
 
 const SLASH_COMMANDS: Record<string, SlashHandler> = {
-  "/help": async () => {
-    console.log("  /skills   — list available workflows and skills");
-    console.log("  /tasks    — ask agent to show task board");
-    console.log("  /plan     — ask agent to show current todo list");
-    console.log("  /session  — show current session ID");
-    console.log("  /help     — this message");
+  "/help": async ({ activeAgent }) => {
+    console.log(`  ${chalk.cyan("/agents")}   — list available sub-agents`);
+    console.log(`  ${chalk.cyan("/enter")}    — enter a sub-agent for direct conversation`);
+    if (activeAgent) {
+      console.log(`  ${chalk.cyan("/exit")}     — return to orchestrator`);
+    }
+    console.log(`  ${chalk.cyan("/plan")}     — show current todo list`);
+    console.log(`  ${chalk.cyan("/session")}  — show current session ID`);
+    console.log(`  ${chalk.cyan("/help")}     — this message`);
     return true;
   },
-  "/skills": async ({ agents }) => {
+  "/agents": async ({ agents }) => {
     const entries = Object.entries(agents);
     if (entries.length === 0) {
-      console.log("  no skills loaded");
+      console.log(chalk.dim("  no agents loaded"));
       return true;
     }
     const maxLen = Math.max(...entries.map(([n]) => n.length));
     console.log();
     for (const [name, defn] of entries) {
-      console.log(`  ${name.padEnd(maxLen)}  ${defn.description}`);
+      console.log(`  ${chalk.cyan(name.padEnd(maxLen))}  ${chalk.dim(defn.description)}`);
     }
     return true;
   },
-  "/session": async ({ projectPath }) => {
-    const sid = await readText(path.join(projectPath, SESSION_FILE));
-    console.log(sid ? `  session: ${sid}` : "  no saved session");
+  "/session": async ({ projectPath, activeAgent }) => {
+    const sf = sessionFilePath(projectPath, activeAgent);
+    const sid = await readText(sf);
+    const label = activeAgent ? `session (${activeAgent})` : "session";
+    console.log(sid ? `  ${label}: ${chalk.dim(sid)}` : chalk.dim(`  no saved ${label}`));
     return true;
   },
-  "/tasks": async ({ options, projectPath }) => {
-    await sendAndStream("Show the current task board using TaskList. Display all tasks with their status.", options, projectPath);
-    return true;
-  },
-  "/plan": async ({ options, projectPath }) => {
-    await sendAndStream("Show your current TodoWrite checklist. If you don't have one, say so.", options, projectPath);
+  "/plan": async ({ options, projectPath, activeAgent }) => {
+    const sf = sessionFilePath(projectPath, activeAgent);
+    await sendAndStream("Show your current TodoWrite checklist. If you don't have one, say so.", options, sf);
     return true;
   },
 };
@@ -202,12 +361,13 @@ const SLASH_COMMANDS: Record<string, SlashHandler> = {
 export async function repl(config: {
   projectName?: string;
   inspiration?: string;
+  agentsDir?: string;
   skillsDir?: string;
   model?: string;
   resume?: string;
   continueConversation?: boolean;
 }): Promise<void> {
-  const { projectName, inspiration, skillsDir = "skills", model } = config;
+  const { projectName, inspiration, agentsDir = "agents", skillsDir = "skills", model } = config;
   let { resume, continueConversation = false } = config;
 
   const projectPath = path.resolve("workspace", projectName ?? "");
@@ -220,58 +380,168 @@ export async function repl(config: {
   // Session resolution: --resume > --continue > saved .session
   let isResuming = !!resume;
   if (!resume && continueConversation) {
-    resume = (await readText(path.join(projectPath, SESSION_FILE))) ?? undefined;
+    resume = (await readText(sessionFilePath(projectPath))) ?? undefined;
     if (resume) { isResuming = true; continueConversation = false; }
   }
 
-  const options = await buildOptions(projectPath, skillsDir, model, resume, !resume && continueConversation);
+  const options = await buildOptions(projectPath, agentsDir, skillsDir, model, resume, !resume && continueConversation) as Record<string, unknown>;
   const agents = (options.agents ?? {}) as Record<string, { description: string }>;
   const agentNames = Object.keys(agents);
 
   // Header
-  console.log(`\n  AgentOS v${VERSION}`);
+  console.log(`\n  ${chalk.bold("AgentOS")} ${chalk.dim(`v${VERSION}`)}`);
   const label = projectName ?? "general session";
   console.log(isResuming
-    ? `  ${projectPath}  ·  ${label}  ·  resuming ${resume?.slice(0, 12) ?? "last"}…`
-    : `  ${projectPath}  ·  ${label}`);
-  if (agentNames.length > 0) console.log(`  Skills: ${agentNames.join(" · ")}`);
-  console.log("  Ctrl+C · interrupt    Ctrl+C x 2 · exit    /skills · list\n");
+    ? `  ${chalk.dim(projectPath)}  ${chalk.white(label)}  ${chalk.yellow(`resuming ${resume?.slice(0, 12) ?? "last"}…`)}`
+    : `  ${chalk.dim(projectPath)}  ${chalk.white(label)}`);
+  if (agentNames.length > 0) {
+    const maxLen = Math.max(...agentNames.map(n => n.length));
+    console.log(`  ${chalk.dim("Agents:")}`);
+    for (const name of agentNames) {
+      const desc = agents[name].description;
+      const short = desc.length > 50 ? desc.slice(0, 50) + "…" : desc;
+      console.log(`    ${chalk.cyan(name.padEnd(maxLen))}  ${chalk.dim(short)}`);
+    }
+  }
+  console.log(chalk.dim("  Ctrl+C · interrupt    Ctrl+C x 2 · exit    /enter <agent> · direct mode\n"));
 
   // Initial prompt for new sessions with source material
   if (!isResuming && inspiration && projectName) {
+    const sf = sessionFilePath(projectPath);
     const preview = inspiration.slice(0, 300).replace(/\n/g, " ");
-    await sendAndStream(`Source material ready at ${projectPath}/source.txt\nPreview: ${preview}...\n\nWhat would you like to do?`, options, projectPath);
+    const sid = await sendAndStream(`Source material ready at ${projectPath}/source.txt\nPreview: ${preview}...\n\nWhat would you like to do?`, options, sf);
+    if (sid) (options as Record<string, unknown>).resume = sid;
   }
 
-  // REPL loop
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  // REPL state
+  let activeAgent: string | null = null;
+  const agentSessions = new Map<string, string>();
+
+  // Slash command completions
+  const slashCmds = ["/help", "/agents", "/enter", "/exit", "/plan", "/session"];
+
+  const completer = (line: string): [string[], string] => {
+    if (!line.startsWith("/")) return [[], line];
+
+    // "/enter <partial>" → complete agent names
+    const enterMatch = line.match(/^\/enter\s+(.*)/);
+    if (enterMatch) {
+      const partial = enterMatch[1];
+      const hits = agentNames.filter(n => n.startsWith(partial));
+      return [hits.map(n => `/enter ${n}`), line];
+    }
+
+    // Partial slash command → match commands
+    const hits = slashCmds.filter(c => c.startsWith(line));
+    return [hits, line];
+  };
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    completer,
+  });
   const ask = (): Promise<string> => new Promise((resolve, reject) => {
-    rl.question("\n> ", (a) => a === undefined ? reject(new Error("EOF")) : resolve(a));
+    const prompt = activeAgent
+      ? chalk.cyan(`\n${activeAgent} ❯ `)
+      : chalk.cyan("\n❯ ");
+    rl.question(prompt, (a) => a === undefined ? reject(new Error("EOF")) : resolve(a));
   });
 
   let ctrlC = 0;
   process.on("SIGINT", () => {
-    if (++ctrlC >= 2) { console.log("\n  Goodbye."); process.exit(0); }
-    console.log("\n  Press Ctrl+C again to exit, or keep typing.");
+    if (++ctrlC >= 2) { console.log(chalk.dim("\n  Goodbye.")); process.exit(0); }
+    console.log(chalk.dim("\n  Press Ctrl+C again to exit, or keep typing."));
   });
 
   while (true) {
     let input: string;
     try { input = (await ask()).trim(); ctrlC = 0; }
-    catch { console.log("\n  Goodbye."); break; }
+    catch { console.log(chalk.dim("\n  Goodbye.")); break; }
     if (!input) continue;
 
     // Slash commands
     if (input.startsWith("/")) {
-      const cmd = input.toLowerCase().split(/\s/)[0];
+      // Bare "/" — show all available commands
+      if (input === "/") {
+        console.log(chalk.dim("  Available commands:"));
+        for (const c of slashCmds) console.log(`    ${chalk.cyan(c)}`);
+        continue;
+      }
+
+      const parts = input.split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+
+      // /enter <agent> — switch to direct agent conversation
+      if (cmd === "/enter") {
+        const name = parts[1];
+        if (!name) {
+          console.log(chalk.dim("  Usage: /enter <agent-name>"));
+        } else if (!agents[name]) {
+          console.log(chalk.red(`  Unknown agent: ${name}`));
+          console.log(chalk.dim(`  Available: ${agentNames.join(", ")}`));
+        } else {
+          activeAgent = name;
+          // Load saved session for this agent
+          if (!agentSessions.has(name)) {
+            const saved = await readText(sessionFilePath(projectPath, name));
+            if (saved) agentSessions.set(name, saved);
+          }
+          const desc = agents[name].description;
+          const short = desc.length > 60 ? desc.slice(0, 60) + "…" : desc;
+          const hasSavedSession = agentSessions.has(name);
+          console.log(`  ${chalk.green("→")} ${chalk.cyan(name)} ${chalk.dim(short)}`);
+          if (hasSavedSession) console.log(chalk.dim("  resuming previous session"));
+          console.log(chalk.dim("  /exit to return to orchestrator"));
+        }
+        continue;
+      }
+
+      // /exit — return to orchestrator
+      if (cmd === "/exit") {
+        if (!activeAgent) {
+          console.log(chalk.dim("  Not in an agent session"));
+        } else {
+          console.log(`  ${chalk.yellow("←")} returned to orchestrator`);
+          activeAgent = null;
+        }
+        continue;
+      }
+
       const handler = SLASH_COMMANDS[cmd];
-      if (handler && await handler({ agents, options, projectPath })) continue;
+      if (handler && await handler({ agents, options, projectPath, activeAgent })) continue;
     }
 
     // @ file expansion
     if (input.includes("@")) input = await expandAtMentions(input, projectPath);
 
-    await sendAndStream(input, options, projectPath);
+    // Build effective options based on active context
+    const sf = sessionFilePath(projectPath, activeAgent);
+    let effectiveOptions: Record<string, unknown>;
+    if (activeAgent) {
+      // Strip orchestrator identity; agent uses its own AgentDefinition.prompt
+      const { systemPrompt: _orchestratorPrompt, ...agentOptions } = options;
+      effectiveOptions = {
+        ...agentOptions,
+        agent: activeAgent,
+        resume: agentSessions.get(activeAgent),
+        continueConversation: false,
+        settingSources: [], // prevent global CLAUDE.md from overriding agent role
+      };
+    } else {
+      effectiveOptions = options;
+    }
+
+    const sid = await sendAndStream(input, effectiveOptions, sf);
+
+    // Update session tracking for subsequent queries
+    if (sid) {
+      if (activeAgent) {
+        agentSessions.set(activeAgent, sid);
+      } else {
+        (options as Record<string, unknown>).resume = sid;
+      }
+    }
   }
 
   rl.close();

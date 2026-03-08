@@ -1,8 +1,9 @@
-// input: Loaded skill frontmatter + file policy config
-// output: AgentDefinition records + per-agent file policies
-// pos: Agent factory — maps skill definitions to SDK AgentDefinition with isolation config
+// input: Agent configs (agents/*.yaml) + skill contents (skills/*/SKILL.md) + workspace path
+// output: SDK AgentDefinition records + per-agent file policies
+// pos: Agent factory — composes agent configs with skill content into SDK AgentDefinitions
 
 import type { AgentFilePolicy } from "./permissions.js";
+import type { AgentConfig, SkillContent } from "./loader.js";
 
 // Re-export for external consumers
 export type { AgentFilePolicy };
@@ -12,86 +13,122 @@ export type { AgentFilePolicy };
 // Agents not listed here have no file-level restrictions.
 
 export const filePolicy: Record<string, AgentFilePolicy> = {
-  "script-writer": {
-    readable: ["source.txt", "draft/**", "design.json", "catalog.json"],
-    writable: ["draft/**", "design.json", "catalog.json"],
-  },
-  "script-adapt": {
-    readable: ["draft/**", "design.json", "catalog.json", "output/script.json"],
+  screenwriter: {
+    readable: ["source.txt", "draft/**", "output/script.json"],
     writable: ["draft/**", "output/script.json"],
   },
-  "image-create": {
-    readable: ["output/script.json", "catalog.json", "assets/**"],
+  "art-director": {
+    readable: ["output/script.json", "draft/catalog.json", "assets/**"],
     writable: ["assets/**"],
   },
-  "image-edit": {
-    readable: ["output/script.json", "catalog.json", "assets/**"],
-    writable: ["assets/**"],
-  },
-  "video-create": {
+  "video-producer": {
     readable: ["output/script.json", "assets/**", "storyboard/**", "production/**"],
     writable: ["production/**"],
   },
-  "video-review": {
-    readable: ["output/script.json", "production/**"],
-    writable: ["production/**"],
-  },
-  "music-finder": {
-    readable: ["output/script.json", "editing/**", "audio/**"],
-    writable: ["audio/**"],
-  },
-  "music-matcher": {
+  "post-production": {
     readable: ["output/script.json", "editing/**", "audio/**"],
     writable: ["editing/audio_plan.json", "audio/**"],
   },
 };
 
-// --- Skill frontmatter → AgentDefinition builder ---
+// --- SDK-aligned types (mirrors AgentDefinition from @anthropic-ai/claude-agent-sdk) ---
 
-export interface SkillFrontmatter {
-  name: string;
-  description: string;
-  allowedTools?: string[];
-  disallowedTools?: string[];
-  mcpServers?: string[];
-  maxTurns?: number;
-  model?: string;
-}
+type AgentModelAlias = "sonnet" | "opus" | "haiku" | "inherit";
+type AgentMcpServerSpec = string | Record<string, unknown>;
 
+// 1:1 with SDK AgentDefinition
 export interface AgentDefinitionConfig {
   description: string;
   prompt: string;
   tools?: string[];
   disallowedTools?: string[];
-  mcpServers?: Record<string, unknown>;
+  mcpServers?: AgentMcpServerSpec[];
+  skills?: string[];
   maxTurns?: number;
-  model?: string;
+  model?: AgentModelAlias;
 }
 
-export function buildAgents(
-  skills: Record<string, SkillFrontmatter & { prompt: string }>,
+function resolveModelAlias(raw: string | undefined): AgentModelAlias | undefined {
+  if (!raw) return undefined;
+  const lower = raw.toLowerCase();
+  if (lower.includes("sonnet")) return "sonnet";
+  if (lower.includes("opus")) return "opus";
+  if (lower.includes("haiku")) return "haiku";
+  if (lower === "inherit") return "inherit";
+  return undefined;
+}
+
+// Collect MCP server names from allowed-tools patterns (mcp__<server>__<tool>)
+function collectMcpServerNames(
+  allowedTools: string[] | undefined,
+  explicitServers: string[] | undefined,
   toolServerMap: Record<string, unknown>,
+): string[] | undefined {
+  const names = new Set<string>();
+
+  if (explicitServers) {
+    for (const name of explicitServers) {
+      if (name in toolServerMap) names.add(name);
+    }
+  }
+
+  if (allowedTools) {
+    for (const tool of allowedTools) {
+      const m = tool.match(/^mcp__(\w+)__/);
+      if (m && m[1] in toolServerMap) names.add(m[1]);
+    }
+  }
+
+  return names.size > 0 ? [...names] : undefined;
+}
+
+/**
+ * Compose agent configs with skill contents into SDK AgentDefinitions.
+ *
+ * Agent config (agents/*.yaml) provides: tools, model, mcpServers, maxTurns, skills list
+ * Skill content (skills/SKILL.md) provides: prompt (domain knowledge + workflow)
+ *
+ * The agent's `skills` field references skill names → their prompts are concatenated.
+ */
+export function buildAgents(
+  agentConfigs: Record<string, AgentConfig>,
+  skillContents: Record<string, SkillContent>,
+  toolServerMap: Record<string, unknown>,
+  workspacePath?: string,
 ): Record<string, AgentDefinitionConfig> {
   const agents: Record<string, AgentDefinitionConfig> = {};
 
-  for (const [name, skill] of Object.entries(skills)) {
-    const mcpServers: Record<string, unknown> = {};
-    if (skill.mcpServers) {
-      for (const serverName of skill.mcpServers) {
-        if (serverName in toolServerMap) {
-          mcpServers[serverName] = toolServerMap[serverName];
+  for (const [name, config] of Object.entries(agentConfigs)) {
+    const mcpServers = collectMcpServerNames(config.allowedTools, config.mcpServers, toolServerMap);
+
+    // Compose prompt: role identity + workspace + skill knowledge
+    const promptParts: string[] = [];
+    promptParts.push(
+      `# Role: ${name}\n\n${config.description}\n\n` +
+      `You are a specialized agent in a video production pipeline. ` +
+      `Stay in character — only perform tasks within your domain. ` +
+      `Respond in Chinese (简体中文), use English for structural keys and code.`,
+    );
+    if (workspacePath) {
+      promptParts.push(`Project workspace: ${workspacePath}/\nAll file operations must use absolute paths within this workspace.`);
+    }
+    if (config.skills) {
+      for (const skillName of config.skills) {
+        const skill = skillContents[skillName];
+        if (skill) {
+          promptParts.push(skill.prompt);
         }
       }
     }
 
     agents[name] = {
-      description: skill.description,
-      prompt: skill.prompt,
-      tools: skill.allowedTools,
-      disallowedTools: skill.disallowedTools ?? [],
-      mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-      maxTurns: skill.maxTurns ?? 30,
-      model: skill.model,
+      description: config.description,
+      prompt: promptParts.join("\n\n"),
+      tools: config.allowedTools,
+      disallowedTools: config.disallowedTools ?? [],
+      mcpServers,
+      maxTurns: config.maxTurns ?? 30,
+      model: resolveModelAlias(config.model),
     };
   }
 

@@ -1,81 +1,66 @@
-// input: skills/ directory containing SKILL.md files with YAML frontmatter
-// output: Parsed skill definitions ready for buildAgents()
-// pos: Bridge — maps declarative skill files to AgentDefinition configs
+// input: agents/ directory (YAML configs) + skills/ directory (pure markdown content)
+// output: Agent configs + skill content map, ready for buildAgents()
+// pos: Bridge — loads agent definitions and skill content from declarative files
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import yaml from "yaml";
 
-import type { SkillFrontmatter } from "./agents.js";
+// --- Agent config loading (agents/*.yaml) ---
 
-export interface LoadedSkill extends SkillFrontmatter {
-  prompt: string;
+export interface AgentConfig {
+  name: string;
+  description: string;
+  allowedTools?: string[];
+  disallowedTools?: string[];
+  mcpServers?: string[];
+  skills?: string[];
+  maxTurns?: number;
+  model?: string;
 }
 
-function parseSkill(text: string): [Record<string, unknown>, string] {
-  if (!text.startsWith("---")) return [{}, text];
-  const parts = text.split("---", 3);
-  if (parts.length < 3) return [{}, text];
-  const frontmatter = yaml.parse(parts[1]) ?? {};
-  return [frontmatter, parts[2].trim()];
-}
+export async function loadAgentConfigs(agentsDir: string): Promise<Record<string, AgentConfig>> {
+  const agents: Record<string, AgentConfig> = {};
 
-async function loadTemplates(dir: string): Promise<string | null> {
   try {
-    const entries = await fs.readdir(dir);
-    if (entries.length === 0) return null;
-    const parts: string[] = [];
-    for (const name of entries.sort()) {
-      const filePath = path.join(dir, name);
-      const stat = await fs.stat(filePath);
-      if (stat.isFile()) {
-        const content = await fs.readFile(filePath, "utf-8");
-        parts.push(`### ${name}\n\`\`\`json\n${content}\n\`\`\``);
-      }
-    }
-    return parts.length > 0 ? parts.join("\n\n") : null;
+    await fs.access(agentsDir);
   } catch {
-    return null;
-  }
-}
-
-async function loadReferences(dir: string): Promise<string | null> {
-  try {
-    const entries = await fs.readdir(dir);
-    const mdFiles = entries.filter((f) => f.endsWith(".md")).sort();
-    if (mdFiles.length === 0) return null;
-    const parts: string[] = [];
-    for (const name of mdFiles) {
-      const content = await fs.readFile(path.join(dir, name), "utf-8");
-      parts.push(`## ${name}\n\n${content}`);
-    }
-    return parts.join("\n\n---\n\n");
-  } catch {
-    return null;
-  }
-}
-
-async function findSkillFiles(root: string): Promise<string[]> {
-  const results: string[] = [];
-
-  async function walk(dir: string): Promise<void> {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await walk(fullPath);
-      } else if (entry.isFile() && entry.name.toLowerCase() === "skill.md") {
-        results.push(fullPath);
-      }
-    }
+    return agents;
   }
 
-  await walk(root);
-  return results.sort();
+  const entries = await fs.readdir(agentsDir);
+  const yamlFiles = entries.filter((f) => f.endsWith(".yaml") || f.endsWith(".yml")).sort();
+
+  for (const file of yamlFiles) {
+    const text = await fs.readFile(path.join(agentsDir, file), "utf-8");
+    const config = yaml.parse(text) as Record<string, unknown>;
+    const name = config.name as string | undefined;
+    if (!name) continue;
+
+    agents[name] = {
+      name,
+      description: (config.description as string) ?? "",
+      allowedTools: (config["allowed-tools"] as string[]) ?? undefined,
+      disallowedTools: (config["disallowed-tools"] as string[]) ?? undefined,
+      mcpServers: (config["mcp-servers"] as string[]) ?? undefined,
+      skills: (config.skills as string[]) ?? undefined,
+      maxTurns: (config["max-turns"] as number) ?? undefined,
+      model: (config.model as string) ?? undefined,
+    };
+  }
+
+  return agents;
 }
 
-export async function loadSkills(skillsDir: string): Promise<Record<string, LoadedSkill>> {
-  const skills: Record<string, LoadedSkill> = {};
+// --- Skill content loading (skills/*/SKILL.md, references on-demand via Read) ---
+
+export interface SkillContent {
+  prompt: string;        // SKILL.md body only (core workflow instructions)
+  referencesDir: string; // absolute path for on-demand Read access
+}
+
+export async function loadSkillContents(skillsDir: string): Promise<Record<string, SkillContent>> {
+  const skills: Record<string, SkillContent> = {};
 
   try {
     await fs.access(skillsDir);
@@ -83,51 +68,39 @@ export async function loadSkills(skillsDir: string): Promise<Record<string, Load
     return skills;
   }
 
-  const skillFiles = await findSkillFiles(skillsDir);
+  const entries = await fs.readdir(skillsDir, { withFileTypes: true });
+  const dirs = entries.filter((e) => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name));
 
-  for (const skillFile of skillFiles) {
-    const skillDir = path.dirname(skillFile);
-    const text = await fs.readFile(skillFile, "utf-8");
-    const [fm, body] = parseSkill(text);
+  for (const dir of dirs) {
+    const skillDir = path.join(skillsDir, dir.name);
+    const skillFile = path.join(skillDir, "SKILL.md");
 
-    const name = fm.name as string | undefined;
-    if (!name) continue;
-
-    let prompt = body;
-
-    // Load templates (assets/ or templates/)
-    let assetsDir = path.join(skillDir, "assets");
     try {
-      await fs.access(assetsDir);
+      await fs.access(skillFile);
     } catch {
-      assetsDir = path.join(skillDir, "templates");
-    }
-    const assets = await loadTemplates(assetsDir);
-    if (assets) {
-      prompt += `\n\n## Reference Templates\n${assets}`;
+      continue;
     }
 
-    // Load references
-    const references = await loadReferences(path.join(skillDir, "references"));
-    if (references) {
-      prompt += `\n\n## Reference Documents\n${references}`;
-    }
+    // Skill name = directory name
+    const name = dir.name;
+    const prompt = await fs.readFile(skillFile, "utf-8");
 
-    // Load resources
-    const resources = await loadReferences(path.join(skillDir, "resources"));
-    if (resources) {
-      prompt += `\n\n## Shared Resources\n${resources}`;
+    // Collect subdirectory names for the reference path hint
+    const subDirs: string[] = [];
+    for (const sub of ["references", "assets", "templates", "resources"]) {
+      try {
+        const entries = await fs.readdir(path.join(skillDir, sub));
+        if (entries.length > 0) subDirs.push(sub);
+      } catch { /* skip missing */ }
     }
 
     skills[name] = {
-      name,
-      description: (fm.description as string) ?? "",
-      prompt,
-      allowedTools: (fm["allowed-tools"] as string[]) ?? undefined,
-      disallowedTools: (fm["disallowed-tools"] as string[]) ?? undefined,
-      mcpServers: (fm["mcp-servers"] as string[]) ?? undefined,
-      maxTurns: (fm["max-turns"] as number) ?? undefined,
-      model: (fm.model as string) ?? undefined,
+      prompt: subDirs.length > 0
+        ? prompt + `\n\n## Reference Materials\n` +
+          `Detailed references are available on disk. Use the Read tool when needed:\n` +
+          subDirs.map(d => `- ${skillDir}/${d}/`).join("\n")
+        : prompt,
+      referencesDir: skillDir,
     };
   }
 
