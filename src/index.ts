@@ -34,6 +34,7 @@ async function loadEnvFile(filePath: string): Promise<void> {
 interface CliConfig {
   projectName?: string;
   inspiration?: string;
+  agentsDir: string;
   skillsDir: string;
   model?: string;
   resume?: string;
@@ -45,6 +46,7 @@ function parseArgs(argv: string[]): CliConfig | "help" {
   let resume: string | undefined;
   let continueConversation = false;
   let model: string | undefined;
+  let agentsDir = "agents";
   let skillsDir = "skills";
 
   for (let i = 0; i < argv.length; i++) {
@@ -52,6 +54,7 @@ function parseArgs(argv: string[]): CliConfig | "help" {
     if (arg === "--resume" && i + 1 < argv.length) resume = argv[++i];
     else if (arg === "--continue" || arg === "-c") continueConversation = true;
     else if (arg === "--model" && i + 1 < argv.length) model = argv[++i];
+    else if (arg === "--agents" && i + 1 < argv.length) agentsDir = argv[++i];
     else if (arg === "--skills" && i + 1 < argv.length) skillsDir = argv[++i];
     else if (arg === "--help" || arg === "-h") return "help";
     else if (!arg.startsWith("-")) positional.push(arg);
@@ -59,6 +62,7 @@ function parseArgs(argv: string[]): CliConfig | "help" {
 
   return {
     projectName: positional[0],
+    agentsDir,
     skillsDir,
     model: model ?? process.env.AGENTOS_MODEL,
     resume,
@@ -74,6 +78,7 @@ Options:
   --resume <id>    Resume a previous session by ID
   --continue, -c   Continue last session for this project
   --model <model>  Override model (env: AGENTOS_MODEL)
+  --agents <dir>   Agents directory (default: agents)
   --skills <dir>   Skills directory (default: skills)
   -h, --help       Show this help`;
 
