@@ -12,5 +12,6 @@ COPY skills/ ./skills/
 
 RUN mkdir -p /app/workspace
 
-# Start command (overridable via e2b template config)
-CMD ["bun", "/app/dist/sandbox.js", "/app/workspace", "--skills", "/app/skills"]
+# No CMD — host-side SandboxClient starts the process via commands.run(background: true)
+# to capture PID and attach onStdout/onStderr callbacks.
+# Default: bun /app/dist/sandbox.js /app/workspace --skills /app/skills
