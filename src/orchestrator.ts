@@ -98,7 +98,7 @@ async function sendAndStream(
 
 // ---------- Build SDK options ----------
 
-async function buildOptions(projectPath: string, skillsDir: string, model?: string, resume?: string, continueConversation = false) {
+export async function buildOptions(projectPath: string, skillsDir: string, model?: string, resume?: string, continueConversation = false) {
   setWorkspaceRoot(projectPath);
   const skills = await loadSkills(skillsDir);
   const agents = buildAgents(skills, toolServers);

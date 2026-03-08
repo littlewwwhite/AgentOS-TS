@@ -3,3 +3,8 @@ dist/
 workspace/
 .env
 *.tsbuildinfo
+e2b/dist/
+e2b/node_modules/
+e2b/skills/
+e2b/package.json
+.e2b
