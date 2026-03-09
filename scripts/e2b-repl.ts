@@ -1,6 +1,6 @@
 // input: SandboxClient, .env, terminal stdin
 // output: Interactive REPL session over E2B sandbox
-// pos: Developer tool — provides bun-start-like experience with agent running in E2B
+// pos: Primary E2B entry — terminal interface for agent running in E2B sandbox
 //
 // Usage: bun scripts/e2b-repl.ts
 
@@ -40,12 +40,21 @@ const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 
+// ---------- Constants ----------
+
+const SLASH_COMMANDS = [
+  "/enter", "/exit", "/agents", "/skills", "/status",
+  "/ls", "/cat", "/download", "/help",
+];
+
+const EXIT_RE = /^(?:退出|返回|exit|back|go\s+back)$/i;
+
 // ---------- State ----------
 
 let activeAgent: string | null = null;
 let agentNames: string[] = [];
 let busy = false;
-let textStarted = false; // track whether we've printed the agent label for current turn
+let textStarted = false;
 
 // ---------- Event handler ----------
 
@@ -56,8 +65,9 @@ function handleEvent(event: SandboxEvent): void {
       break;
 
     case "text": {
-      if (!textStarted && event.agent) {
-        process.stdout.write(dim(`[${event.agent}] `));
+      if (!textStarted) {
+        const label = event.agent ?? "main";
+        process.stdout.write(dim(`[${label}] `));
       }
       textStarted = true;
       process.stdout.write(event.text);
@@ -103,16 +113,26 @@ function handleEvent(event: SandboxEvent): void {
       break;
     }
 
+    // Only update state from events — REPL handles its own visual feedback
+    // to avoid race conditions with the readline prompt
     case "agent_entered":
       activeAgent = event.agent;
-      console.log(`  ${cyan("⏺")} entered ${bold(event.agent)}`);
       break;
 
     case "agent_exited":
-      console.log(`  ${dim("⏺")} exited ${event.agent}`);
       activeAgent = null;
       break;
   }
+}
+
+// ---------- Tab completion ----------
+
+function completer(line: string): [string[], string] {
+  if (line.startsWith("/")) {
+    const hits = SLASH_COMMANDS.filter((c) => c.startsWith(line));
+    return [hits.length ? hits : SLASH_COMMANDS, line];
+  }
+  return [[], line];
 }
 
 // ---------- Main ----------
@@ -159,13 +179,13 @@ async function main() {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+    completer,
   });
 
   const ask = (): Promise<string> =>
     new Promise((resolve, reject) => {
-      const prompt = activeAgent
-        ? cyan(`\n${activeAgent} ❯ `)
-        : cyan("\n❯ ");
+      const label = activeAgent ?? "main";
+      const prompt = cyan(`\n${label} ❯ `);
       rl.question(prompt, (a) =>
         a === undefined ? reject(new Error("EOF")) : resolve(a),
       );
@@ -207,6 +227,9 @@ async function main() {
         if (!name) {
           console.log(dim("  Usage: /enter <agent-name>"));
         } else {
+          // Set eagerly — don't wait for async event (fixes prompt race)
+          activeAgent = name;
+          console.log(`  ${cyan("⏺")} entered ${bold(name)}`);
           await client.sendCommand({ cmd: "enter_agent", agent: name });
         }
         continue;
@@ -216,6 +239,9 @@ async function main() {
         if (!activeAgent) {
           console.log(dim("  Not in an agent session"));
         } else {
+          const exited = activeAgent;
+          activeAgent = null;
+          console.log(`  ${dim("⏺")} exited ${exited}`);
           await client.sendCommand({ cmd: "exit_agent" });
         }
         continue;
@@ -231,6 +257,58 @@ async function main() {
         continue;
       }
 
+      // -- Sandbox file operations --
+
+      if (cmd === "/ls") {
+        const target = parts[1] ?? "/home/user/app/workspace";
+        try {
+          const entries = await client.listFiles(target);
+          if (entries.length === 0) {
+            console.log(dim("  (empty)"));
+          } else {
+            for (const e of entries) {
+              const icon = e.type === "dir" ? "📁" : "  ";
+              console.log(`  ${icon} ${e.name}`);
+            }
+          }
+        } catch (err) {
+          console.log(red(`  ✗ ${err instanceof Error ? err.message : String(err)}`));
+        }
+        continue;
+      }
+
+      if (cmd === "/cat") {
+        const filePath = parts[1];
+        if (!filePath) {
+          console.log(dim("  Usage: /cat <path>"));
+        } else {
+          try {
+            const content = await client.readFile(filePath);
+            console.log(content);
+          } catch (err) {
+            console.log(red(`  ✗ ${err instanceof Error ? err.message : String(err)}`));
+          }
+        }
+        continue;
+      }
+
+      if (cmd === "/download") {
+        const remotePath = parts[1];
+        if (!remotePath) {
+          console.log(dim("  Usage: /download <remote-path> [local-path]"));
+        } else {
+          const localPath = parts[2] ?? path.basename(remotePath);
+          try {
+            const content = await client.readFile(remotePath);
+            fs.writeFileSync(localPath, content);
+            console.log(green(`  ✓ ${remotePath} → ${localPath}`));
+          } catch (err) {
+            console.log(red(`  ✗ ${err instanceof Error ? err.message : String(err)}`));
+          }
+        }
+        continue;
+      }
+
       if (cmd === "/help" || cmd === "/") {
         if (activeAgent) {
           console.log(dim(`  Current agent: `) + cyan(bold(activeAgent)));
@@ -242,6 +320,9 @@ async function main() {
         console.log(`    ${cyan("/exit")}           ${dim("return to orchestrator")}`);
         console.log(`    ${cyan("/agents")}         ${dim("list available agents")}`);
         console.log(`    ${cyan("/status")}         ${dim("check sandbox status")}`);
+        console.log(`    ${cyan("/ls [path]")}      ${dim("list sandbox files")}`);
+        console.log(`    ${cyan("/cat <path>")}     ${dim("read sandbox file")}`);
+        console.log(`    ${cyan("/download <r> [l]")} ${dim("download sandbox file to local")}`);
         console.log(`    ${cyan("/help")}           ${dim("show this help")}`);
         continue;
       }
@@ -250,7 +331,18 @@ async function main() {
     // Natural language agent entry (e.g. "进入screenwriter", "switch to editor")
     const nlAgent = matchEnterAgent(input, agentNames);
     if (nlAgent) {
+      activeAgent = nlAgent;
+      console.log(`  ${cyan("⏺")} entered ${bold(nlAgent)}`);
       await client.sendCommand({ cmd: "enter_agent", agent: nlAgent });
+      continue;
+    }
+
+    // Natural language exit (e.g. "退出", "返回", "exit", "back")
+    if (activeAgent && EXIT_RE.test(input)) {
+      const exited = activeAgent;
+      activeAgent = null;
+      console.log(`  ${dim("⏺")} exited ${exited}`);
+      await client.sendCommand({ cmd: "exit_agent" });
       continue;
     }
 
