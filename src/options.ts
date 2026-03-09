@@ -60,7 +60,11 @@ export async function buildOptions(
 ) {
   const agentConfigs = await loadAgentConfigs(agentsDir);
 
-  // Build lightweight agent definitions for orchestrator routing only.
+  // Internal orchestrator routing map — NOT consumed by the SDK.
+  // SDK's AgentDefinition requires `prompt` and is used for its built-in Agent tool,
+  // which we don't enable (not in allowedTools). We use our own switch_to_agent MCP
+  // tool instead. Both orchestrator.ts and sandbox-orchestrator.ts read this from
+  // the returned options to enumerate agent names and descriptions.
   // Full agent config (prompt, skills, permissions) lives in agents/<name>/.claude/
   // and is loaded natively by SDK when cwd points to the agent directory.
   const agents: Record<string, { description: string; configuredSkills?: string[] }> = {};
@@ -106,6 +110,8 @@ export async function buildOptions(
         "2. Dispatch to the sub-agent\n" +
         "3. Update TodoWrite as steps complete",
     },
+    // SDK SdkBeta type still defines this as the only valid beta (enables 1M context
+    // window for Sonnet 4/4.5). Not yet graduated to stable as of SDK 0.x.
     betas: ["context-1m-2025-08-07"],
     settingSources: ["project"],
     cwd: projectPath,
