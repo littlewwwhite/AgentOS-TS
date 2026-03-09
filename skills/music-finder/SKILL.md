@@ -1,8 +1,3 @@
----
-name: music-finder
-description: "智能音乐风格查询助手，基于 RateYourMusic 的 5947 个音乐风格数据库，支持快速查询、智能推荐和层级探索。"
----
-
 # Music Genre Finder
 
 智能音乐风格查询助手，基于 RateYourMusic 的 5947 个音乐风格数据库。

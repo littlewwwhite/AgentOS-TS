@@ -12,6 +12,23 @@ import { buildOptions } from "./orchestrator.js";
 import { emit, parseCommand } from "./protocol.js";
 import type { SandboxEvent } from "./protocol.js";
 
+// ---------- Global crash handlers ----------
+// Capture unhandled errors to stderr so E2B onStderr callback can relay them
+
+process.on("uncaughtException", (err) => {
+  const msg = err instanceof Error ? err.stack ?? err.message : String(err);
+  process.stderr.write(`[FATAL] uncaughtException: ${msg}\n`);
+  emit({ type: "error", message: `uncaughtException: ${err instanceof Error ? err.message : String(err)}` });
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? reason.stack ?? reason.message : String(reason);
+  process.stderr.write(`[FATAL] unhandledRejection: ${msg}\n`);
+  emit({ type: "error", message: `unhandledRejection: ${reason instanceof Error ? reason.message : String(reason)}` });
+  process.exit(1);
+});
+
 // ---------- .env loader (inline, same as index.ts) ----------
 
 async function loadEnvFile(filePath: string): Promise<void> {
@@ -38,22 +55,26 @@ async function loadEnvFile(filePath: string): Promise<void> {
 
 function parseArgs(argv: string[]): {
   projectPath: string;
+  agentsDir: string;
   skillsDir: string;
   model?: string;
 } {
+  let agentsDir = "agents";
   let skillsDir = "skills";
   let model: string | undefined;
   const positional: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--skills" && i + 1 < argv.length) skillsDir = argv[++i];
+    if (arg === "--agents" && i + 1 < argv.length) agentsDir = argv[++i];
+    else if (arg === "--skills" && i + 1 < argv.length) skillsDir = argv[++i];
     else if (arg === "--model" && i + 1 < argv.length) model = argv[++i];
     else if (!arg.startsWith("-")) positional.push(arg);
   }
 
   return {
     projectPath: positional[0] ?? "workspace",
+    agentsDir,
     skillsDir,
     model: model ?? process.env.AGENTOS_MODEL,
   };
@@ -104,11 +125,8 @@ async function processQuery(
   try {
     for await (const msg of q as AsyncIterable<SDKMessage>) {
       if (msg.type === "assistant") {
-        for (const b of msg.message.content) {
-          if (b.type === "text" && b.text) {
-            emit({ type: "text", text: b.text });
-          }
-        }
+        // Skip — text is already emitted incrementally via stream_event deltas.
+        // Emitting here would duplicate the full response.
       } else if (msg.type === "stream_event") {
         const ev = msg.event as {
           type?: string;
@@ -240,7 +258,7 @@ async function main(): Promise<void> {
 
   await loadEnvFile(path.resolve(".env"));
 
-  const { projectPath: rawPath, skillsDir, model } = parseArgs(
+  const { projectPath: rawPath, agentsDir, skillsDir, model } = parseArgs(
     process.argv.slice(2),
   );
   const projectPath = path.resolve(rawPath);
@@ -248,6 +266,7 @@ async function main(): Promise<void> {
 
   const options = (await buildOptions(
     projectPath,
+    agentsDir,
     skillsDir,
     model,
   )) as Record<string, unknown>;

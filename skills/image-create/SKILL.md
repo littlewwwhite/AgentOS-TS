@@ -1,8 +1,3 @@
----
-name: image-create
-description: "通过 anime-material-workbench API 生成图片，支持角色、场景、道具等图片的创建与异步任务管理。"
----
-
 # Image Create Skill
 
 通过 anime-material-workbench 生成图片，并管理异步任务。

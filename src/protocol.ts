@@ -30,7 +30,7 @@ export type ResultEvent = {
 export type ErrorEvent = { type: "error"; message: string };
 export type StatusEvent = {
   type: "status";
-  state: "idle" | "busy";
+  state: "idle" | "busy" | "disconnected";
   session_id?: string;
 };
 export type SkillsEvent = { type: "skills"; skills: Record<string, string> };

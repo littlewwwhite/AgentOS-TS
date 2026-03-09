@@ -2,86 +2,70 @@
 // output: Collapsible tree view organized by pipeline stages
 // pos: Left panel — navigation and status overview
 
+import { useMemo, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  CaretRight,
-  File,
-  Folder,
-  FolderOpen,
   Check,
-  CircleNotch,
-  Warning,
+  Loader2,
+  AlertTriangle,
   Minus,
-} from "@phosphor-icons/react";
+  CloudOff,
+  FolderOpen,
+} from "lucide-react";
 import { useStudioStore } from "@/stores/studio";
 import { PIPELINE_STAGES, type FileNode, type FileStatus } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  FileTree,
+  FileTreeFolder,
+  FileTreeFile,
+  FileTreeIcon,
+  FileTreeName,
+  FileTreeActions,
+} from "@/components/ai-elements/file-tree";
 
 function StatusDot({ status }: { status: FileStatus }) {
   const styles: Record<FileStatus, string> = {
-    done: "text-[var(--color-status-done)]",
-    active: "text-[var(--color-status-active)]",
-    error: "text-[var(--color-status-error)]",
-    pending: "text-[var(--color-status-pending)]",
+    done: "text-status-done",
+    active: "text-status-active",
+    error: "text-status-error",
+    pending: "text-status-pending",
   };
   const icons: Record<FileStatus, React.ReactNode> = {
-    done: <Check weight="bold" className="size-3" />,
-    active: <CircleNotch weight="bold" className="size-3 animate-spin" />,
-    error: <Warning weight="bold" className="size-3" />,
-    pending: <Minus weight="bold" className="size-3" />,
+    done: <Check className="size-3" strokeWidth={3} />,
+    active: <Loader2 className="size-3 animate-spin" strokeWidth={3} />,
+    error: <AlertTriangle className="size-3" strokeWidth={3} />,
+    pending: <Minus className="size-3" strokeWidth={3} />,
   };
   return <span className={styles[status]}>{icons[status]}</span>;
 }
 
-function TreeNode({ node, depth = 0 }: { node: FileNode; depth?: number }) {
-  const { selectedPath, expandedDirs, selectFile, toggleDir } = useStudioStore();
-  const isDir = node.type === "directory";
-  const isExpanded = expandedDirs.has(node.path);
-  const isSelected = selectedPath === node.path;
-
-  const handleClick = () => {
-    if (isDir) {
-      toggleDir(node.path);
-    } else {
-      selectFile(node.path);
-    }
-  };
+function RenderNode({ node }: { node: FileNode }) {
+  if (node.type === "directory") {
+    return (
+      <FileTreeFolder path={node.path} name={node.name}>
+        {node.children?.map((child) => (
+          <RenderNode key={child.path} node={child} />
+        ))}
+      </FileTreeFolder>
+    );
+  }
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={handleClick}
-        className={`
-          group flex w-full items-center gap-1.5 py-[3px] pr-2 text-left text-[13px]
-          leading-tight outline-none transition-colors duration-100
-          focus-visible:outline-1 focus-visible:outline-[var(--color-accent)]
-          ${isSelected ? "bg-[var(--color-surface-2)] text-[var(--color-text-primary)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]"}
-        `}
-        style={{ paddingLeft: `${depth * 14 + 8}px` }}
-      >
-        {isDir ? (
-          <CaretRight
-            weight="bold"
-            className={`size-3 shrink-0 text-[var(--color-text-muted)] transition-transform duration-100 ${isExpanded ? "rotate-90" : ""}`}
-          />
-        ) : (
-          <span className="size-3 shrink-0" />
-        )}
-        {isDir ? (
-          isExpanded ? (
-            <FolderOpen weight="duotone" className="size-4 shrink-0 text-[var(--color-accent-dim)]" />
-          ) : (
-            <Folder weight="duotone" className="size-4 shrink-0 text-[var(--color-text-muted)]" />
-          )
-        ) : (
-          <File weight="duotone" className="size-4 shrink-0 text-[var(--color-text-muted)]" />
-        )}
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{node.name}</span>
+    <FileTreeFile path={node.path} name={node.name}>
+      {/* Spacer for chevron alignment */}
+      <span className="size-4" />
+      <FileTreeIcon>
+        <span className="size-4" />
+      </FileTreeIcon>
+      <FileTreeName className="flex-1 font-mono text-xs">
+        {node.name}
+      </FileTreeName>
+      <FileTreeActions>
         <StatusDot status={node.status} />
-      </button>
-      {isDir && isExpanded && node.children?.map((child) => (
-        <TreeNode key={child.path} node={child} depth={depth + 1} />
-      ))}
-    </div>
+      </FileTreeActions>
+    </FileTreeFile>
   );
 }
 
@@ -92,71 +76,160 @@ function StageSection({
   stage: (typeof PIPELINE_STAGES)[number];
   nodes: FileNode[];
 }) {
-  const { activeStage, setActiveStage } = useStudioStore();
+  const activeStage = useStudioStore((s) => s.activeStage);
+  const setActiveStage = useStudioStore((s) => s.setActiveStage);
+
+  const hasFiles = nodes.length > 0;
   const isExpanded = activeStage !== stage.id || true; // all expanded by default in MVP
 
-  const agentCount = stage.agents.length;
-  const stageAgents = useStudioStore((s) =>
-    s.agents.filter((a) => stage.agents.includes(a.name)),
-  );
-  const hasActive = stageAgents.some((a) => a.state === "working");
-  const allDone = stageAgents.every((a) => a.state === "done");
-
   return (
-    <div className="border-b border-[var(--color-border)]">
+    <div className="border-b border-border">
       <button
         type="button"
         onClick={() => setActiveStage(activeStage === stage.id ? null : stage.id)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+        className={cn(
+          "flex w-full items-center gap-2 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider transition-colors",
+          "text-muted-foreground hover:text-foreground"
+        )}
       >
         <span
-          className={`size-1.5 rounded-full ${
-            hasActive
-              ? "bg-[var(--color-status-active)] animate-pulse"
-              : allDone
-                ? "bg-[var(--color-status-done)]"
-                : "bg-[var(--color-status-pending)]"
-          }`}
+          className={cn(
+            "size-2 rounded-full",
+            hasFiles ? "bg-status-done" : "bg-status-pending"
+          )}
         />
         <span className="flex-1">{stage.label}</span>
         <span className="font-mono text-[10px] font-normal tabular-nums">
-          {agentCount}
+          {nodes.length}
         </span>
       </button>
-      {isExpanded && (
-        <div className="pb-1">
-          {nodes.map((node) => (
-            <TreeNode key={node.path} node={node} />
-          ))}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            key="stage-content"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="pb-1">
+              {nodes.map((node) => (
+                <RenderNode key={node.path} node={node} />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 export function PipelineExplorer() {
   const files = useStudioStore((s) => s.files);
+  const sandboxState = useStudioStore((s) => s.sandboxState);
+  const expandedDirs = useStudioStore((s) => s.expandedDirs);
+  const selectedPath = useStudioStore((s) => s.selectedPath);
+  const selectFile = useStudioStore((s) => s.selectFile);
 
-  // Group files by stage
-  const stageNodes = PIPELINE_STAGES.map((stage) => ({
-    stage,
-    nodes: files.filter((f) =>
-      stage.folders.some((folder) => f.path === folder || f.path.startsWith(folder + "/")),
-    ),
-  }));
+  const handleSelect = useCallback(
+    (path: string) => selectFile(path),
+    [selectFile],
+  );
+
+  const handleExpandedChange = useCallback(
+    (newExpanded: Set<string>) => {
+      useStudioStore.setState({ expandedDirs: newExpanded });
+    },
+    [],
+  );
+
+  const stageNodes = useMemo(() => {
+    const nodeMap = new Map<string, FileNode[]>();
+    const allMatched = new Set<string>();
+    for (const stage of PIPELINE_STAGES) {
+      const matched = files.filter((f) => stage.folders.includes(f.name));
+      nodeMap.set(stage.id, matched);
+      for (const f of matched) allMatched.add(f.path);
+    }
+    // Workspace fallback — files not matching any pipeline stage
+    const unmatched = files.filter((f) => !allMatched.has(f.path));
+    nodeMap.set("__workspace__", unmatched);
+    return nodeMap;
+  }, [files]);
+
+  if (files.length === 0) {
+    const isConnected = sandboxState === "ready";
+    return (
+      <div className="flex h-full flex-col bg-card">
+        <div className="flex items-center justify-between border-b border-border px-3 py-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Pipeline
+          </span>
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+          {isConnected ? (
+            <>
+              <FolderOpen className="size-8 text-muted-foreground/50" strokeWidth={1.5} />
+              <p className="text-sm text-muted-foreground">
+                No files in workspace yet
+              </p>
+            </>
+          ) : (
+            <>
+              <CloudOff className="size-8 text-muted-foreground/50" strokeWidth={1.5} />
+              <p className="text-sm text-muted-foreground">
+                Connect sandbox to browse files
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const workspaceFiles = stageNodes.get("__workspace__") ?? [];
 
   return (
-    <div className="flex h-full flex-col bg-[var(--color-surface-1)]">
-      <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+    <div className="flex h-full flex-col bg-card">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Pipeline
         </span>
       </div>
-      <div className="flex-1 overflow-y-auto">
-        {stageNodes.map(({ stage, nodes }) => (
-          <StageSection key={stage.id} stage={stage} nodes={nodes} />
-        ))}
-      </div>
+      <ScrollArea className="flex-1">
+        <FileTree
+          expanded={expandedDirs}
+          selectedPath={selectedPath ?? undefined}
+          onSelect={handleSelect}
+          onExpandedChange={handleExpandedChange}
+          className="border-0 rounded-none bg-transparent shadow-none [&>div]:p-0"
+        >
+          {PIPELINE_STAGES.map((stage) => (
+            <StageSection
+              key={stage.id}
+              stage={stage}
+              nodes={stageNodes.get(stage.id) ?? []}
+            />
+          ))}
+          {workspaceFiles.length > 0 && (
+            <div className="border-b border-border">
+              <div className="flex items-center gap-2 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <FolderOpen className="size-3.5" strokeWidth={2} />
+                <span className="flex-1">Workspace</span>
+                <span className="font-mono text-[10px] font-normal tabular-nums">
+                  {workspaceFiles.length}
+                </span>
+              </div>
+              <div className="pb-1">
+                {workspaceFiles.map((node) => (
+                  <RenderNode key={node.path} node={node} />
+                ))}
+              </div>
+            </div>
+          )}
+        </FileTree>
+      </ScrollArea>
     </div>
   );
 }

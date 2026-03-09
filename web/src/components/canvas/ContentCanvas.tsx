@@ -7,17 +7,20 @@ import {
   PencilSimple,
   MagnifyingGlassPlus,
   Play,
-  Pause,
   Copy,
   FileText,
   ImageSquare,
   FilmSlate,
   MusicNote,
   Code,
+  CircleNotch,
 } from "@phosphor-icons/react";
 import { useStudioStore } from "@/stores/studio";
 import { inferContentType, type ContentType } from "@/lib/types";
-import { MOCK_JSON_CONTENT } from "@/lib/mock-data";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 function ContentIcon({ type }: { type: ContentType }) {
   const map: Record<ContentType, React.ReactNode> = {
@@ -39,95 +42,83 @@ function ActionToolbar({
   type: ContentType;
   path: string;
 }) {
-  const baseBtn =
-    "flex items-center gap-1.5 rounded px-2 py-1 text-[12px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-primary)] active:scale-[0.98]";
-
   return (
-    <div className="flex items-center gap-1 border-b border-[var(--color-border)] px-3 py-1.5">
-      <div className="flex items-center gap-1.5 text-[var(--color-text-muted)]">
+    <div className="flex items-center gap-1 border-b border-border bg-card px-3 py-1.5">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
         <ContentIcon type={type} />
         <span className="font-mono text-[12px]">{path}</span>
       </div>
       <div className="flex-1" />
-      <button type="button" className={baseBtn}>
+      <Button variant="ghost" size="sm">
         <ArrowClockwise weight="bold" className="size-3.5" /> Regenerate
-      </button>
-      <button type="button" className={baseBtn}>
+      </Button>
+      <Button variant="ghost" size="sm">
         <PencilSimple weight="bold" className="size-3.5" /> Edit
-      </button>
+      </Button>
       {type === "image" && (
-        <button type="button" className={baseBtn}>
+        <Button variant="ghost" size="sm">
           <MagnifyingGlassPlus weight="bold" className="size-3.5" /> Upscale
-        </button>
+        </Button>
       )}
-      <button type="button" className={baseBtn}>
-        <Copy weight="bold" className="size-3.5" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon-xs" aria-label="Copy to clipboard">
+            <Copy weight="bold" className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Copy</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
 
 function JsonViewer({ content }: { content: string }) {
   return (
-    <pre className="flex-1 overflow-auto p-4 font-mono text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
-      <code>{content}</code>
-    </pre>
+    <ScrollArea className="flex-1">
+      <pre className="p-4 font-mono text-[13px] leading-relaxed text-foreground">
+        <code>{content}</code>
+      </pre>
+    </ScrollArea>
   );
 }
 
-function MarkdownViewer({ path }: { path: string }) {
-  const mockContent = `# Episode 01 - New Beginnings
-
-## Scene 1: Office Lobby
-**Location:** Startup Incubator, Main Hall
-**Time:** Morning
-
-### Actions
-
-**CHEN WEI** walks through the glass doors, carrying a leather briefcase.
-His eyes scan the open-plan workspace with a mixture of ambition and uncertainty.
-
-> *Inner thought: Three years of savings, one shot at making this work.*
-
-**LIN JIA** (from behind a standing desk):
-"You must be the new tenant in Suite 4B. Coffee machine is broken,
-but the WiFi password is on the whiteboard."
-
----
-
-## Scene 2: Conference Room
-**Location:** Suite 4B, Small Meeting Room
-**Time:** Late Morning
-
-**ZHANG MING** spreads financial documents across the table.
-
-**ZHANG MING:**
-"The runway is exactly 47 days. Not 47 weeks. Days."
-`;
+function MarkdownViewer({ content }: { content: string }) {
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <div className="prose prose-invert mx-auto max-w-[65ch] text-[14px] leading-relaxed text-[var(--color-text-secondary)]">
-        <pre className="whitespace-pre-wrap font-sans">{mockContent}</pre>
+    <ScrollArea className="flex-1">
+      <div className="p-6">
+        <div className="prose mx-auto max-w-[65ch] text-[14px] leading-relaxed text-foreground">
+          <pre className="whitespace-pre-wrap font-sans">{content}</pre>
+        </div>
       </div>
-    </div>
+    </ScrollArea>
   );
 }
 
-function ImageViewer({ path }: { path: string }) {
-  // In production, this would load real images from the workspace
+function ImageViewer(_props: { path: string }) {
+  const characters = [
+    { name: "chenwei", span: "col-span-3" },
+    { name: "linjia", span: "col-span-2" },
+    { name: "zhangming", span: "col-span-2" },
+    { name: "suyan", span: "col-span-3" },
+  ];
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-      <div className="grid max-w-2xl grid-cols-2 gap-4">
-        {["chenwei", "linjia", "zhangming", "suyan"].map((name) => (
+      <div className="grid w-full max-w-2xl grid-cols-5 gap-3">
+        {characters.map(({ name, span }) => (
           <div
             key={name}
-            className="group relative aspect-[3/4] overflow-hidden rounded-lg bg-[var(--color-surface-2)] transition-all hover:ring-1 hover:ring-[var(--color-accent-dim)]"
+            className={cn(
+              span,
+              "group relative aspect-[4/5] overflow-hidden rounded-lg border border-border bg-secondary",
+              "transition-all duration-200 hover:border-ring/50"
+            )}
           >
             <div className="flex h-full items-center justify-center">
-              <ImageSquare weight="thin" className="size-16 text-[var(--color-text-muted)]" />
+              <ImageSquare weight="thin" className="size-12 text-muted-foreground transition-transform duration-300 group-hover:scale-105" />
             </div>
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[var(--color-surface-0)]/80 to-transparent px-3 py-2">
-              <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/80 to-transparent px-3 py-2">
+              <span className="font-mono text-[11px] text-muted-foreground">
                 {name}.png
               </span>
             </div>
@@ -138,25 +129,22 @@ function ImageViewer({ path }: { path: string }) {
   );
 }
 
-function VideoViewer({ path }: { path: string }) {
+function VideoViewer(_props: { path: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
-      <div className="aspect-video w-full max-w-xl overflow-hidden rounded-lg bg-[var(--color-surface-2)]">
+      <div className="aspect-video w-full max-w-xl overflow-hidden rounded-lg bg-secondary">
         <div className="flex h-full items-center justify-center">
-          <FilmSlate weight="thin" className="size-20 text-[var(--color-text-muted)]" />
+          <FilmSlate weight="thin" className="size-20 text-muted-foreground" />
         </div>
       </div>
       <div className="flex w-full max-w-xl items-center gap-3">
-        <button
-          type="button"
-          className="flex size-8 items-center justify-center rounded-full bg-[var(--color-surface-2)] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-primary)]"
-        >
+        <Button variant="secondary" size="icon" className="rounded-full">
           <Play weight="fill" className="size-4" />
-        </button>
-        <div className="h-1 flex-1 rounded-full bg-[var(--color-surface-2)]">
-          <div className="h-full w-[35%] rounded-full bg-[var(--color-accent-dim)]" />
+        </Button>
+        <div className="h-1 flex-1 rounded-full bg-secondary">
+          <div className="h-full w-[35%] rounded-full bg-ring" />
         </div>
-        <span className="font-mono text-[11px] tabular-nums text-[var(--color-text-muted)]">
+        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
           0:00 / 2:34
         </span>
       </div>
@@ -166,22 +154,28 @@ function VideoViewer({ path }: { path: string }) {
 
 function EmptyCanvas() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-[var(--color-text-muted)]">
-      <FileText weight="thin" className="size-16" />
-      <p className="text-sm">Select a file to preview</p>
-      <p className="max-w-[40ch] text-center text-xs leading-relaxed">
-        Use the Pipeline Explorer to browse workspace files, or start a conversation to generate content.
-      </p>
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-secondary">
+        <FileText weight="thin" className="size-8" />
+      </div>
+      <div className="space-y-1.5 text-center">
+        <p className="text-sm font-medium text-foreground/80">No file selected</p>
+        <p className="max-w-[36ch] text-xs leading-relaxed">
+          Browse the pipeline to preview files, or start a conversation to generate new content.
+        </p>
+      </div>
     </div>
   );
 }
 
 export function ContentCanvas() {
   const selectedPath = useStudioStore((s) => s.selectedPath);
+  const fileContent = useStudioStore((s) => s.fileContent);
+  const fileLoading = useStudioStore((s) => s.fileLoading);
 
   if (!selectedPath) {
     return (
-      <div className="flex h-full flex-col bg-[var(--color-surface-0)]">
+      <div className="flex h-full flex-col bg-background">
         <EmptyCanvas />
       </div>
     );
@@ -189,18 +183,29 @@ export function ContentCanvas() {
 
   const contentType = inferContentType(selectedPath);
 
+  if (fileLoading) {
+    return (
+      <div className="flex h-full flex-col bg-background">
+        <ActionToolbar type={contentType} path={selectedPath} />
+        <div className="flex flex-1 items-center justify-center">
+          <CircleNotch weight="bold" className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
   const viewers: Record<ContentType, React.ReactNode> = {
-    json: <JsonViewer content={MOCK_JSON_CONTENT} />,
-    markdown: <MarkdownViewer path={selectedPath} />,
+    json: <JsonViewer content={fileContent ?? "{}"} />,
+    markdown: <MarkdownViewer content={fileContent ?? ""} />,
     image: <ImageViewer path={selectedPath} />,
     video: <VideoViewer path={selectedPath} />,
     audio: <VideoViewer path={selectedPath} />,
-    text: <MarkdownViewer path={selectedPath} />,
-    unknown: <JsonViewer content={`// ${selectedPath}\n// Content preview not available`} />,
+    text: <JsonViewer content={fileContent ?? ""} />,
+    unknown: <JsonViewer content={fileContent ?? `// ${selectedPath}\n// Content not available`} />,
   };
 
   return (
-    <div className="flex h-full flex-col bg-[var(--color-surface-0)]">
+    <div className="flex h-full flex-col bg-background">
       <ActionToolbar type={contentType} path={selectedPath} />
       {viewers[contentType]}
     </div>

@@ -8,3 +8,7 @@ e2b/node_modules/
 e2b/skills/
 e2b/package.json
 .e2b
+*.png
+test-project/
+data/
+doc/

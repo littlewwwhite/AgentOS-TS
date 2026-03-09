@@ -1,8 +1,3 @@
----
-name: image-edit
-description: "通过 anime-material-workbench API 编辑图片，支持图片修改、风格迁移等编辑操作与异步任务管理。"
----
-
 # Image Edit Skill
 
 通过 anime-material-workbench 编辑图片，并管理异步任务。
