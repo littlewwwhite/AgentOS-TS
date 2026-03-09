@@ -87,6 +87,8 @@ const TODO_ICONS: Record<string, string> = {
   completed: "●",
 };
 
+const SIMPLE_TOOLS = new Set(["Read", "Write", "Glob", "Grep", "Edit"]);
+
 function renderTodoList(inputJson: string, indent: string): void {
   try {
     const input = JSON.parse(inputJson) as {
@@ -104,9 +106,21 @@ function renderTodoList(inputJson: string, indent: string): void {
   } catch { /* incomplete JSON */ }
 }
 
-function formatToolLabel(name: string, inputJson: string): string {
+function formatToolLabel(name: string, inputJson: string, rootPath?: string): string {
   try {
     const input = JSON.parse(inputJson);
+    // Bash: prefer description field, fallback to truncated command
+    if (name === "Bash") {
+      if (typeof input.description === "string" && input.description.length > 0) {
+        return `Bash(${input.description})`;
+      }
+      if (typeof input.command === "string") {
+        const cmd = input.command.trim();
+        const short = cmd.length > 60 ? cmd.slice(0, 57) + "…" : cmd;
+        return `Bash(${short})`;
+      }
+      return "Bash";
+    }
     // Agent/Task tool: show sub-agent name + short description
     if (name === "Agent" || name === "Task") {
       const agentName = input.subagent_type ?? input.name ?? input.agent ?? null;
@@ -142,11 +156,29 @@ function formatToolLabel(name: string, inputJson: string): string {
         const skillMatch = arg.match(/skills\/([^/]+)\/(.+)/);
         if (skillMatch) return `Read skill: ${skillMatch[1]}/${skillMatch[2]}`;
       }
-      const short = typeof arg === "string" && arg.length > 80 ? arg.slice(0, 80) + "…" : arg;
+      // Relativize absolute paths against rootPath
+      if (typeof arg === "string" && rootPath && arg.startsWith(rootPath)) {
+        const rel = arg.slice(rootPath.length).replace(/^\//, "");
+        return `${name}(${rel})`;
+      }
+      const short = typeof arg === "string" && arg.length > 60 ? arg.slice(0, 57) + "…" : arg;
       return `${name}(${short})`;
     }
   } catch { /* incomplete JSON */ }
   return name;
+}
+
+function commonDir(paths: string[]): string {
+  if (paths.length === 0) return "";
+  const segments = paths[0].split("/");
+  let depth = 0;
+  outer: for (let i = 0; i < segments.length - 1; i++) {
+    for (const p of paths) {
+      if (p.split("/")[i] !== segments[i]) break outer;
+    }
+    depth = i + 1;
+  }
+  return depth > 0 ? segments.slice(0, depth).join("/") + "/" : "";
 }
 
 async function sendAndStream(
@@ -155,12 +187,31 @@ async function sendAndStream(
   sessionFile: string,
 ): Promise<string | undefined> {
   const t0 = Date.now();
+  const rootPath = typeof options.cwd === "string" ? options.cwd : undefined;
   let lastWasText = false;
+  let lastDisplayedToolName: string | null = null;
   const toolBlocks = new Map<number, { name: string; input: string }>();
   let resultSessionId: string | undefined;
+  let pendingGroup: { name: string; paths: string[]; indent: string } | null = null;
 
   function ensureNewline(): void {
     if (lastWasText) { process.stdout.write("\n"); lastWasText = false; }
+  }
+
+  function flushGroup(): void {
+    if (!pendingGroup) return;
+    const { name, paths, indent } = pendingGroup;
+    if (paths.length === 1) {
+      const rel = rootPath && paths[0].startsWith(rootPath)
+        ? paths[0].slice(rootPath.length).replace(/^\//, "") : paths[0];
+      console.log(`${indent}${chalk.cyan("⏺")} ${chalk.white(`${name}(${rel})`)}`);
+    } else {
+      const parts = paths.map(p => rootPath && p.startsWith(rootPath)
+        ? p.slice(rootPath.length).replace(/^\//, "") : p);
+      const dir = commonDir(parts);
+      console.log(`${indent}${chalk.cyan("⏺")} ${chalk.white(`${name} ${paths.length} files`)} ${chalk.dim(`(${dir})`)}`);
+    }
+    pendingGroup = null;
   }
 
   for await (const msg of query({ prompt, options }) as AsyncIterable<SDKMessage>) {
@@ -179,6 +230,7 @@ async function sendAndStream(
         } else if (ev.type === "content_block_delta") {
           const delta = ev.delta as { type?: string; text?: string; partial_json?: string };
           if (delta?.type === "text_delta" && delta.text) {
+            flushGroup();
             process.stdout.write(delta.text);
             lastWasText = true;
           } else if (delta?.type === "input_json_delta" && delta.partial_json) {
@@ -192,11 +244,27 @@ async function sendAndStream(
           if (tool) {
             ensureNewline();
             if (tool.name === "TodoWrite") {
+              flushGroup();
               renderTodoList(tool.input, indent);
             } else {
-              const label = formatToolLabel(tool.name, tool.input);
-              console.log(`${indent}${chalk.cyan("⏺")} ${chalk.white(label)}`);
+              const GROUPABLE = new Set(["Read", "Write", "Edit"]);
+              let filePath: string | null = null;
+              try { filePath = JSON.parse(tool.input).file_path ?? null; } catch {}
+
+              if (GROUPABLE.has(tool.name) && filePath) {
+                if (pendingGroup && pendingGroup.name === tool.name) {
+                  pendingGroup.paths.push(filePath);
+                } else {
+                  flushGroup();
+                  pendingGroup = { name: tool.name, paths: [filePath], indent };
+                }
+              } else {
+                flushGroup();
+                const label = formatToolLabel(tool.name, tool.input, rootPath);
+                console.log(`${indent}${chalk.cyan("⏺")} ${chalk.white(label)}`);
+              }
             }
+            lastDisplayedToolName = tool.name;
             toolBlocks.delete(idx);
           }
         }
@@ -216,10 +284,11 @@ async function sendAndStream(
       case "tool_use_summary": {
         const s = msg as unknown as { summary?: string; tool_summary?: string };
         const text = s.summary ?? s.tool_summary;
-        if (text) {
+        if (text && !SIMPLE_TOOLS.has(lastDisplayedToolName ?? "")) {
           ensureNewline();
           console.log(`  ${chalk.dim("⎿")}  ${text}`);
         }
+        lastDisplayedToolName = null;
         break;
       }
 
@@ -228,6 +297,7 @@ async function sendAndStream(
           total_cost_usd?: number; is_error?: boolean; result?: string;
           session_id?: string; num_turns?: number;
         };
+        flushGroup();
         ensureNewline();
         const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
         const parts: string[] = [];
@@ -266,10 +336,11 @@ async function sendAndStream(
         if (t === "streamlined_tool_use_summary") {
           const s = msg as unknown as { summary?: string; tool_summary?: string };
           const text = s.summary ?? s.tool_summary;
-          if (text) {
+          if (text && !SIMPLE_TOOLS.has(lastDisplayedToolName ?? "")) {
             ensureNewline();
             console.log(`  ${chalk.dim("⎿")}  ${text}`);
           }
+          lastDisplayedToolName = null;
         } else if (t && t !== "user" && t !== "keep_alive") {
           console.log(chalk.dim(`  [debug] unhandled msg.type: ${t}`));
         }
