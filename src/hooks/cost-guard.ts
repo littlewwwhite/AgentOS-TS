@@ -1,10 +1,35 @@
-// input: PreToolUse events (all tools)
-// output: Allow or deny based on budget limits
-// pos: Cost boundary — placeholder for future per-session budget tracking
+// input: PreToolUse events, cost recordings from result messages
+// output: Allow or deny based on cumulative cost threshold
+// pos: Cost boundary — per-session budget tracking with deny on threshold
 
-import type { PreToolUseHook } from "./types.js";
+import type { HookInput, PreToolUseResult, PreToolUseHook } from "./types.js";
 
-export const costGuard: PreToolUseHook = async (_input) => {
-  // Placeholder: future implementation will track token/API usage per session
-  return {};
-};
+export interface BudgetTracker {
+  preToolUse: PreToolUseHook;
+  recordCost: (usd: number) => void;
+  spent: () => number;
+}
+
+export function createBudgetTracker(maxBudgetUsd: number): BudgetTracker {
+  let totalSpent = 0;
+
+  return {
+    preToolUse: async (_input: HookInput): Promise<PreToolUseResult> => {
+      if (totalSpent >= maxBudgetUsd) {
+        return {
+          permissionDecision: "deny",
+          reason: `Session budget exhausted: $${totalSpent.toFixed(4)} / $${maxBudgetUsd.toFixed(2)}`,
+        };
+      }
+      return {};
+    },
+    recordCost: (usd: number) => {
+      totalSpent += usd;
+    },
+    spent: () => totalSpent,
+  };
+}
+
+// Default export for backward compatibility — high default threshold
+const defaultTracker = createBudgetTracker(100.0);
+export const budgetGuard: PreToolUseHook = defaultTracker.preToolUse;

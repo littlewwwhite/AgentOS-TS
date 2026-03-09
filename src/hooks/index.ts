@@ -3,7 +3,8 @@
 // pos: Registry — assembles all hooks into SDK-compatible structure
 
 import { schemaValidator } from "./schema-validator.js";
-import { costGuard } from "./cost-guard.js";
+import { budgetGuard } from "./cost-guard.js";
+import { createToolLogger } from "./tool-logger.js";
 import { logToolIntent, logToolResult, todoNag } from "./logger.js";
 
 // Preserve critical context during auto-compaction
@@ -24,7 +25,7 @@ export function buildHooks(workspaceRoot?: string) {
   return {
     PreToolUse: [
       { hooks: [schemaValidator] },
-      { hooks: [costGuard] },
+      { hooks: [budgetGuard] },
       { hooks: [logToolIntent] },
     ],
     PostToolUse: [{ hooks: [logToolResult] }],
@@ -33,14 +34,15 @@ export function buildHooks(workspaceRoot?: string) {
   };
 }
 
-/** Sandbox-only hooks: schema validation + budget guard + tool logger (no REPL concerns) */
-export function buildSandboxHooks() {
+/** Sandbox-only hooks: schema validation + budget guard + emit-based tool logger */
+export function buildSandboxHooks(agentName?: string) {
+  const logger = createToolLogger(agentName);
   return {
     PreToolUse: [
       { hooks: [schemaValidator] },
-      { hooks: [costGuard] },
-      { hooks: [logToolIntent] },
+      { hooks: [budgetGuard] },
+      { hooks: [logger.preToolUse] },
     ],
-    PostToolUse: [{ hooks: [logToolResult] }],
+    PostToolUse: [{ hooks: [logger.postToolUse] }],
   };
 }
