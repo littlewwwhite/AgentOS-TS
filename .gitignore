@@ -6,6 +6,7 @@ workspace/
 e2b/dist/
 e2b/node_modules/
 skills/
+!agents/*/.claude/skills/
 e2b/skills/
 e2b/package.json
 .e2b

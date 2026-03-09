@@ -1,0 +1,49 @@
+{
+  "project": {
+    "name": "video-production",
+    "module": "03-视频素材",
+    "root": ".",
+    "description": "视频素材生成和评审模块"
+  },
+  "paths": {
+    "input": {
+      "script": "workspace/input/episodes",
+      "storyboard": "workspace/input/storyboard",
+      "characters_meta": "workspace/input/characters.json",
+      "scenes_meta": "workspace/input/scenes.json",
+      "props_meta": "workspace/input/props.json"
+    },
+    "assets": {
+      "root": "workspace/assets",
+      "characters": "workspace/assets/characters",
+      "scenes": "workspace/assets/scenes",
+      "props": "workspace/assets/props"
+    },
+    "output": {
+      "root": "output",
+      "final_selection": "output/final_selection.json"
+    }
+  },
+  "naming": {
+    "video_format": "ep{episode:02d}-sc{scene:02d}-l{shot:02d}-{version:02d}.mp4",
+    "c_format": "ep{episode:02d}-sc{scene:02d}-l{shot:02d}-{l_version:02d}-c{c_id:02d}.mp4",
+    "analysis_suffix": "_analysis.json",
+    "review_suffix": "_review.json",
+    "manifest_format": "shots_manifest.json"
+  },
+  "defaults": {
+    "episode": "01",
+    "aspect_ratio": "9:16",
+    "duration": 5.0,
+    "max_retries": 3,
+    "model_code": "kling-v2"
+  },
+  "quality": {
+    "min_total_score": 40,
+    "min_dimension_score": 7,
+    "hard_min_dimension_score": 5,
+    "prompt_compliance_threshold": 0.2,
+    "character_consistency_threshold": 7,
+    "scene_consistency_threshold": 7
+  }
+}
