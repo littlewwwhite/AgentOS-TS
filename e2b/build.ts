@@ -1,4 +1,4 @@
-// input: package.json, dist/, skills/
+// input: package.json, dist/, skills/, agents/
 // output: E2B custom template "agentos-sandbox"
 // pos: Programmatic template builder — replaces Dockerfile + build.sh
 
@@ -16,6 +16,7 @@ const template = Template({ fileContextPath: ROOT })
   .runCmd("bun install") // Linux native binaries — no --frozen-lockfile!
   .copy("dist/", `${APP}/dist/`)
   .copy("skills/", `${APP}/skills/`)
+  .copy("agents/", `${APP}/agents/`)
   .makeDir(`${APP}/workspace`);
 
 async function main() {
