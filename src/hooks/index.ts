@@ -3,16 +3,17 @@
 // pos: Registry — assembles all hooks into SDK-compatible structure
 
 import { schemaValidator } from "./schema-validator.js";
-import { budgetGuard } from "./cost-guard.js";
+import { createBudgetTracker } from "./cost-guard.js";
 import { createToolLogger } from "./tool-logger.js";
 
-/** Sandbox hooks: schema validation + budget guard + emit-based tool logger */
-export function buildHooks(agentName?: string) {
+/** Sandbox hooks: schema validation + per-session budget guard + emit-based tool logger */
+export function buildHooks(agentName?: string, maxBudgetUsd = 10.0) {
+  const budget = createBudgetTracker(maxBudgetUsd);
   const logger = createToolLogger(agentName);
   return {
     PreToolUse: [
       { hooks: [schemaValidator] },
-      { hooks: [budgetGuard] },
+      { hooks: [budget.preToolUse] },
       { hooks: [logger.preToolUse] },
     ],
     PostToolUse: [{ hooks: [logger.postToolUse] }],

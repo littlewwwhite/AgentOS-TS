@@ -29,7 +29,3 @@ export function createBudgetTracker(maxBudgetUsd: number): BudgetTracker {
     spent: () => totalSpent,
   };
 }
-
-// Default export for backward compatibility — high default threshold
-const defaultTracker = createBudgetTracker(100.0);
-export const budgetGuard: PreToolUseHook = defaultTracker.preToolUse;

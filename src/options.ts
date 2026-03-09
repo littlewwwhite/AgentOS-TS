@@ -40,7 +40,7 @@ export function describeAgentList(
 ): string {
   const entries = Object.entries(agents);
   if (entries.length === 0) return "";
-  return "## Sub-Agents (dispatch via Agent tool, subagent_type = name)\n" +
+  return "## Sub-Agents (dispatch via switch_to_agent tool)\n" +
     entries.map(([n, d]) => {
       const skillTag = d.configuredSkills?.length
         ? ` [skills: ${d.configuredSkills.join(", ")}]`
@@ -48,6 +48,8 @@ export function describeAgentList(
       return `- **${n}**: ${d.description}${skillTag}`;
     }).join("\n");
 }
+
+const MAX_BUDGET_USD = 10.0;
 
 export async function buildOptions(
   projectPath: string,
@@ -73,10 +75,10 @@ export async function buildOptions(
     agents,
     mcpServers: toolServers,
     allowedTools: [
-      "Agent", "TodoWrite",
+      "TodoWrite",
       "Read", "Write", "Bash", "Glob", "Grep",
     ],
-    hooks: buildHooks(),
+    hooks: buildHooks(undefined, MAX_BUDGET_USD),
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
@@ -89,12 +91,10 @@ export async function buildOptions(
         `${await describeWorkspace(projectPath)}\n\n` +
         `${describeAgentList(agents)}\n\n` +
         "## Dispatch Rules (STRICT)\n" +
-        "- Dispatch domain tasks to the appropriate sub-agent via the Agent tool\n" +
-        "- **CRITICAL**: When using the Agent tool, you MUST include the user's COMPLETE message in the `prompt` parameter. " +
-        "The `description` is only a short label — the actual task content goes in `prompt`.\n" +
+        "- Use the `switch_to_agent` tool to delegate domain tasks to specialized agents\n" +
+        "- The agent will work in its own persistent context and return with a summary when done\n" +
+        "- You will receive the agent's summary as a message — use it to continue the conversation\n" +
         "- If user mentions a skill name, map it to the owning agent via [skills: ...] tags above\n" +
-        "- If user wants to talk directly to a sub-agent (e.g. '进入编剧', 'switch to screenwriter'), " +
-        "dispatch via Agent tool with the user's message as prompt\n" +
         "- NEVER read files under skills/ directory or run Python scripts directly\n" +
         "- NEVER perform domain work yourself — always delegate to the owning sub-agent\n" +
         "- All content in Chinese (简体中文), structural keys in English\n" +
@@ -111,7 +111,7 @@ export async function buildOptions(
     cwd: projectPath,
     permissionMode: "acceptEdits",
     includePartialMessages: true,
-    maxBudgetUsd: 10.0,
+    maxBudgetUsd: MAX_BUDGET_USD,
     model,
     resume,
     continueConversation,

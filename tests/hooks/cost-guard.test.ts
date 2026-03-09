@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createBudgetTracker, budgetGuard } from "../../src/hooks/cost-guard.js";
+import { createBudgetTracker } from "../../src/hooks/cost-guard.js";
 
 describe("createBudgetTracker", () => {
   it("allows tool use when under budget", async () => {
@@ -33,12 +33,5 @@ describe("createBudgetTracker", () => {
     tracker.recordCost(1.5);
     tracker.recordCost(2.3);
     expect(tracker.spent()).toBeCloseTo(3.8);
-  });
-});
-
-describe("budgetGuard (default)", () => {
-  it("allows by default (high threshold)", async () => {
-    const result = await budgetGuard({ tool_name: "Bash", tool_input: {} });
-    expect(result.permissionDecision).toBeUndefined();
   });
 });
