@@ -9,10 +9,11 @@ import chalk from "chalk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
-import { buildAgents, filePolicy } from "./agents.js";
-import { buildHooks, setWorkspaceRoot } from "./hooks/index.js";
+import { buildAgents } from "./agents.js";
+import { buildHooks } from "./hooks/index.js";
 import { loadAgentConfigs, loadSkillContents } from "./loader.js";
 import { createCanUseTool } from "./permissions.js";
+import type { AgentFilePolicy } from "./permissions.js";
 import { toolServers } from "./tools/index.js";
 
 const VERSION = "0.1.0";
@@ -289,10 +290,15 @@ export async function buildOptions(
   resume?: string,
   continueConversation = false,
 ) {
-  setWorkspaceRoot(projectPath);
   const agentConfigs = await loadAgentConfigs(agentsDir);
   const skillContents = await loadSkillContents(skillsDir);
   const agents = buildAgents(agentConfigs, skillContents, toolServers, projectPath);
+
+  // Extract file policies from agent configs
+  const policies: Record<string, AgentFilePolicy> = {};
+  for (const [name, config] of Object.entries(agentConfigs)) {
+    if (config.filePolicy) policies[name] = config.filePolicy;
+  }
 
   return {
     agents,
@@ -301,8 +307,8 @@ export async function buildOptions(
       "Agent", "TodoWrite",
       "Read", "Write", "Bash", "Glob", "Grep",
     ],
-    hooks: buildHooks(),
-    canUseTool: createCanUseTool(projectPath, filePolicy),
+    hooks: buildHooks(projectPath),
+    canUseTool: createCanUseTool(projectPath, policies),
     systemPrompt: {
       type: "preset",
       preset: "claude_code",

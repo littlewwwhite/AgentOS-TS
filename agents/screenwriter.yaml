@@ -12,3 +12,11 @@ allowed-tools:
 skills:
   - script-adapt
   - script-writer
+file-policy:
+  readable:
+    - source.txt
+    - draft/**
+    - output/script.json
+  writable:
+    - draft/**
+    - output/script.json

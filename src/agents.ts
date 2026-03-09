@@ -1,35 +1,8 @@
 // input: Agent configs (agents/*.yaml) + skill contents (skills/*/SKILL.md) + workspace path
-// output: SDK AgentDefinition records + per-agent file policies
+// output: SDK AgentDefinition records
 // pos: Agent factory — composes agent configs with skill content into SDK AgentDefinitions
 
-import type { AgentFilePolicy } from "./permissions.js";
 import type { AgentConfig, SkillContent } from "./loader.js";
-
-// Re-export for external consumers
-export type { AgentFilePolicy };
-
-// --- File permission matrix ---
-// Workspace-relative glob patterns per agent role.
-// Agents not listed here have no file-level restrictions.
-
-export const filePolicy: Record<string, AgentFilePolicy> = {
-  screenwriter: {
-    readable: ["source.txt", "draft/**", "output/script.json"],
-    writable: ["draft/**", "output/script.json"],
-  },
-  "art-director": {
-    readable: ["output/script.json", "draft/catalog.json", "assets/**"],
-    writable: ["assets/**"],
-  },
-  "video-producer": {
-    readable: ["output/script.json", "assets/**", "storyboard/**", "production/**"],
-    writable: ["production/**"],
-  },
-  "post-production": {
-    readable: ["output/script.json", "editing/**", "audio/**"],
-    writable: ["editing/audio_plan.json", "audio/**"],
-  },
-};
 
 // --- SDK-aligned types (mirrors AgentDefinition from @anthropic-ai/claude-agent-sdk) ---
 

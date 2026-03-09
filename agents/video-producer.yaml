@@ -12,3 +12,11 @@ allowed-tools:
 skills:
   - video-create
   - video-review
+file-policy:
+  readable:
+    - output/script.json
+    - assets/**
+    - storyboard/**
+    - production/**
+  writable:
+    - production/**

@@ -1,6 +1,6 @@
 // input: Tool call events with agentID from SDK
-// output: Allow/deny decisions based on per-agent file policies
-// pos: Authorization boundary — enforces agent-level read/write isolation
+// output: Allow/deny decisions based on workspace boundary + per-agent file policies
+// pos: Authorization boundary — enforces agent-level read/write isolation, including Bash
 
 import { minimatch } from "minimatch";
 import path from "node:path";
@@ -29,6 +29,67 @@ function extractFilePath(toolName: string, input: Record<string, unknown>): stri
   return null;
 }
 
+/**
+ * Check if a resolved file path is inside (or equal to) the workspace root.
+ */
+export function isInsideWorkspace(filePath: string, workspaceRoot: string): boolean {
+  const resolved = path.resolve(filePath);
+  const root = path.resolve(workspaceRoot);
+  return resolved === root || resolved.startsWith(root + path.sep);
+}
+
+// --- Bash write-target extraction ---
+
+// Matches shell redirections: >, >>, 1>, 2>, &>
+const REDIRECT_RE = /(?:>>|[12&]?>)\s*(\S+)/g;
+
+// Commands that write to their last positional argument(s)
+const WRITE_CMDS: Record<string, "last" | "all-but-first"> = {
+  tee: "all-but-first",
+  cp: "last",
+  mv: "last",
+  rm: "all-but-first",
+  touch: "all-but-first",
+  mkdir: "all-but-first",
+};
+
+/**
+ * Best-effort extraction of filesystem write targets from a Bash command string.
+ * Returns workspace-relative or absolute paths that the command would write to.
+ */
+export function extractBashWriteTargets(command: string): string[] {
+  const targets: string[] = [];
+
+  // 1) Redirections
+  for (const m of command.matchAll(REDIRECT_RE)) {
+    const target = m[1].replace(/^["']|["']$/g, "");
+    if (target && !target.startsWith("/dev/")) targets.push(target);
+  }
+
+  // 2) Known write commands — simple tokenizer (doesn't handle all quoting, but good enough)
+  // Split by common shell operators first, then process each simple command
+  const simpleCommands = command.split(/[;&|]+/).map((s) => s.trim());
+  for (const cmd of simpleCommands) {
+    // Strip redirections for argument parsing
+    const stripped = cmd.replace(REDIRECT_RE, "").trim();
+    const tokens = stripped.split(/\s+/).filter((t) => !t.startsWith("-"));
+    if (tokens.length < 2) continue;
+
+    const bin = tokens[0].replace(/^.*\//, ""); // basename
+    const mode = WRITE_CMDS[bin];
+    if (!mode) continue;
+
+    const args = tokens.slice(1);
+    if (mode === "last" && args.length >= 2) {
+      targets.push(args[args.length - 1]);
+    } else if (mode === "all-but-first") {
+      targets.push(...args);
+    }
+  }
+
+  return targets;
+}
+
 export function createCanUseTool(
   workspaceRoot: string,
   policies: Record<string, AgentFilePolicy>,
@@ -44,21 +105,64 @@ export function createCanUseTool(
     if (!options.agentID) return { behavior: "allow" as const };
 
     const policy = policies[options.agentID];
-    // No policy defined for this agent = no file restrictions
-    if (!policy) return { behavior: "allow" as const };
+
+    // --- Bash interception ---
+    if (toolName === "Bash") {
+      const command = (input.command as string) ?? "";
+      const writeTargets = extractBashWriteTargets(command);
+
+      // No write targets detected → allow (read-only shell usage)
+      if (writeTargets.length === 0) return { behavior: "allow" as const };
+
+      for (const target of writeTargets) {
+        const abs = path.isAbsolute(target)
+          ? path.resolve(target)
+          : path.resolve(resolved, target);
+
+        // Universal workspace boundary check
+        if (!isInsideWorkspace(abs, resolved)) {
+          return {
+            behavior: "deny" as const,
+            message: `Agent "${options.agentID}" Bash write to "${target}" escapes workspace`,
+          };
+        }
+
+        // Per-agent glob check (only when policy exists)
+        if (policy) {
+          const rel = path.relative(resolved, abs);
+          if (!policy.writable.some((p) => minimatch(rel, p))) {
+            return {
+              behavior: "deny" as const,
+              message: `Agent "${options.agentID}" Bash cannot write "${rel}". Writable: [${policy.writable.join(", ")}]`,
+            };
+          }
+        }
+      }
+
+      return { behavior: "allow" as const };
+    }
+
+    // --- Standard tools ---
 
     const filePath = extractFilePath(toolName, input);
     if (!filePath) return { behavior: "allow" as const };
 
-    const rel = path.relative(resolved, path.resolve(resolved, filePath));
+    const abs = path.isAbsolute(filePath)
+      ? path.resolve(filePath)
+      : path.resolve(resolved, filePath);
 
-    // Block paths that escape workspace (../ prefix)
-    if (rel.startsWith("..")) {
+    // Universal workspace boundary (applies to ALL agents)
+    if (!isInsideWorkspace(abs, resolved)) {
       return {
         behavior: "deny" as const,
         message: `Agent "${options.agentID}" cannot access paths outside workspace`,
       };
     }
+
+    // No policy = no per-agent file restrictions (but workspace boundary still enforced above)
+    if (!policy) return { behavior: "allow" as const };
+
+    const rel = path.relative(resolved, abs);
 
     // Enforce write restrictions
     if (WRITE_TOOLS.has(toolName)) {
