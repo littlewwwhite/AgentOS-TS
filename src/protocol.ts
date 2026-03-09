@@ -1,6 +1,6 @@
 // input: None (pure type definitions)
-// output: SandboxCommand, SandboxEvent types + emit/parse helpers
-// pos: Protocol contract — shared between sandbox.ts and server.ts
+// output: SandboxCommand, SandboxEvent types + emit/parse/matchEnterAgent helpers
+// pos: Protocol contract — shared between sandbox.ts, server.ts, and REPL layers
 
 // ---------- Commands (stdin → sandbox) ----------
 
@@ -79,6 +79,18 @@ export type SandboxEvent =
   | SkillsEvent
   | AgentEnteredEvent
   | AgentExitedEvent;
+
+// ---------- Natural language agent entry ----------
+
+const ENTER_RE = /^(?:进入|切换到|enter|switch\s+to)\s*(.+)$/i;
+
+/** Match natural language patterns like "进入screenwriter" / "switch to editor" */
+export function matchEnterAgent(input: string, agentNames: string[]): string | null {
+  const m = input.match(ENTER_RE);
+  if (!m) return null;
+  const name = m[1].trim().toLowerCase();
+  return agentNames.find(a => a.toLowerCase() === name) ?? null;
+}
 
 // ---------- Helpers ----------
 

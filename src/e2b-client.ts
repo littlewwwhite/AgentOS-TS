@@ -22,6 +22,10 @@ export interface SandboxClientOptions {
   startCommand?: string;
   /** Environment variables passed to the sandbox process */
   envs?: Record<string, string>;
+  /** Heartbeat interval in ms (default: 60_000). Set 0 to disable. */
+  heartbeatMs?: number;
+  /** Max consecutive reconnect attempts (default: 3). Set 0 to disable auto-reconnect. */
+  maxReconnects?: number;
 }
 
 interface CommandHandle {
@@ -38,6 +42,10 @@ export class SandboxClient {
   private lineBuffer = "";
   private eventCb: ((event: SandboxEvent) => void) | null;
   private stderrCb: ((data: string) => void) | null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnecting = false;
+  private reconnectCount = 0;
+  private destroyed = false;
 
   constructor(private opts: SandboxClientOptions) {
     this.eventCb = opts.onEvent ?? null;
@@ -59,41 +67,8 @@ export class SandboxClient {
       },
     );
 
-    const cmd =
-      this.opts.startCommand ??
-      "bun /home/user/app/dist/sandbox.js /home/user/app/workspace --skills /home/user/app/skills";
-
-    // background: true → returns CommandHandle immediately
-    // stdin: true → keeps stdin open so sendStdin() works
-    this.handle = (await this._sandbox.commands.run(cmd, {
-      background: true,
-      stdin: true,
-      envs: this.opts.envs,
-      timeoutMs: 0,
-      onStdout: (data: string) => this.handleStdout(data),
-      onStderr: (data: string) => this.stderrCb?.(data),
-    })) as unknown as CommandHandle;
-
-    // Monitor process exit — clear handle and notify on unexpected death
-    this.handle.wait().then((result: unknown) => {
-      if (this.handle) {
-        this.handle = null;
-        const detail = result ? ` (${JSON.stringify(result)})` : "";
-        this.stderrCb?.(`[exit] Sandbox agent process exited cleanly${detail}`);
-        this.eventCb?.({ type: "error", message: `Sandbox agent process exited${detail}` } as SandboxEvent);
-        this.eventCb?.({ type: "status", state: "disconnected" } as SandboxEvent);
-      }
-    }).catch((err: unknown) => {
-      if (this.handle) {
-        this.handle = null;
-        const msg = err instanceof Error ? err.message : JSON.stringify(err);
-        const stack = err instanceof Error ? err.stack : undefined;
-        this.stderrCb?.(`[crash] Sandbox agent process exited unexpectedly: ${msg}`);
-        if (stack) this.stderrCb?.(`[crash-stack] ${stack}`);
-        this.eventCb?.({ type: "error", message: `Sandbox agent process exited unexpectedly: ${msg}` } as SandboxEvent);
-        this.eventCb?.({ type: "status", state: "disconnected" } as SandboxEvent);
-      }
-    });
+    await this.startProcess();
+    this.startHeartbeat();
   }
 
   /** Connect to an already-running sandbox by ID */
@@ -104,6 +79,8 @@ export class SandboxClient {
   }
 
   async destroy(): Promise<void> {
+    this.destroyed = true;
+    this.stopHeartbeat();
     if (this.handle) {
       await this.handle.kill().catch(() => {});
       this.handle = null;
@@ -174,6 +151,125 @@ export class SandboxClient {
   }
 
   // ---------- Internal ----------
+
+  /** Start the agent process inside an already-created sandbox */
+  private async startProcess(): Promise<void> {
+    if (!this._sandbox) throw new Error("No sandbox instance");
+
+    const cmd =
+      this.opts.startCommand ??
+      "bun /home/user/app/dist/sandbox.js /home/user/app/workspace --skills /home/user/app/skills";
+
+    this.lineBuffer = "";
+
+    this.handle = (await this._sandbox.commands.run(cmd, {
+      background: true,
+      stdin: true,
+      envs: this.opts.envs,
+      timeoutMs: 0,
+      onStdout: (data: string) => this.handleStdout(data),
+      onStderr: (data: string) => this.stderrCb?.(data),
+    })) as unknown as CommandHandle;
+
+    this.monitorProcess();
+  }
+
+  /** Watch for process exit and trigger reconnection if applicable */
+  private monitorProcess(): void {
+    if (!this.handle) return;
+
+    this.handle.wait().then((result: unknown) => {
+      if (this.handle) {
+        this.handle = null;
+        const detail = result ? ` (${JSON.stringify(result)})` : "";
+        this.stderrCb?.(`[exit] Sandbox agent process exited cleanly${detail}`);
+        this.tryReconnect("process exited cleanly");
+      }
+    }).catch((err: unknown) => {
+      if (this.handle) {
+        this.handle = null;
+        const msg = err instanceof Error ? err.message : JSON.stringify(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        this.stderrCb?.(`[crash] Sandbox agent process exited unexpectedly: ${msg}`);
+        if (stack) this.stderrCb?.(`[crash-stack] ${stack}`);
+        this.tryReconnect(msg);
+      }
+    });
+  }
+
+  /** Attempt to restart the agent process within the existing sandbox */
+  private async tryReconnect(reason: string): Promise<void> {
+    const maxRetries = this.opts.maxReconnects ?? 3;
+    if (this.destroyed || this.reconnecting || maxRetries === 0) {
+      this.emitDisconnected(reason);
+      return;
+    }
+
+    if (this.reconnectCount >= maxRetries) {
+      this.stderrCb?.(`[reconnect] Max retries (${maxRetries}) exceeded — giving up`);
+      this.reconnectCount = 0;
+      this.emitDisconnected(reason);
+      return;
+    }
+
+    this.reconnecting = true;
+    this.reconnectCount++;
+    const attempt = this.reconnectCount;
+    const delayMs = Math.min(1000 * 2 ** (attempt - 1), 10_000); // 1s, 2s, 4s ... max 10s
+
+    this.stderrCb?.(`[reconnect] Attempt ${attempt}/${maxRetries} in ${delayMs}ms (reason: ${reason})`);
+    this.eventCb?.({ type: "status", state: "disconnected" } as SandboxEvent);
+
+    await new Promise((r) => setTimeout(r, delayMs));
+
+    if (this.destroyed) {
+      this.reconnecting = false;
+      return;
+    }
+
+    try {
+      await this.startProcess();
+      this.reconnectCount = 0;
+      this.stderrCb?.(`[reconnect] Process restarted successfully`);
+      // ready event will come from the new process via stdout
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.stderrCb?.(`[reconnect] Failed to restart process: ${msg}`);
+      this.reconnecting = false;
+      await this.tryReconnect(msg);
+      return;
+    }
+    this.reconnecting = false;
+  }
+
+  private emitDisconnected(reason: string): void {
+    this.eventCb?.({ type: "error", message: `Sandbox disconnected: ${reason}` } as SandboxEvent);
+    this.eventCb?.({ type: "status", state: "disconnected" } as SandboxEvent);
+  }
+
+  /** Periodic heartbeat to keep E2B sandbox alive */
+  private startHeartbeat(): void {
+    const interval = this.opts.heartbeatMs ?? 60_000;
+    if (interval <= 0) return;
+
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.isConnected && !this.reconnecting) {
+        this.sendCommand({ cmd: "status" }).catch(() => {
+          // Heartbeat failure is handled by process monitor
+        });
+      }
+    }, interval);
+    // Don't block process exit
+    if (this.heartbeatTimer.unref) this.heartbeatTimer.unref();
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
 
   private handleStdout(data: string): void {
     this.lineBuffer += data;

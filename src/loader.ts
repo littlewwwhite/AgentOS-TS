@@ -56,6 +56,7 @@ export async function loadAgentConfigs(agentsDir: string): Promise<Record<string
 
 export interface SkillContent {
   prompt: string;        // SKILL.md body only (core workflow instructions)
+  description: string;   // short description from YAML frontmatter
   referencesDir: string; // absolute path for on-demand Read access
 }
 
@@ -83,7 +84,18 @@ export async function loadSkillContents(skillsDir: string): Promise<Record<strin
 
     // Skill name = directory name
     const name = dir.name;
-    let promptText = await fs.readFile(skillFile, "utf-8");
+    let rawText = await fs.readFile(skillFile, "utf-8");
+
+    // Extract description from YAML frontmatter (---\n...\n---)
+    let description = "";
+    const fmMatch = rawText.match(/^---\n([\s\S]*?)\n---\n?/);
+    if (fmMatch) {
+      const fm = yaml.parse(fmMatch[1]) as Record<string, unknown>;
+      description = ((fm.description as string) ?? "").trim();
+      rawText = rawText.slice(fmMatch[0].length);
+    }
+
+    let promptText = rawText;
 
     // Translate all Claude Code skill path variants to the actual skill directory
     // Covers: ${CLAUDE_SKILL_DIR}, ~/.claude/skills/<x>/, $HOME/.claude/skills/<x>/, .claude/skills/<x>/
@@ -123,6 +135,7 @@ export async function loadSkillContents(skillsDir: string): Promise<Record<strin
 
     skills[name] = {
       prompt: finalPrompt,
+      description,
       referencesDir: skillDir,
     };
   }

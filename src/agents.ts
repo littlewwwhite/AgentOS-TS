@@ -22,8 +22,6 @@ export interface AgentDefinitionConfig {
   configuredSkills?: string[];  // original skill names from agent config, for orchestrator routing
 }
 
-// Shared empty array — prevents platform skills from leaking into sub-agents
-const NO_SKILLS: string[] = Object.freeze([] as string[]) as string[];
 
 function resolveModelAlias(raw: string | undefined): AgentModelAlias | undefined {
   if (!raw) return undefined;
@@ -90,11 +88,20 @@ export function buildAgents(
       promptParts.push(`Project workspace: ${workspacePath}/\nAll file operations must use absolute paths within this workspace.`);
     }
     if (config.skills) {
+      // Build domain skills summary so the agent can describe its capabilities
+      const skillEntries: string[] = [];
       for (const skillName of config.skills) {
         const skill = skillContents[skillName];
         if (skill) {
           promptParts.push(skill.prompt);
+          const desc = skill.description || skillName;
+          skillEntries.push(`- **${skillName}**: ${desc}`);
         }
+      }
+      if (skillEntries.length > 0) {
+        promptParts.push(
+          `## Domain Skills\nYour specialized capabilities in this pipeline:\n${skillEntries.join("\n")}`,
+        );
       }
     }
 
@@ -104,7 +111,7 @@ export function buildAgents(
       tools: config.allowedTools,
       disallowedTools: [...(config.disallowedTools ?? []), "Skill"],
       mcpServers,
-      skills: NO_SKILLS,
+      skills: config.skills ?? [],
       maxTurns: config.maxTurns ?? 30,
       model: resolveModelAlias(config.model),
       configuredSkills: config.skills,

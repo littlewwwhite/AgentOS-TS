@@ -23,6 +23,7 @@ describe("buildAgents", () => {
     const skillContents: Record<string, SkillContent> = {
       "test-skill": {
         prompt: "Do testing things.",
+        description: "Test skill for unit tests",
         referencesDir: "/skills/test-skill",
       },
     };

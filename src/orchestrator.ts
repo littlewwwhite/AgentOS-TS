@@ -11,6 +11,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 export { buildOptions, describeWorkspace, describeAgentList, WORKSPACE_DIRS } from "./options.js";
 import { buildOptions } from "./options.js";
+import { matchEnterAgent } from "./protocol.js";
 
 const VERSION = "0.1.0";
 const SESSION_FILE = ".session";
@@ -524,6 +525,24 @@ export async function repl(config: {
 
       const handler = SLASH_COMMANDS[cmd];
       if (handler && await handler({ agents, options, projectPath, activeAgent })) continue;
+    }
+
+    // Natural language agent entry (e.g. "进入screenwriter", "switch to editor")
+    const nlAgent = matchEnterAgent(input, agentNames);
+    if (nlAgent) {
+      activeAgent = nlAgent;
+      if (!agentSessions.has(nlAgent)) {
+        const saved = await readText(sessionFilePath(projectPath, nlAgent));
+        if (saved) agentSessions.set(nlAgent, saved);
+      }
+      const desc = agents[nlAgent].description;
+      const short = desc.length > 60 ? desc.slice(0, 60) + "…" : desc;
+      const hasSavedSession = agentSessions.has(nlAgent);
+      console.log();
+      console.log(`  ${chalk.cyan("⏺")} ${chalk.bgCyan.black(` ${nlAgent} `)} ${chalk.dim(short)}`);
+      if (hasSavedSession) console.log(`    ${chalk.dim("⎿")}  ${chalk.yellow("resuming previous session")}`);
+      console.log(`    ${chalk.dim("⎿")}  ${chalk.dim("/exit to return to orchestrator")}`);
+      continue;
     }
 
     // @ file expansion

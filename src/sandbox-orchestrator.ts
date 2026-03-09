@@ -234,6 +234,16 @@ export class SandboxOrchestrator {
     session: AgentSession,
     requestId?: string,
   ): Promise<void> {
+    if (!prompt?.trim()) {
+      emit({
+        type: "error",
+        message: "Empty prompt — nothing to process",
+        agent: session.name === "main" ? undefined : session.name,
+        request_id: requestId,
+      });
+      return;
+    }
+
     // Serialize SDK queries — shared MCP Protocol cannot handle concurrent connections
     let release: () => void;
     const next = new Promise<void>((r) => { release = r; });

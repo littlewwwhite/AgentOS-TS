@@ -83,7 +83,11 @@ export async function buildOptions(
         `${describeAgentList(agents)}\n\n` +
         "## Dispatch Rules (STRICT)\n" +
         "- Dispatch domain tasks to the appropriate sub-agent via the Agent tool\n" +
+        "- **CRITICAL**: When using the Agent tool, you MUST include the user's COMPLETE message in the `prompt` parameter. " +
+        "The `description` is only a short label — the actual task content goes in `prompt`.\n" +
         "- If user mentions a skill name, map it to the owning agent via [skills: ...] tags above\n" +
+        "- If user wants to talk directly to a sub-agent (e.g. '进入编剧', 'switch to screenwriter'), " +
+        "dispatch via Agent tool with the user's message as prompt\n" +
         "- NEVER read files under skills/ directory or run Python scripts directly\n" +
         "- NEVER perform domain work yourself — always delegate to the owning sub-agent\n" +
         "- All content in Chinese (简体中文), structural keys in English\n" +
