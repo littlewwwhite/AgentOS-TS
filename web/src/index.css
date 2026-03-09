@@ -47,75 +47,78 @@
 }
 
 /*
- * Refined dark palette — "VS Code × Linear × Vercel Dashboard"
+ * Apple × Notion light palette — warm neutral, high clarity
  *
- * Principles (design-taste-frontend):
- *   - Cool neutral base (hue 265) — avoids warm muddy grays
- *   - Clear luminance stepping (≥ 0.035 per surface level)
- *   - Single desaturated emerald accent (chroma ≤ 0.15)
- *   - Muted text at L=0.55 for WCAG-adjacent readability
- *   - No pure black (L ≥ 0.14), no pure white (L ≤ 0.93)
+ * Principles:
+ *   - Warm neutral base (hue 60) — natural paper-like warmth
+ *   - Clean white surfaces with subtle gray layering
+ *   - Single blue accent (hue 255) — Notion-inspired
+ *   - High contrast text (L=0.23) on light backgrounds (L>0.96)
+ *   - Muted text at L=0.55 for comfortable secondary reading
  *
- * Surface ladder:
- *   L=0.14  background    (deepest)
- *   L=0.165 sidebar       (subtle lift)
- *   L=0.185 card/panel    (clear panel)
- *   L=0.215 muted         (de-emphasized bg)
- *   L=0.24  secondary     (hover/selected)
- *   L=0.27  surface-3     (input fields)
- *   L=0.30  border        (visible lines)
- *   L=0.40  border-strong (emphasis lines)
+ * Surface ladder (light → dark):
+ *   L=0.985  background    (warm off-white)
+ *   L=0.98   sidebar       (barely tinted)
+ *   L=1.00   card          (pure white panels)
+ *   L=0.965  muted         (de-emphasized bg)
+ *   L=0.955  secondary     (hover/selected)
+ *   L=0.94   surface-3     (input fields)
+ *   L=0.915  border        (subtle lines)
+ *   L=0.82   border-strong (emphasis lines)
  */
 :root {
   --radius: 0.5rem;
 
-  /* Surfaces — cool neutral, hue 265, chroma 0.004 */
-  --background: oklch(0.14 0.004 265);
-  --foreground: oklch(0.93 0.003 265);
+  /* Surfaces — warm neutral, hue 60, low chroma */
+  --background: oklch(0.985 0.004 60);
+  --foreground: oklch(0.23 0.02 55);
 
-  --card: oklch(0.185 0.004 265);
-  --card-foreground: oklch(0.93 0.003 265);
+  --card: oklch(1.00 0 0);
+  --card-foreground: oklch(0.23 0.02 55);
 
-  --popover: oklch(0.20 0.005 265);
-  --popover-foreground: oklch(0.93 0.003 265);
+  --popover: oklch(1.00 0 0);
+  --popover-foreground: oklch(0.23 0.02 55);
 
-  /* Primary — refined emerald, desaturated */
-  --primary: oklch(0.72 0.145 160);
-  --primary-foreground: oklch(0.14 0.004 265);
+  /* Primary — Notion blue */
+  --primary: oklch(0.55 0.19 255);
+  --primary-foreground: oklch(0.99 0 0);
 
-  /* Secondary — interactive surface */
-  --secondary: oklch(0.24 0.005 265);
-  --secondary-foreground: oklch(0.93 0.003 265);
+  /* Secondary — light warm gray for hover/selected */
+  --secondary: oklch(0.955 0.004 60);
+  --secondary-foreground: oklch(0.23 0.02 55);
 
   /* Muted — de-emphasized */
-  --muted: oklch(0.215 0.004 265);
-  --muted-foreground: oklch(0.55 0.003 265);
+  --muted: oklch(0.965 0.003 60);
+  --muted-foreground: oklch(0.55 0.01 60);
 
-  /* Accent — same as secondary for consistency */
-  --accent: oklch(0.24 0.005 265);
-  --accent-foreground: oklch(0.93 0.003 265);
+  /* Accent — same as secondary */
+  --accent: oklch(0.955 0.004 60);
+  --accent-foreground: oklch(0.23 0.02 55);
 
   /* Destructive */
-  --destructive: oklch(0.60 0.17 25);
-  --destructive-foreground: oklch(0.93 0.003 265);
+  --destructive: oklch(0.58 0.2 25);
+  --destructive-foreground: oklch(0.99 0 0);
 
-  /* Borders — clearly visible */
-  --border: oklch(0.30 0.004 265);
-  --input: oklch(0.30 0.004 265);
-  --ring: oklch(0.55 0.10 160);
+  /* Borders — subtle warm lines */
+  --border: oklch(0.915 0.004 60);
+  --input: oklch(0.915 0.004 60);
+  --ring: oklch(0.55 0.19 255);
 
   /* Sidebar */
-  --sidebar: oklch(0.165 0.004 265);
-  --sidebar-foreground: oklch(0.93 0.003 265);
+  --sidebar: oklch(0.98 0.003 60);
+  --sidebar-foreground: oklch(0.23 0.02 55);
 
   /* Domain tokens */
-  --surface-3: oklch(0.27 0.005 265);
-  --border-strong: oklch(0.40 0.004 265);
-  --brand-surface: oklch(0.20 0.02 160);
-  --status-done: oklch(0.68 0.13 160);
-  --status-active: oklch(0.68 0.11 245);
-  --status-error: oklch(0.60 0.17 25);
-  --status-pending: oklch(0.45 0.003 265);
+  --surface-3: oklch(0.94 0.004 60);
+  --border-strong: oklch(0.82 0.005 60);
+  --brand-surface: oklch(0.95 0.03 255);
+  --status-done: oklch(0.55 0.16 160);
+  --status-active: oklch(0.55 0.19 255);
+  --status-error: oklch(0.58 0.2 25);
+  --status-pending: oklch(0.65 0.005 60);
+
+  /* Motion */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer base {
@@ -137,6 +140,24 @@
   }
 }
 
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Selection */
+::selection {
+  background: oklch(0.55 0.19 255 / 0.15);
+  color: oklch(0.23 0.02 55);
+}
+
 /* Scrollbar — thin, unobtrusive */
 ::-webkit-scrollbar {
   width: 6px;
@@ -148,7 +169,7 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: oklch(0.88 0.004 60);
   border-radius: 3px;
 }
 

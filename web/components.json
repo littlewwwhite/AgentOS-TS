@@ -10,13 +10,15 @@
     "cssVariables": true,
     "prefix": ""
   },
+  "iconLibrary": "phosphor",
   "aliases": {
     "components": "src/components",
     "utils": "src/lib/utils",
     "ui": "src/components/ui",
     "lib": "src/lib",
-    "hooks": "src/hooks",
-    "import-alias": "@/"
+    "hooks": "src/hooks"
   },
-  "iconLibrary": "phosphor"
+  "registries": {
+    "@ai-elements": "https://ai-sdk.dev/elements/api/registry/{name}.json"
+  }
 }
