@@ -158,7 +158,7 @@ export class SandboxClient {
 
     const cmd =
       this.opts.startCommand ??
-      "bun /home/user/app/dist/sandbox.js /home/user/app/workspace --skills /home/user/app/skills";
+      "bun /home/user/app/dist/sandbox.js /home/user/app/workspace";
 
     this.lineBuffer = "";
 

@@ -16,7 +16,7 @@ vi.mock("../src/tools/index.js", () => ({
 }));
 
 vi.mock("../src/hooks/index.js", () => ({
-  buildSandboxHooks: vi.fn().mockReturnValue({
+  buildHooks: vi.fn().mockReturnValue({
     PreToolUse: [],
     PostToolUse: [],
   }),
@@ -30,7 +30,7 @@ describe("buildOptions", () => {
   });
 
   it("returns SDK-compatible options with required fields", async () => {
-    const opts = await buildOptions("/tmp/test-ws", "agents", "skills");
+    const opts = await buildOptions("/tmp/test-ws", "agents");
 
     expect(opts).toHaveProperty("agents");
     expect(opts).toHaveProperty("mcpServers");
@@ -43,32 +43,32 @@ describe("buildOptions", () => {
   });
 
   it("does NOT include canUseTool (sandbox replaces permissions)", async () => {
-    const opts = await buildOptions("/tmp/test-ws", "agents", "skills");
+    const opts = await buildOptions("/tmp/test-ws", "agents");
     expect(opts).not.toHaveProperty("canUseTool");
   });
 
-  it("uses buildSandboxHooks instead of buildHooks", async () => {
-    const { buildSandboxHooks } = await import("../src/hooks/index.js");
-    await buildOptions("/tmp/test-ws", "agents", "skills");
-    expect(buildSandboxHooks).toHaveBeenCalled();
+  it("uses buildHooks for hook configuration", async () => {
+    const { buildHooks } = await import("../src/hooks/index.js");
+    await buildOptions("/tmp/test-ws", "agents");
+    expect(buildHooks).toHaveBeenCalled();
   });
 
   it("includes agent list in systemPrompt from loadAgentConfigs", async () => {
-    const opts = await buildOptions("/tmp/test-ws", "agents", "skills");
+    const opts = await buildOptions("/tmp/test-ws", "agents");
     const prompt = opts.systemPrompt as { append: string };
     expect(prompt.append).toContain("Sub-Agents");
     expect(prompt.append).toContain("script-writer");
   });
 
   it("passes through model, resume, continueConversation", async () => {
-    const opts = await buildOptions("/tmp/test-ws", "agents", "skills", "opus", "sess-123", true);
+    const opts = await buildOptions("/tmp/test-ws", "agents", "opus", "sess-123", true);
     expect(opts.model).toBe("opus");
     expect(opts.resume).toBe("sess-123");
     expect(opts.continueConversation).toBe(true);
   });
 
   it("defaults continueConversation to false", async () => {
-    const opts = await buildOptions("/tmp/test-ws", "agents", "skills");
+    const opts = await buildOptions("/tmp/test-ws", "agents");
     expect(opts.continueConversation).toBe(false);
   });
 });

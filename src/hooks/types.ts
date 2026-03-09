@@ -21,4 +21,3 @@ export interface PostToolUseResult {
 
 export type PreToolUseHook = (input: HookInput) => Promise<PreToolUseResult>;
 export type PostToolUseHook = (input: HookInput) => Promise<PostToolUseResult>;
-export type EventHook = (input: HookInput) => Promise<{ additionalContext?: string }>;

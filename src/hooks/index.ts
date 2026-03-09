@@ -7,7 +7,7 @@ import { budgetGuard } from "./cost-guard.js";
 import { createToolLogger } from "./tool-logger.js";
 
 /** Sandbox hooks: schema validation + budget guard + emit-based tool logger */
-export function buildSandboxHooks(agentName?: string) {
+export function buildHooks(agentName?: string) {
   const logger = createToolLogger(agentName);
   return {
     PreToolUse: [

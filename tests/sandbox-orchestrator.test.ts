@@ -28,7 +28,6 @@ const mockBuildOptions = buildOptions as ReturnType<typeof vi.fn>;
 const BASE_CONFIG: OrchestratorConfig = {
   projectPath: "/tmp/test",
   agentsDir: "agents",
-  skillsDir: "skills",
 };
 
 function mockOptionsWithAgents(
@@ -122,7 +121,6 @@ describe("SandboxOrchestrator", () => {
       expect(mockBuildOptions).toHaveBeenCalledWith(
         "/tmp/test",
         "agents",
-        "skills",
         "opus",
       );
     });

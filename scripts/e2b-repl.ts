@@ -10,20 +10,11 @@ import readline from "node:readline";
 import { SandboxClient } from "../src/e2b-client.js";
 import type { SandboxEvent } from "../src/protocol.js";
 import { matchEnterAgent } from "../src/protocol.js";
+import { loadDotEnv } from "../src/env.js";
 
 // ---------- .env ----------
 
-const dotEnv: Record<string, string> = {};
-const envPath = path.resolve(import.meta.dir, "../.env");
-if (fs.existsSync(envPath)) {
-  for (const line of fs.readFileSync(envPath, "utf-8").split("\n")) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq < 0) continue;
-    dotEnv[t.slice(0, eq).trim()] = t.slice(eq + 1).trim();
-  }
-}
+const dotEnv = loadDotEnv(path.resolve(import.meta.dir, "../.env"));
 
 const E2B_KEY = dotEnv.E2B_API_KEY ?? process.env.E2B_API_KEY;
 if (!E2B_KEY) {

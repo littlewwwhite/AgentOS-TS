@@ -5,7 +5,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { buildSandboxHooks } from "./hooks/index.js";
+import { buildHooks } from "./hooks/index.js";
 import { loadAgentConfigs } from "./loader.js";
 import { toolServers } from "./tools/index.js";
 
@@ -52,7 +52,6 @@ export function describeAgentList(
 export async function buildOptions(
   projectPath: string,
   agentsDir: string,
-  _skillsDir: string,
   model?: string,
   resume?: string,
   continueConversation = false,
@@ -77,7 +76,7 @@ export async function buildOptions(
       "Agent", "TodoWrite",
       "Read", "Write", "Bash", "Glob", "Grep",
     ],
-    hooks: buildSandboxHooks(),
+    hooks: buildHooks(),
     systemPrompt: {
       type: "preset",
       preset: "claude_code",

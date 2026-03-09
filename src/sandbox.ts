@@ -1,4 +1,4 @@
-// input: stdin JSON commands, CLI args (project path, skills dir)
+// input: stdin JSON commands, CLI args (project path)
 // output: stdout JSON events via protocol
 // pos: Sandbox entry point — thin adapter over SandboxOrchestrator
 
@@ -39,18 +39,15 @@ process.on("unhandledRejection", (reason) => {
 function parseArgs(argv: string[]): {
   projectPath: string;
   agentsDir: string;
-  skillsDir: string;
   model?: string;
 } {
   let agentsDir = "agents";
-  let skillsDir = "skills";
   let model: string | undefined;
   const positional: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--agents" && i + 1 < argv.length) agentsDir = argv[++i];
-    else if (arg === "--skills" && i + 1 < argv.length) skillsDir = argv[++i];
     else if (arg === "--model" && i + 1 < argv.length) model = argv[++i];
     else if (!arg.startsWith("-")) positional.push(arg);
   }
@@ -58,7 +55,6 @@ function parseArgs(argv: string[]): {
   return {
     projectPath: positional[0] ?? "workspace",
     agentsDir,
-    skillsDir,
     model: model ?? process.env.AGENTOS_MODEL,
   };
 }
@@ -128,7 +124,7 @@ async function main(): Promise<void> {
 
   loadEnvToProcess(path.resolve(".env"));
 
-  const { projectPath: rawPath, agentsDir, skillsDir, model } = parseArgs(
+  const { projectPath: rawPath, agentsDir, model } = parseArgs(
     process.argv.slice(2),
   );
   const projectPath = path.resolve(rawPath);
@@ -137,7 +133,6 @@ async function main(): Promise<void> {
   const orchestrator = new SandboxOrchestrator({
     projectPath,
     agentsDir,
-    skillsDir,
     model,
   });
   await orchestrator.init();

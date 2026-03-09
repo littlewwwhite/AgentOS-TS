@@ -2,10 +2,10 @@
 // output: Manages agent sessions, routes commands, emits events
 // pos: Sole orchestration core — routes to per-agent .claude/ directories via SDK-native loading
 
-import path from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Query, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
+import { buildAgentOptions } from "./agent-options.js";
 import { buildOptions } from "./options.js";
 import { emit } from "./protocol.js";
 import type { ChatCommand } from "./protocol.js";
@@ -52,7 +52,6 @@ interface AgentSession {
 export interface OrchestratorConfig {
   projectPath: string;
   agentsDir: string;
-  skillsDir: string;
   model?: string;
 }
 
@@ -82,7 +81,6 @@ export class SandboxOrchestrator {
     this.baseOptions = (await buildOptions(
       this.config.projectPath,
       this.config.agentsDir,
-      this.config.skillsDir,
       this.config.model,
     )) as Record<string, unknown>;
 
@@ -112,7 +110,9 @@ export class SandboxOrchestrator {
 
     let session = this.agents.get(name);
     if (!session) {
-      session = this.createSession(name, this.buildAgentOptions(name));
+      session = this.createSession(name, buildAgentOptions(
+        this.baseOptions, this.config.agentsDir, this.config.projectPath, name,
+      ));
       this.agents.set(name, session);
       // Start worker in background — fire and forget
       this.runWorker(session).catch((err) => {
@@ -224,25 +224,6 @@ export class SandboxOrchestrator {
       busy: false,
       activeQuery: null,
       options: { ...options },
-    };
-  }
-
-  /** Derive agent-level options: per-agent cwd + SDK-native .claude/ loading */
-  private buildAgentOptions(name: string): Record<string, unknown> {
-    const { systemPrompt: _orchestratorPrompt, ...rest } = this.baseOptions;
-    const agentDir = path.resolve(this.config.agentsDir, name);
-    const workspacePath = this.config.projectPath;
-    return {
-      ...rest,
-      agent: name,
-      agents: undefined,
-      cwd: agentDir,
-      settingSources: ["project"],
-      systemPrompt: {
-        type: "preset",
-        preset: "claude_code",
-        append: `Project workspace: ${workspacePath}/\nAll file operations must use absolute paths within this workspace.`,
-      },
     };
   }
 

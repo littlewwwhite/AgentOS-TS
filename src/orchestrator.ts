@@ -1,4 +1,4 @@
-// input: Project path, agents dir, skills dir, CLI flags
+// input: Project path, agents dir, CLI flags
 // output: Configured SDK session, interactive REPL loop
 // pos: Infrastructure layer — provides tools, agents, hooks; LLM drives conversation
 
@@ -9,7 +9,7 @@ import chalk from "chalk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
-export { buildOptions, describeWorkspace, describeAgentList, WORKSPACE_DIRS } from "./options.js";
+import { buildAgentOptions } from "./agent-options.js";
 import { buildOptions } from "./options.js";
 import { matchEnterAgent } from "./protocol.js";
 
@@ -381,12 +381,11 @@ export async function repl(config: {
   projectName?: string;
   inspiration?: string;
   agentsDir?: string;
-  skillsDir?: string;
   model?: string;
   resume?: string;
   continueConversation?: boolean;
 }): Promise<void> {
-  const { projectName, inspiration, agentsDir = "agents", skillsDir = "skills", model } = config;
+  const { projectName, inspiration, agentsDir = "agents", model } = config;
   let { resume, continueConversation = false } = config;
 
   const projectPath = path.resolve("workspace", projectName ?? "");
@@ -403,7 +402,7 @@ export async function repl(config: {
     if (resume) { isResuming = true; continueConversation = false; }
   }
 
-  const options = await buildOptions(projectPath, agentsDir, skillsDir, model, resume, !resume && continueConversation) as Record<string, unknown>;
+  const options = await buildOptions(projectPath, agentsDir, model, resume, !resume && continueConversation) as Record<string, unknown>;
   const agents = (options.agents ?? {}) as Record<string, { description: string }>;
   const agentNames = Object.keys(agents);
 
@@ -558,20 +557,10 @@ export async function repl(config: {
     let effectiveOptions: Record<string, unknown>;
     if (activeAgent) {
       // Agent uses its own .claude/ directory — SDK loads CLAUDE.md + settings.json + skills natively
-      const { systemPrompt: _orchestratorPrompt, ...agentOptions } = options;
-      const agentDir = path.resolve(agentsDir, activeAgent);
       effectiveOptions = {
-        ...agentOptions,
-        agent: activeAgent,
+        ...buildAgentOptions(options, agentsDir, projectPath, activeAgent),
         resume: agentSessions.get(activeAgent),
         continueConversation: false,
-        cwd: agentDir,
-        settingSources: ["project"],
-        systemPrompt: {
-          type: "preset",
-          preset: "claude_code",
-          append: `Project workspace: ${projectPath}/\nAll file operations must use absolute paths within this workspace.`,
-        },
       };
     } else {
       effectiveOptions = options;
