@@ -34,7 +34,7 @@ export interface AgentStatus {
   progress?: string;
 }
 
-// Maps directly from src/agents.ts filePolicy
+// Maps to agent YAML file-policy definitions
 export const PIPELINE_STAGES: PipelineStage[] = [
   {
     id: "draft",

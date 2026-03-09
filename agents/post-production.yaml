@@ -13,3 +13,11 @@ allowed-tools:
 skills:
   - music-finder
   - music-matcher
+file-policy:
+  readable:
+    - output/script.json
+    - editing/**
+    - audio/**
+  writable:
+    - editing/audio_plan.json
+    - audio/**

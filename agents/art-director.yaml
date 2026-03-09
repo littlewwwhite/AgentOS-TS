@@ -15,3 +15,10 @@ skills:
   - image-create
   - image-edit
   - kling-video-prompt
+file-policy:
+  readable:
+    - output/script.json
+    - draft/catalog.json
+    - assets/**
+  writable:
+    - assets/**

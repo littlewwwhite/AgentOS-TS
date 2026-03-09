@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildAgents, filePolicy } from "../src/agents.js";
-import type { SkillFrontmatter } from "../src/agents.js";
+import { buildAgents } from "../src/agents.js";
+import type { AgentConfig, SkillContent } from "../src/loader.js";
 
 describe("buildAgents", () => {
   const mockToolServers = {
@@ -9,80 +9,69 @@ describe("buildAgents", () => {
     video: {},
   };
 
-  it("builds agent definitions from skill frontmatter", () => {
-    const skills: Record<string, SkillFrontmatter & { prompt: string }> = {
+  it("builds agent definitions from AgentConfig + SkillContent", () => {
+    const agentConfigs: Record<string, AgentConfig> = {
       "test-agent": {
         name: "test-agent",
         description: "A test agent",
-        prompt: "Do testing things.",
         allowedTools: ["Read", "Write"],
         maxTurns: 15,
+        skills: ["test-skill"],
       },
     };
 
-    const agents = buildAgents(skills, mockToolServers);
+    const skillContents: Record<string, SkillContent> = {
+      "test-skill": {
+        prompt: "Do testing things.",
+        referencesDir: "/skills/test-skill",
+      },
+    };
+
+    const agents = buildAgents(agentConfigs, skillContents, mockToolServers);
 
     expect(agents["test-agent"]).toBeDefined();
     expect(agents["test-agent"].description).toBe("A test agent");
-    expect(agents["test-agent"].prompt).toBe("Do testing things.");
+    expect(agents["test-agent"].prompt).toContain("Do testing things.");
     expect(agents["test-agent"].tools).toEqual(["Read", "Write"]);
     expect(agents["test-agent"].maxTurns).toBe(15);
   });
 
   it("uses default maxTurns when not specified", () => {
-    const skills: Record<string, SkillFrontmatter & { prompt: string }> = {
+    const agentConfigs: Record<string, AgentConfig> = {
       "default-agent": {
         name: "default-agent",
         description: "Agent with defaults",
-        prompt: "Prompt.",
       },
     };
 
-    const agents = buildAgents(skills, mockToolServers);
+    const agents = buildAgents(agentConfigs, {}, mockToolServers);
     expect(agents["default-agent"].maxTurns).toBe(30);
   });
 
-  it("maps mcpServers from tool server registry", () => {
-    const skills: Record<string, SkillFrontmatter & { prompt: string }> = {
+  it("infers mcpServers from allowed-tools patterns", () => {
+    const agentConfigs: Record<string, AgentConfig> = {
       "media-agent": {
         name: "media-agent",
         description: "Media agent",
-        prompt: "Generate media.",
-        mcpServers: ["image", "video"],
+        allowedTools: ["mcp__image__generate_image", "mcp__video__generate_video"],
       },
     };
 
-    const agents = buildAgents(skills, mockToolServers);
-    expect(agents["media-agent"].mcpServers).toEqual({
-      image: {},
-      video: {},
-    });
-  });
-});
-
-describe("filePolicy", () => {
-  it("has policy for all expected agents", () => {
-    const expected = [
-      "script-writer",
-      "script-adapt",
-      "image-create",
-      "image-edit",
-      "video-create",
-      "video-review",
-      "music-finder",
-      "music-matcher",
-    ];
-    for (const name of expected) {
-      expect(filePolicy[name]).toBeDefined();
-      expect(filePolicy[name].readable.length).toBeGreaterThan(0);
-      expect(filePolicy[name].writable.length).toBeGreaterThan(0);
-    }
+    const agents = buildAgents(agentConfigs, {}, mockToolServers);
+    expect(agents["media-agent"].mcpServers).toEqual(
+      expect.arrayContaining(["image", "video"]),
+    );
   });
 
-  it("all policies have both readable and writable arrays", () => {
-    for (const [name, policy] of Object.entries(filePolicy)) {
-      expect(Array.isArray(policy.readable), `${name}.readable`).toBe(true);
-      expect(Array.isArray(policy.writable), `${name}.writable`).toBe(true);
-    }
+  it("injects workspace path into agent prompt", () => {
+    const agentConfigs: Record<string, AgentConfig> = {
+      "ws-agent": {
+        name: "ws-agent",
+        description: "Workspace agent",
+      },
+    };
+
+    const agents = buildAgents(agentConfigs, {}, mockToolServers, "/project/workspace");
+    expect(agents["ws-agent"].prompt).toContain("/project/workspace/");
   });
 });
