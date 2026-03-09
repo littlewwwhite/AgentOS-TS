@@ -19,7 +19,11 @@ export interface AgentDefinitionConfig {
   skills?: string[];
   maxTurns?: number;
   model?: AgentModelAlias;
+  configuredSkills?: string[];  // original skill names from agent config, for orchestrator routing
 }
+
+// Shared empty array — prevents platform skills from leaking into sub-agents
+const NO_SKILLS: string[] = Object.freeze([]) as string[];
 
 function resolveModelAlias(raw: string | undefined): AgentModelAlias | undefined {
   if (!raw) return undefined;
@@ -98,10 +102,12 @@ export function buildAgents(
       description: config.description,
       prompt: promptParts.join("\n\n"),
       tools: config.allowedTools,
-      disallowedTools: config.disallowedTools ?? [],
+      disallowedTools: [...(config.disallowedTools ?? []), "Skill"],
       mcpServers,
+      skills: NO_SKILLS,
       maxTurns: config.maxTurns ?? 30,
       model: resolveModelAlias(config.model),
+      configuredSkills: config.skills,
     };
   }
 

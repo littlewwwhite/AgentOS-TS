@@ -413,11 +413,18 @@ export async function buildOptions(
   };
 }
 
-function describeAgentList(agents: Record<string, { description: string }>): string {
+function describeAgentList(
+  agents: Record<string, { description: string; configuredSkills?: string[] }>,
+): string {
   const entries = Object.entries(agents);
   if (entries.length === 0) return "";
   return "## Sub-Agents (dispatch via Agent tool, subagent_type = name)\n" +
-    entries.map(([n, d]) => `- **${n}**: ${d.description}`).join("\n");
+    entries.map(([n, d]) => {
+      const skillTag = d.configuredSkills?.length
+        ? ` [skills: ${d.configuredSkills.join(", ")}]`
+        : "";
+      return `- **${n}**: ${d.description}${skillTag}`;
+    }).join("\n");
 }
 
 // ---------- Slash commands ----------

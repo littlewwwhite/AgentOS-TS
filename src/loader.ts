@@ -93,7 +93,11 @@ export async function loadSkillContents(skillsDir: string): Promise<Record<strin
 
     // Skill name = directory name
     const name = dir.name;
-    const prompt = await fs.readFile(skillFile, "utf-8");
+    let promptText = await fs.readFile(skillFile, "utf-8");
+
+    // Translate ${CLAUDE_SKILL_DIR} and hardcoded .claude/skills/<name>/ paths
+    promptText = promptText.replaceAll("${CLAUDE_SKILL_DIR}", skillDir);
+    promptText = promptText.replace(/\.claude\/skills\/[^/\s]+\//g, skillDir + "/");
 
     // Collect subdirectory names for the reference path hint
     const subDirs: string[] = [];
@@ -104,12 +108,28 @@ export async function loadSkillContents(skillsDir: string): Promise<Record<strin
       } catch { /* skip missing */ }
     }
 
+    // Detect scripts/ directory for executable skill workflows
+    let scriptsHint = "";
+    try {
+      const scriptEntries = await fs.readdir(path.join(skillDir, "scripts"));
+      if (scriptEntries.length > 0) {
+        scriptsHint = `\n\n## Skill Scripts Path\n` +
+          `Scripts for this skill: ${skillDir}/scripts/\n` +
+          `If documentation references ".claude/skills/..." paths, use the path above instead.`;
+      }
+    } catch { /* no scripts dir */ }
+
+    // Build final prompt with reference materials and scripts hint
+    let finalPrompt = promptText;
+    if (subDirs.length > 0) {
+      finalPrompt += `\n\n## Reference Materials\n` +
+        `Detailed references are available on disk. Use the Read tool when needed:\n` +
+        subDirs.map(d => `- ${skillDir}/${d}/`).join("\n");
+    }
+    finalPrompt += scriptsHint;
+
     skills[name] = {
-      prompt: subDirs.length > 0
-        ? prompt + `\n\n## Reference Materials\n` +
-          `Detailed references are available on disk. Use the Read tool when needed:\n` +
-          subDirs.map(d => `- ${skillDir}/${d}/`).join("\n")
-        : prompt,
+      prompt: finalPrompt,
       referencesDir: skillDir,
     };
   }

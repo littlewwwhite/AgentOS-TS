@@ -12,6 +12,7 @@ allowed-tools:
   - mcp__storage__save_asset
   - mcp__storage__list_assets
 skills:
+  - asset-gen
   - image-create
   - image-edit
   - kling-video-prompt
