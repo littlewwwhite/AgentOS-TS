@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Glob",
+      "Grep"
+    ],
+    "deny": [
+      "Bash(*)",
+      "Agent(*)",
+      "Skill(*)"
+    ]
+  }
+}

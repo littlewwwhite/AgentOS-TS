@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Bash(ls *)",
+      "Bash(ffprobe *)",
+      "Write(production/**)",
+      "mcp__video__generate_video",
+      "mcp__video__check_video_status",
+      "mcp__storage__read_json",
+      "mcp__storage__list_assets"
+    ],
+    "deny": [
+      "Write(../*)",
+      "Write(draft/**)",
+      "Write(assets/**)",
+      "Agent(*)",
+      "Skill(*)"
+    ]
+  }
+}

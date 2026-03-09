@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write(draft/**)",
+      "Write(output/**)",
+      "mcp__storage__write_json",
+      "mcp__storage__read_json",
+      "mcp__storage__list_assets",
+      "mcp__script__parse_script"
+    ],
+    "deny": [
+      "Bash(*)",
+      "Write(../*)",
+      "Write(assets/**)",
+      "Agent(*)",
+      "Skill(*)"
+    ]
+  }
+}

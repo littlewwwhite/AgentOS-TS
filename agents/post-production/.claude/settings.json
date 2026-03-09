@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Bash(ls *)",
+      "Bash(ffmpeg *)",
+      "Write(audio/**)",
+      "Write(editing/**)",
+      "mcp__audio__generate_music",
+      "mcp__audio__generate_sfx",
+      "mcp__storage__read_json",
+      "mcp__storage__write_json",
+      "mcp__storage__list_assets"
+    ],
+    "deny": [
+      "Write(../*)",
+      "Write(draft/**)",
+      "Write(assets/**)",
+      "Agent(*)",
+      "Skill(*)"
+    ]
+  }
+}
