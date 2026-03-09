@@ -13,10 +13,10 @@ import {
   FilmSlate,
   MusicNote,
   Code,
+  CircleNotch,
 } from "@phosphor-icons/react";
 import { useStudioStore } from "@/stores/studio";
 import { inferContentType, type ContentType } from "@/lib/types";
-import { MOCK_JSON_CONTENT } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -43,7 +43,7 @@ function ActionToolbar({
   path: string;
 }) {
   return (
-    <div className="flex items-center gap-1 border-b border-border bg-card/40 px-3 py-1.5">
+    <div className="flex items-center gap-1 border-b border-border bg-card px-3 py-1.5">
       <div className="flex items-center gap-1.5 text-muted-foreground">
         <ContentIcon type={type} />
         <span className="font-mono text-[12px]">{path}</span>
@@ -62,7 +62,7 @@ function ActionToolbar({
       )}
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon-xs">
+          <Button variant="ghost" size="icon-xs" aria-label="Copy to clipboard">
             <Copy weight="bold" className="size-3.5" />
           </Button>
         </TooltipTrigger>
@@ -82,40 +82,12 @@ function JsonViewer({ content }: { content: string }) {
   );
 }
 
-function MarkdownViewer(_props: { path: string }) {
-  const mockContent = `# Episode 01 - New Beginnings
-
-## Scene 1: Office Lobby
-**Location:** Startup Incubator, Main Hall
-**Time:** Morning
-
-### Actions
-
-**CHEN WEI** walks through the glass doors, carrying a leather briefcase.
-His eyes scan the open-plan workspace with a mixture of ambition and uncertainty.
-
-> *Inner thought: Three years of savings, one shot at making this work.*
-
-**LIN JIA** (from behind a standing desk):
-"You must be the new tenant in Suite 4B. Coffee machine is broken,
-but the WiFi password is on the whiteboard."
-
----
-
-## Scene 2: Conference Room
-**Location:** Suite 4B, Small Meeting Room
-**Time:** Late Morning
-
-**ZHANG MING** spreads financial documents across the table.
-
-**ZHANG MING:**
-"The runway is exactly 47 days. Not 47 weeks. Days."
-`;
+function MarkdownViewer({ content }: { content: string }) {
   return (
     <ScrollArea className="flex-1">
       <div className="p-6">
-        <div className="prose prose-invert mx-auto max-w-[65ch] text-[14px] leading-relaxed text-foreground">
-          <pre className="whitespace-pre-wrap font-sans">{mockContent}</pre>
+        <div className="prose mx-auto max-w-[65ch] text-[14px] leading-relaxed text-foreground">
+          <pre className="whitespace-pre-wrap font-sans">{content}</pre>
         </div>
       </div>
     </ScrollArea>
@@ -123,19 +95,27 @@ but the WiFi password is on the whiteboard."
 }
 
 function ImageViewer(_props: { path: string }) {
+  const characters = [
+    { name: "chenwei", span: "col-span-3" },
+    { name: "linjia", span: "col-span-2" },
+    { name: "zhangming", span: "col-span-2" },
+    { name: "suyan", span: "col-span-3" },
+  ];
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-      <div className="grid max-w-2xl grid-cols-2 gap-4">
-        {["chenwei", "linjia", "zhangming", "suyan"].map((name) => (
+      <div className="grid w-full max-w-2xl grid-cols-5 gap-3">
+        {characters.map(({ name, span }) => (
           <div
             key={name}
             className={cn(
-              "group relative aspect-[3/4] overflow-hidden rounded-lg border border-border bg-secondary",
-              "transition-all hover:border-ring/50"
+              span,
+              "group relative aspect-[4/5] overflow-hidden rounded-lg border border-border bg-secondary",
+              "transition-all duration-200 hover:border-ring/50"
             )}
           >
             <div className="flex h-full items-center justify-center">
-              <ImageSquare weight="thin" className="size-16 text-muted-foreground" />
+              <ImageSquare weight="thin" className="size-12 text-muted-foreground transition-transform duration-300 group-hover:scale-105" />
             </div>
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/80 to-transparent px-3 py-2">
               <span className="font-mono text-[11px] text-muted-foreground">
@@ -174,18 +154,24 @@ function VideoViewer(_props: { path: string }) {
 
 function EmptyCanvas() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
-      <FileText weight="thin" className="size-16" />
-      <p className="text-sm">Select a file to preview</p>
-      <p className="max-w-[40ch] text-center text-xs leading-relaxed">
-        Use the Pipeline Explorer to browse workspace files, or start a conversation to generate content.
-      </p>
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-secondary">
+        <FileText weight="thin" className="size-8" />
+      </div>
+      <div className="space-y-1.5 text-center">
+        <p className="text-sm font-medium text-foreground/80">No file selected</p>
+        <p className="max-w-[36ch] text-xs leading-relaxed">
+          Browse the pipeline to preview files, or start a conversation to generate new content.
+        </p>
+      </div>
     </div>
   );
 }
 
 export function ContentCanvas() {
   const selectedPath = useStudioStore((s) => s.selectedPath);
+  const fileContent = useStudioStore((s) => s.fileContent);
+  const fileLoading = useStudioStore((s) => s.fileLoading);
 
   if (!selectedPath) {
     return (
@@ -197,14 +183,25 @@ export function ContentCanvas() {
 
   const contentType = inferContentType(selectedPath);
 
+  if (fileLoading) {
+    return (
+      <div className="flex h-full flex-col bg-background">
+        <ActionToolbar type={contentType} path={selectedPath} />
+        <div className="flex flex-1 items-center justify-center">
+          <CircleNotch weight="bold" className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
   const viewers: Record<ContentType, React.ReactNode> = {
-    json: <JsonViewer content={MOCK_JSON_CONTENT} />,
-    markdown: <MarkdownViewer path={selectedPath} />,
+    json: <JsonViewer content={fileContent ?? "{}"} />,
+    markdown: <MarkdownViewer content={fileContent ?? ""} />,
     image: <ImageViewer path={selectedPath} />,
     video: <VideoViewer path={selectedPath} />,
     audio: <VideoViewer path={selectedPath} />,
-    text: <MarkdownViewer path={selectedPath} />,
-    unknown: <JsonViewer content={`// ${selectedPath}\n// Content preview not available`} />,
+    text: <JsonViewer content={fileContent ?? ""} />,
+    unknown: <JsonViewer content={fileContent ?? `// ${selectedPath}\n// Content not available`} />,
   };
 
   return (
