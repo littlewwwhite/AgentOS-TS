@@ -8,8 +8,8 @@ import type { SandboxCommand, SandboxEvent } from "./protocol.js";
 // ---------- Types ----------
 
 export interface SandboxClientOptions {
-  /** E2B template ID (from `e2b template build` or E2B dashboard) */
-  templateId: string;
+  /** E2B template ID (defaults to "agentos-sandbox") */
+  templateId?: string;
   /** E2B API key (defaults to E2B_API_KEY env var) */
   apiKey?: string;
   /** Sandbox timeout in ms (default: 5 min) */
@@ -20,6 +20,8 @@ export interface SandboxClientOptions {
   onStderr?: (data: string) => void;
   /** Start command override (defaults to standard sandbox entrypoint) */
   startCommand?: string;
+  /** Environment variables passed to the sandbox process */
+  envs?: Record<string, string>;
 }
 
 interface CommandHandle {
@@ -31,7 +33,7 @@ interface CommandHandle {
 // ---------- Client ----------
 
 export class SandboxClient {
-  private sandbox: Sandbox | null = null;
+  private _sandbox: Sandbox | null = null;
   private handle: CommandHandle | null = null;
   private lineBuffer = "";
   private eventCb: ((event: SandboxEvent) => void) | null;
@@ -49,28 +51,54 @@ export class SandboxClient {
    * The process runs in background mode so we get a PID for stdin/stdout.
    */
   async start(): Promise<void> {
-    this.sandbox = await Sandbox.create(this.opts.templateId, {
-      apiKey: this.opts.apiKey,
-      timeoutMs: this.opts.timeoutMs ?? 300_000,
-    });
+    this._sandbox = await Sandbox.create(
+      this.opts.templateId ?? "agentos-sandbox",
+      {
+        apiKey: this.opts.apiKey,
+        timeoutMs: this.opts.timeoutMs ?? 300_000,
+      },
+    );
 
     const cmd =
       this.opts.startCommand ??
-      "bun /app/dist/sandbox.js /app/workspace --skills /app/skills";
+      "bun /home/user/app/dist/sandbox.js /home/user/app/workspace --skills /home/user/app/skills";
 
     // background: true → returns CommandHandle immediately
     // stdin: true → keeps stdin open so sendStdin() works
-    this.handle = (await this.sandbox.commands.run(cmd, {
+    this.handle = (await this._sandbox.commands.run(cmd, {
       background: true,
       stdin: true,
+      envs: this.opts.envs,
+      timeoutMs: 0,
       onStdout: (data: string) => this.handleStdout(data),
       onStderr: (data: string) => this.stderrCb?.(data),
     })) as unknown as CommandHandle;
+
+    // Monitor process exit — clear handle and notify on unexpected death
+    this.handle.wait().then((result: unknown) => {
+      if (this.handle) {
+        this.handle = null;
+        const detail = result ? ` (${JSON.stringify(result)})` : "";
+        this.stderrCb?.(`[exit] Sandbox agent process exited cleanly${detail}`);
+        this.eventCb?.({ type: "error", message: `Sandbox agent process exited${detail}` } as SandboxEvent);
+        this.eventCb?.({ type: "status", state: "disconnected" } as SandboxEvent);
+      }
+    }).catch((err: unknown) => {
+      if (this.handle) {
+        this.handle = null;
+        const msg = err instanceof Error ? err.message : JSON.stringify(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        this.stderrCb?.(`[crash] Sandbox agent process exited unexpectedly: ${msg}`);
+        if (stack) this.stderrCb?.(`[crash-stack] ${stack}`);
+        this.eventCb?.({ type: "error", message: `Sandbox agent process exited unexpectedly: ${msg}` } as SandboxEvent);
+        this.eventCb?.({ type: "status", state: "disconnected" } as SandboxEvent);
+      }
+    });
   }
 
   /** Connect to an already-running sandbox by ID */
   async connect(sandboxId: string): Promise<void> {
-    this.sandbox = await Sandbox.connect(sandboxId, {
+    this._sandbox = await Sandbox.connect(sandboxId, {
       apiKey: this.opts.apiKey,
     });
   }
@@ -80,9 +108,9 @@ export class SandboxClient {
       await this.handle.kill().catch(() => {});
       this.handle = null;
     }
-    if (this.sandbox) {
-      await this.sandbox.kill().catch(() => {});
-      this.sandbox = null;
+    if (this._sandbox) {
+      await this._sandbox.kill().catch(() => {});
+      this._sandbox = null;
     }
     this.lineBuffer = "";
   }
@@ -90,10 +118,10 @@ export class SandboxClient {
   // ---------- Commands ----------
 
   async sendCommand(cmd: SandboxCommand): Promise<void> {
-    if (!this.sandbox || !this.handle) {
+    if (!this._sandbox || !this.handle) {
       throw new Error("Sandbox not started — call start() first");
     }
-    await this.sandbox.commands.sendStdin(
+    await this._sandbox.commands.sendStdin(
       this.handle.pid,
       JSON.stringify(cmd) + "\n",
     );
@@ -115,14 +143,34 @@ export class SandboxClient {
     await this.sendCommand({ cmd: "list_skills" });
   }
 
+  // ---------- File System ----------
+
+  async listFiles(dirPath: string) {
+    if (!this._sandbox) throw new Error("Sandbox not started");
+    return this._sandbox.files.list(dirPath);
+  }
+
+  async readFile(filePath: string) {
+    if (!this._sandbox) throw new Error("Sandbox not started");
+    return this._sandbox.files.read(filePath);
+  }
+
   // ---------- Getters ----------
 
+  get sandbox(): Sandbox | null {
+    return this._sandbox;
+  }
+
   get sandboxId(): string | null {
-    return this.sandbox?.sandboxId ?? null;
+    return this._sandbox?.sandboxId ?? null;
   }
 
   get pid(): number | null {
     return this.handle?.pid ?? null;
+  }
+
+  get isConnected(): boolean {
+    return this._sandbox !== null && this.handle !== null;
   }
 
   // ---------- Internal ----------
