@@ -2,6 +2,7 @@
 // output: WorkerTaskConfig and ParallelExecutionOptions types
 // pos: Contracts — configuration for parallel task execution
 
+/** @planned — parallel batch execution for multi-agent pipelines */
 export interface WorkerTaskConfig {
   taskId: string;
   agent?: string;

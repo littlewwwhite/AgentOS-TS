@@ -1,6 +1,6 @@
 // input: WorkerTaskConfig[], option factory function
 // output: ParallelExecutionSummary with per-task results
-// pos: Concurrency engine — runs isolated SDK sessions in parallel with semaphore control
+// pos: @planned — Concurrency engine — runs isolated SDK sessions in parallel with semaphore control
 
 import fs from "node:fs/promises";
 import path from "node:path";
