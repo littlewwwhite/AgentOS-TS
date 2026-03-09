@@ -1,0 +1,3 @@
+[submodule "skills"]
+	path = skills
+	url = ssh://git@gitcode.lingjingai.cn:2424/backend/skills.git
