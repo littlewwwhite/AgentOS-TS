@@ -109,13 +109,14 @@ function renderTodoList(inputJson: string, indent: string): void {
 function formatToolLabel(name: string, inputJson: string, rootPath?: string): string {
   try {
     const input = JSON.parse(inputJson);
-    // Bash: prefer description field, fallback to truncated command
+    // Bash: prefer description field, fallback to path-relativized truncated command
     if (name === "Bash") {
       if (typeof input.description === "string" && input.description.length > 0) {
         return `Bash(${input.description})`;
       }
       if (typeof input.command === "string") {
-        const cmd = input.command.trim();
+        let cmd = input.command.trim();
+        if (rootPath) cmd = cmd.replaceAll(rootPath + "/", "").replaceAll(rootPath, ".");
         const short = cmd.length > 60 ? cmd.slice(0, 57) + "…" : cmd;
         return `Bash(${short})`;
       }
@@ -288,7 +289,6 @@ async function sendAndStream(
           ensureNewline();
           console.log(`  ${chalk.dim("⎿")}  ${text}`);
         }
-        lastDisplayedToolName = null;
         break;
       }
 
@@ -340,7 +340,6 @@ async function sendAndStream(
             ensureNewline();
             console.log(`  ${chalk.dim("⎿")}  ${text}`);
           }
-          lastDisplayedToolName = null;
         } else if (t && t !== "user" && t !== "keep_alive") {
           console.log(chalk.dim(`  [debug] unhandled msg.type: ${t}`));
         }
