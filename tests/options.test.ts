@@ -1,0 +1,100 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Mock all external dependencies before importing the module under test
+vi.mock("../src/loader.js", () => ({
+  loadAgentConfigs: vi.fn().mockResolvedValue({}),
+  loadSkillContents: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("../src/agents.js", () => ({
+  buildAgents: vi.fn().mockReturnValue({
+    "script-writer": { description: "Writes scripts" },
+  }),
+}));
+
+vi.mock("../src/tools/index.js", () => ({
+  toolServers: {},
+}));
+
+vi.mock("../src/hooks/index.js", () => ({
+  buildSandboxHooks: vi.fn().mockReturnValue({
+    PreToolUse: [],
+    PostToolUse: [],
+  }),
+}));
+
+import { buildOptions, describeAgentList, describeWorkspace, WORKSPACE_DIRS } from "../src/options.js";
+
+describe("buildOptions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns SDK-compatible options with required fields", async () => {
+    const opts = await buildOptions("/tmp/test-ws", "agents", "skills");
+
+    expect(opts).toHaveProperty("agents");
+    expect(opts).toHaveProperty("mcpServers");
+    expect(opts).toHaveProperty("allowedTools");
+    expect(opts).toHaveProperty("hooks");
+    expect(opts).toHaveProperty("systemPrompt");
+    expect(opts).toHaveProperty("cwd", "/tmp/test-ws");
+    expect(opts).toHaveProperty("permissionMode", "acceptEdits");
+    expect(opts).toHaveProperty("includePartialMessages", true);
+  });
+
+  it("does NOT include canUseTool (sandbox replaces permissions)", async () => {
+    const opts = await buildOptions("/tmp/test-ws", "agents", "skills");
+    expect(opts).not.toHaveProperty("canUseTool");
+  });
+
+  it("uses buildSandboxHooks instead of buildHooks", async () => {
+    const { buildSandboxHooks } = await import("../src/hooks/index.js");
+    await buildOptions("/tmp/test-ws", "agents", "skills");
+    expect(buildSandboxHooks).toHaveBeenCalled();
+  });
+
+  it("includes agent list in systemPrompt", async () => {
+    const opts = await buildOptions("/tmp/test-ws", "agents", "skills");
+    const prompt = opts.systemPrompt as { append: string };
+    expect(prompt.append).toContain("Sub-Agents");
+    expect(prompt.append).toContain("script-writer");
+  });
+
+  it("passes through model, resume, continueConversation", async () => {
+    const opts = await buildOptions("/tmp/test-ws", "agents", "skills", "opus", "sess-123", true);
+    expect(opts.model).toBe("opus");
+    expect(opts.resume).toBe("sess-123");
+    expect(opts.continueConversation).toBe(true);
+  });
+
+  it("defaults continueConversation to false", async () => {
+    const opts = await buildOptions("/tmp/test-ws", "agents", "skills");
+    expect(opts.continueConversation).toBe(false);
+  });
+});
+
+describe("describeAgentList", () => {
+  it("returns empty string for no agents", () => {
+    expect(describeAgentList({})).toBe("");
+  });
+
+  it("formats agent entries", () => {
+    const result = describeAgentList({
+      writer: { description: "Writes content" },
+      editor: { description: "Edits content" },
+    });
+    expect(result).toContain("writer");
+    expect(result).toContain("Writes content");
+    expect(result).toContain("editor");
+    expect(result).toContain("Sub-Agents");
+  });
+});
+
+describe("WORKSPACE_DIRS", () => {
+  it("includes expected directories", () => {
+    expect(WORKSPACE_DIRS).toContain("draft");
+    expect(WORKSPACE_DIRS).toContain("output");
+    expect(WORKSPACE_DIRS).toContain("assets");
+  });
+});

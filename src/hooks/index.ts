@@ -1,5 +1,5 @@
 // input: Individual hook modules + workspace root path
-// output: hooks config for ClaudeAgentOptions.hooks
+// output: hooks config for ClaudeAgentOptions.hooks (REPL or sandbox mode)
 // pos: Registry — assembles all hooks into SDK-compatible structure
 
 import { schemaValidator } from "./schema-validator.js";
@@ -19,6 +19,7 @@ function makePreCompactGuide(workspaceRoot?: string) {
   });
 }
 
+/** @deprecated Use buildSandboxHooks() for E2B sandbox mode */
 export function buildHooks(workspaceRoot?: string) {
   return {
     PreToolUse: [
@@ -29,5 +30,17 @@ export function buildHooks(workspaceRoot?: string) {
     PostToolUse: [{ hooks: [logToolResult] }],
     UserPromptSubmit: [{ hooks: [todoNag] }],
     PreCompact: [{ hooks: [makePreCompactGuide(workspaceRoot)] }],
+  };
+}
+
+/** Sandbox-only hooks: schema validation + budget guard + tool logger (no REPL concerns) */
+export function buildSandboxHooks() {
+  return {
+    PreToolUse: [
+      { hooks: [schemaValidator] },
+      { hooks: [costGuard] },
+      { hooks: [logToolIntent] },
+    ],
+    PostToolUse: [{ hooks: [logToolResult] }],
   };
 }

@@ -9,15 +9,10 @@ import chalk from "chalk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
-import { buildAgents } from "./agents.js";
-import { buildHooks } from "./hooks/index.js";
-import { loadAgentConfigs, loadSkillContents } from "./loader.js";
-import { createCanUseTool } from "./permissions.js";
-import type { AgentFilePolicy } from "./permissions.js";
-import { toolServers } from "./tools/index.js";
+export { buildOptions, describeWorkspace, describeAgentList, WORKSPACE_DIRS } from "./options.js";
+import { buildOptions } from "./options.js";
 
 const VERSION = "0.1.0";
-const WORKSPACE_DIRS = ["draft", "draft/episodes", "assets", "production", "output"];
 const SESSION_FILE = ".session";
 const AT_FILE_RE = /@(\S+)/g;
 
@@ -33,30 +28,6 @@ async function readText(filePath: string): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-async function describeWorkspace(projectPath: string): Promise<string> {
-  const lines = ["## Workspace"];
-  try {
-    const entries = await fs.readdir(projectPath, { withFileTypes: true });
-    const rootFiles = entries.filter((e) => e.isFile() && !e.name.startsWith(".")).map((e) => e.name).sort();
-    if (rootFiles.length > 0) lines.push(`  ${rootFiles.join(", ")}`);
-    for (const dir of WORKSPACE_DIRS) {
-      try {
-        const children = (await fs.readdir(path.join(projectPath, dir))).filter((f) => !f.startsWith(".")).sort();
-        lines.push(children.length > 0 ? `  ${dir}/: ${children.join(", ")}` : `  ${dir}/: (empty)`);
-      } catch { /* skip missing dirs */ }
-    }
-  } catch {
-    lines.push("  (empty)");
-  }
-  // List shared source materials
-  try {
-    const dataDir = path.resolve(projectPath, "../data");
-    const sources = (await fs.readdir(dataDir)).filter((f) => !f.startsWith(".")).sort();
-    if (sources.length > 0) lines.push(`  ../data/: ${sources.join(", ")}`);
-  } catch { /* no data dir */ }
-  return lines.join("\n");
 }
 
 async function expandAtMentions(text: string, projectPath: string): Promise<string> {
@@ -348,83 +319,6 @@ async function sendAndStream(
     }
   }
   return resultSessionId;
-}
-
-// ---------- Build SDK options ----------
-
-export async function buildOptions(
-  projectPath: string,
-  agentsDir: string,
-  skillsDir: string,
-  model?: string,
-  resume?: string,
-  continueConversation = false,
-) {
-  const agentConfigs = await loadAgentConfigs(agentsDir);
-  const skillContents = await loadSkillContents(skillsDir);
-  const agents = buildAgents(agentConfigs, skillContents, toolServers, projectPath);
-
-  // Extract file policies from agent configs
-  const policies: Record<string, AgentFilePolicy> = {};
-  for (const [name, config] of Object.entries(agentConfigs)) {
-    if (config.filePolicy) policies[name] = config.filePolicy;
-  }
-
-  return {
-    agents,
-    mcpServers: toolServers,
-    allowedTools: [
-      "Agent", "TodoWrite",
-      "Read", "Write", "Bash", "Glob", "Grep",
-    ],
-    hooks: buildHooks(projectPath),
-    canUseTool: createCanUseTool(projectPath, policies),
-    systemPrompt: {
-      type: "preset",
-      preset: "claude_code",
-      append:
-        "You are a video production orchestrator.\n" +
-        "Your ONLY job is to understand user intent and dispatch to the right sub-agent.\n" +
-        "Do NOT perform domain work (writing scripts, generating images, etc.) yourself.\n\n" +
-        `Project workspace: ${projectPath}/\n` +
-        `Source materials: ${path.resolve(projectPath, "../data")}/\n` +
-        `${await describeWorkspace(projectPath)}\n\n` +
-        `${describeAgentList(agents)}\n\n` +
-        "## Rules\n" +
-        "- Dispatch domain tasks to the appropriate sub-agent via the Agent tool\n" +
-        "- All content in Chinese (简体中文), structural keys in English\n" +
-        "- Use TodoWrite to show progress on multi-step tasks\n" +
-        "- When user references a source file (e.g. '测0.txt'), copy it from source materials to workspace as source.txt, then dispatch\n\n" +
-        "## Planning Requirement\n" +
-        "Before dispatching any multi-step task:\n" +
-        "1. Use TodoWrite to outline the plan\n" +
-        "2. Dispatch to the sub-agent\n" +
-        "3. Update TodoWrite as steps complete",
-    },
-    betas: ["context-1m-2025-08-07"],
-    settingSources: ["project"],
-    cwd: projectPath,
-    permissionMode: "acceptEdits",
-    includePartialMessages: true,
-    maxBudgetUsd: 10.0,
-    model,
-    resume,
-    continueConversation,
-  };
-}
-
-function describeAgentList(
-  agents: Record<string, { description: string; configuredSkills?: string[] }>,
-): string {
-  const entries = Object.entries(agents);
-  if (entries.length === 0) return "";
-  return "## Sub-Agents (dispatch via Agent tool, subagent_type = name)\n" +
-    entries.map(([n, d]) => {
-      const skillTag = d.configuredSkills?.length
-        ? ` [skills: ${d.configuredSkills.join(", ")}]`
-        : "";
-      return `- **${n}**: ${d.description}${skillTag}`;
-    }).join("\n");
 }
 
 // ---------- Slash commands ----------
