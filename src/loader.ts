@@ -5,7 +5,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import yaml from "yaml";
-import type { AgentFilePolicy } from "./permissions.js";
 
 // --- Agent config loading (agents/*.yaml) ---
 
@@ -18,7 +17,6 @@ export interface AgentConfig {
   skills?: string[];
   maxTurns?: number;
   model?: string;
-  filePolicy?: AgentFilePolicy;
 }
 
 export async function loadAgentConfigs(agentsDir: string): Promise<Record<string, AgentConfig>> {
@@ -39,10 +37,6 @@ export async function loadAgentConfigs(agentsDir: string): Promise<Record<string
     const name = config.name as string | undefined;
     if (!name) continue;
 
-    const fp = config["file-policy"] as
-      | { readable?: string[]; writable?: string[] }
-      | undefined;
-
     agents[name] = {
       name,
       description: (config.description as string) ?? "",
@@ -52,10 +46,6 @@ export async function loadAgentConfigs(agentsDir: string): Promise<Record<string
       skills: (config.skills as string[]) ?? undefined,
       maxTurns: (config["max-turns"] as number) ?? undefined,
       model: (config.model as string) ?? undefined,
-      filePolicy:
-        fp && fp.readable && fp.writable
-          ? { readable: fp.readable, writable: fp.writable }
-          : undefined,
     };
   }
 

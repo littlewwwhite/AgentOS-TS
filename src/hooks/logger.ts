@@ -2,7 +2,6 @@
 // output: Console log lines showing tool intent and results
 // pos: Observability — makes every tool call visible in the terminal
 
-import { validateBashCommand } from "../security.js";
 import type { EventHook, PostToolUseHook, PreToolUseHook } from "./types.js";
 
 // Tools whose results stay isolated (subagent context must not bleed through)
@@ -47,14 +46,6 @@ export const logToolIntent: PreToolUseHook = async (input) => {
 
   if (tool_name === "Bash") {
     const cmd = ((tool_input.command as string) ?? "").replace(/\n/g, "; ");
-    const [isSafe, message] = validateBashCommand(cmd);
-    if (!isSafe) {
-      console.log(`\n  X ${message}`);
-      return { permissionDecision: "deny", reason: message };
-    }
-    if (message.includes("Warning")) {
-      console.log(`\n  ! ${message}`);
-    }
     console.log(`\n  * Bash(${cmd.slice(0, 120)})`);
     return {};
   }

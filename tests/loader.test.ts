@@ -39,52 +39,6 @@ describe("loadAgentConfigs", () => {
     await fs.rm(tmpDir, { recursive: true });
   });
 
-  it("parses file-policy from YAML", async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "loader-policy-"));
-
-    await fs.writeFile(
-      path.join(tmpDir, "restricted-agent.yaml"),
-      [
-        "name: restricted-agent",
-        'description: "An agent with file policy"',
-        "file-policy:",
-        "  readable:",
-        "    - output/script.json",
-        "    - assets/**",
-        "  writable:",
-        "    - assets/**",
-      ].join("\n"),
-      "utf-8",
-    );
-
-    const configs = await loadAgentConfigs(tmpDir);
-
-    expect(configs["restricted-agent"].filePolicy).toBeDefined();
-    expect(configs["restricted-agent"].filePolicy!.readable).toEqual([
-      "output/script.json",
-      "assets/**",
-    ]);
-    expect(configs["restricted-agent"].filePolicy!.writable).toEqual(["assets/**"]);
-
-    await fs.rm(tmpDir, { recursive: true });
-  });
-
-  it("returns undefined filePolicy when not specified", async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "loader-nopolicy-"));
-
-    await fs.writeFile(
-      path.join(tmpDir, "free-agent.yaml"),
-      "name: free-agent\ndescription: No restrictions\n",
-      "utf-8",
-    );
-
-    const configs = await loadAgentConfigs(tmpDir);
-
-    expect(configs["free-agent"].filePolicy).toBeUndefined();
-
-    await fs.rm(tmpDir, { recursive: true });
-  });
-
   it("skips files without name", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "loader-noname-"));
 
