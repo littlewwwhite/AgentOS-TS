@@ -52,7 +52,7 @@ export function describeAgentList(
 export async function buildOptions(
   projectPath: string,
   agentsDir: string,
-  skillsDir: string,
+  _skillsDir: string,
   model?: string,
   resume?: string,
   continueConversation = false,
