@@ -95,8 +95,11 @@ export async function loadSkillContents(skillsDir: string): Promise<Record<strin
     const name = dir.name;
     let promptText = await fs.readFile(skillFile, "utf-8");
 
-    // Translate ${CLAUDE_SKILL_DIR} and hardcoded .claude/skills/<name>/ paths
+    // Translate all Claude Code skill path variants to the actual skill directory
+    // Covers: ${CLAUDE_SKILL_DIR}, ~/.claude/skills/<x>/, $HOME/.claude/skills/<x>/, .claude/skills/<x>/
     promptText = promptText.replaceAll("${CLAUDE_SKILL_DIR}", skillDir);
+    promptText = promptText.replace(/~\/\.claude\/skills\/[^/\s]+\//g, skillDir + "/");
+    promptText = promptText.replace(/\$HOME\/\.claude\/skills\/[^/\s]+\//g, skillDir + "/");
     promptText = promptText.replace(/\.claude\/skills\/[^/\s]+\//g, skillDir + "/");
 
     // Collect subdirectory names for the reference path hint
