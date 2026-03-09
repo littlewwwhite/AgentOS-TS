@@ -67,6 +67,14 @@ export type AgentExitedEvent = EventBase & {
   type: "agent_exited";
   agent: string;  // required
 };
+export type HistoryEvent = EventBase & {
+  type: "history";
+  messages: Array<{
+    role: "user" | "assistant";
+    content: string;
+    timestamp?: number;
+  }>;
+};
 
 export type SandboxEvent =
   | ReadyEvent
@@ -78,7 +86,8 @@ export type SandboxEvent =
   | StatusEvent
   | SkillsEvent
   | AgentEnteredEvent
-  | AgentExitedEvent;
+  | AgentExitedEvent
+  | HistoryEvent;
 
 // ---------- Natural language agent entry ----------
 
