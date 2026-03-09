@@ -1,6 +1,6 @@
 // input: .env file on disk
 // output: parsed key-value pairs from .env
-// pos: Shared utility — single .env parser used by server.ts and test harness
+// pos: Shared utility — single .env parser used by sandbox.ts and test harness
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

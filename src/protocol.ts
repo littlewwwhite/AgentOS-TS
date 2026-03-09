@@ -1,6 +1,6 @@
 // input: None (pure type definitions)
 // output: SandboxCommand, SandboxEvent types + emit/parse/matchEnterAgent helpers
-// pos: Protocol contract — shared between sandbox.ts, server.ts, and REPL layers
+// pos: Protocol contract — shared between sandbox.ts and REPL layers
 
 // ---------- Commands (stdin → sandbox) ----------
 
