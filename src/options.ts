@@ -36,11 +36,18 @@ export async function describeWorkspace(projectPath: string): Promise<string> {
   return lines.join("\n");
 }
 
-export function describeAgentList(agents: Record<string, { description: string }>): string {
+export function describeAgentList(
+  agents: Record<string, { description: string; configuredSkills?: string[] }>,
+): string {
   const entries = Object.entries(agents);
   if (entries.length === 0) return "";
   return "## Sub-Agents (dispatch via Agent tool, subagent_type = name)\n" +
-    entries.map(([n, d]) => `- **${n}**: ${d.description}`).join("\n");
+    entries.map(([n, d]) => {
+      const skillTag = d.configuredSkills?.length
+        ? ` [skills: ${d.configuredSkills.join(", ")}]`
+        : "";
+      return `- **${n}**: ${d.description}${skillTag}`;
+    }).join("\n");
 }
 
 export async function buildOptions(
@@ -74,8 +81,11 @@ export async function buildOptions(
         `Source materials: ${path.resolve(projectPath, "../data")}/\n` +
         `${await describeWorkspace(projectPath)}\n\n` +
         `${describeAgentList(agents)}\n\n` +
-        "## Rules\n" +
+        "## Dispatch Rules (STRICT)\n" +
         "- Dispatch domain tasks to the appropriate sub-agent via the Agent tool\n" +
+        "- If user mentions a skill name, map it to the owning agent via [skills: ...] tags above\n" +
+        "- NEVER read files under skills/ directory or run Python scripts directly\n" +
+        "- NEVER perform domain work yourself — always delegate to the owning sub-agent\n" +
         "- All content in Chinese (简体中文), structural keys in English\n" +
         "- Use TodoWrite to show progress on multi-step tasks\n" +
         "- When user references a source file (e.g. '测0.txt'), copy it from source materials to workspace as source.txt, then dispatch\n\n" +
