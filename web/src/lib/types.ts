@@ -66,6 +66,21 @@ export const PIPELINE_STAGES: PipelineStage[] = [
   },
 ];
 
+// ---------- Sandbox Events (SSE → frontend) ----------
+
+export type SandboxEvent =
+  | { type: "ready"; skills: string[] }
+  | { type: "text"; text: string }
+  | { type: "tool_use"; tool: string; id: string }
+  | { type: "result"; cost: number; duration_ms: number; session_id: string; is_error: boolean }
+  | { type: "error"; message: string }
+  | { type: "status"; state: "idle" | "busy" | "disconnected"; session_id?: string }
+  | { type: "skills"; skills: Record<string, string> };
+
+export type SandboxConnectionState = "disconnected" | "connecting" | "ready" | "error";
+
+// ---------- Content ----------
+
 export type ContentType = "markdown" | "json" | "image" | "video" | "audio" | "text" | "unknown";
 
 export function inferContentType(filename: string): ContentType {
