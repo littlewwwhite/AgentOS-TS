@@ -228,6 +228,21 @@ export class SandboxClient {
     }
 
     try {
+      // If sandbox itself is gone, recreate it
+      if (this._sandbox) {
+        const alive = await this._sandbox.isRunning().catch(() => false);
+        if (!alive) {
+          this.stderrCb?.(`[reconnect] Sandbox expired — creating new sandbox`);
+          await this._sandbox.kill().catch(() => {});
+          this._sandbox = await Sandbox.create(
+            this.opts.templateId ?? "agentos-sandbox",
+            {
+              apiKey: this.opts.apiKey,
+              timeoutMs: this.opts.timeoutMs ?? 300_000,
+            },
+          );
+        }
+      }
       await this.startProcess();
       this.reconnectCount = 0;
       this.stderrCb?.(`[reconnect] Process restarted successfully`);
@@ -254,10 +269,13 @@ export class SandboxClient {
 
     this.stopHeartbeat();
     this.heartbeatTimer = setInterval(() => {
-      if (this.isConnected && !this.reconnecting) {
-        this.sendCommand({ cmd: "status" }).catch(() => {
-          // Heartbeat failure is handled by process monitor
-        });
+      if (!this._sandbox || this.reconnecting) return;
+      // Extend sandbox lifetime so E2B platform doesn't reclaim it
+      const timeout = this.opts.timeoutMs ?? 300_000;
+      this._sandbox.setTimeout(timeout).catch(() => {});
+      // Also ping the agent process
+      if (this.handle) {
+        this.sendCommand({ cmd: "status" }).catch(() => {});
       }
     }, interval);
     // Don't block process exit
