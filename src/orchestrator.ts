@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 import chalk from "chalk";
-import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { buildAgentOptions } from "./agent-options.js";
@@ -14,8 +14,7 @@ import { buildOptions } from "./options.js";
 import { matchEnterAgent } from "./protocol.js";
 import {
   createSwitchSignal,
-  createSwitchToAgent,
-  createReturnToMain,
+  createDispatchServers,
 } from "./tools/agent-switch.js";
 
 const VERSION = "0.1.0";
@@ -415,16 +414,10 @@ export async function repl(config: {
   const signal = createSwitchSignal();
   let returnServer: unknown = null;
   if (agentNames.length > 0) {
-    const switchServer = createSdkMcpServer({
-      name: "switch",
-      tools: [createSwitchToAgent(signal, agentNames)],
-    });
-    returnServer = createSdkMcpServer({
-      name: "switch",
-      tools: [createReturnToMain(signal)],
-    });
+    const { masterServer, agentServer } = createDispatchServers(signal, agentNames);
+    returnServer = agentServer;
     const baseMcp = (options.mcpServers ?? {}) as Record<string, unknown>;
-    (options as Record<string, unknown>).mcpServers = { ...baseMcp, switch: switchServer };
+    (options as Record<string, unknown>).mcpServers = { ...baseMcp, switch: masterServer };
   }
 
   // Header

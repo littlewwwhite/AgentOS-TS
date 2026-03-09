@@ -4,7 +4,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Query, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { buildAgentOptions } from "./agent-options.js";
@@ -13,8 +13,7 @@ import { emit } from "./protocol.js";
 import type { ChatCommand } from "./protocol.js";
 import {
   createSwitchSignal,
-  createSwitchToAgent,
-  createReturnToMain,
+  createDispatchServers,
   type SwitchSignal,
 } from "./tools/agent-switch.js";
 
@@ -107,11 +106,9 @@ export class SandboxOrchestrator {
     // Create MCP servers for signal-driven switching
     const agentNames = Object.keys(this.agentDefinitions);
     if (agentNames.length > 0) {
-      const switchTool = createSwitchToAgent(this.signal, agentNames);
-      this.masterSwitchServer = createSdkMcpServer({ name: "switch", tools: [switchTool] });
-
-      const returnTool = createReturnToMain(this.signal);
-      this.agentSwitchServer = createSdkMcpServer({ name: "switch", tools: [returnTool] });
+      const { masterServer, agentServer } = createDispatchServers(this.signal, agentNames);
+      this.masterSwitchServer = masterServer;
+      this.agentSwitchServer = agentServer;
 
       // Inject switch server into master options
       const mcpServers = { ...(this.baseOptions.mcpServers as Record<string, unknown> ?? {}) };

@@ -3,7 +3,7 @@
 // pos: Communication bridge — LLM expresses intent, orchestrator executes switch
 
 import { z } from "zod";
-import { tool } from "@anthropic-ai/claude-agent-sdk";
+import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 
 // ---------- Signal ----------
 
@@ -44,4 +44,20 @@ export function createReturnToMain(signal: SwitchSignal) {
       return { content: [{ type: "text" as const, text: "Returning to main..." }] };
     },
   );
+}
+
+// ---------- Dispatch Servers ----------
+
+/** Create the MCP server pair for signal-driven dispatch */
+export function createDispatchServers(signal: SwitchSignal, agentNames: string[]) {
+  return {
+    masterServer: createSdkMcpServer({
+      name: "switch",
+      tools: [createSwitchToAgent(signal, agentNames)],
+    }),
+    agentServer: createSdkMcpServer({
+      name: "switch",
+      tools: [createReturnToMain(signal)],
+    }),
+  };
 }
