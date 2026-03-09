@@ -1,6 +1,6 @@
 # AgentOS-TS Dispatch Architecture
 
-Agent 调度与任务执行的完整链路，包括 Skills 在系统中的三重角色。
+Agent 调度与任务执行的完整链路。基于文件系统驱动的 agent 配置架构。
 
 ## 1. 三层结构总览
 
@@ -17,84 +17,69 @@ Agent 调度与任务执行的完整链路，包括 Skills 在系统中的三重
 ┌──────────────────┐  ┌─────────────────────┐
 │  Orchestrator     │  │  Sub-Agent Session   │
 │  (main LLM)       │  │  (screenwriter etc.) │
-│  preset=claude_code│  │  无 orchestrator 层   │
+│  cwd=workspace/   │  │  cwd=agents/<name>/  │
 │  有 Agent tool     │  │  无 Agent tool        │
 └────────┬─────────┘  └──────────┬──────────┘
          │ Agent tool call                │
          ▼                                ▼
 ┌──────────────────┐            ┌─────────────────┐
 │  Sub-Agent LLM    │            │  MCP Tool 调用   │
-│  system = prompt  │            │  storage/image/  │
-│  tools = YAML 白名单│           │  video/audio/   │
-│  skills = 领域知识  │           │  script          │
-└──────────────────┘            └─────────────────┘
+│  cwd=agents/<n>/  │            │  storage/image/  │
+│  settingSources:  │            │  video/audio/    │
+│    ["project"]    │            │  script          │
+│  → SDK 原生加载    │            └─────────────────┘
+│    .claude/ 配置   │
+└──────────────────┘
 ```
 
-## 2. Skills 的三重角色
+## 2. Skills — 文件系统原生加载
 
-Skills 在系统中同时承担三个不同层面的功能：
+Skills 是 `.claude/skills/*.md` 文件，放在每个 agent 的目录下，SDK 通过 `settingSources: ["project"]` 原生加载，无需手动 prompt 拼接。
 
-### 2.1 知识注入层 — SKILL.md → Agent prompt
+### 2.1 目录结构
 
 ```
-skills/script-writer/SKILL.md
-  │
-  ▼ loadSkillContents() (loader.ts)
-  │   读取 Markdown 内容 + YAML frontmatter
-  │   提取 description、替换路径变量
-  │   返回 { prompt, description, referencesDir }
-  │
-  ▼ buildAgents() (agents.ts)
-  │   遍历 agent YAML 的 skills 列表
-  │   将每个 skill 的 prompt 拼接到 agent 的 system prompt
-  │
-  ▼ AgentDefinition.prompt =
-      "# Role: screenwriter\n...\n\n"     ← 角色身份
-    + "Project workspace: /path/\n\n"       ← 工作区
-    + "[script-writer SKILL.md 内容]\n\n"   ← 领域知识 ①
-    + "[script-adapt SKILL.md 内容]\n\n"    ← 领域知识 ②
-    + "## Domain Skills\n- script-writer: ..." ← 能力清单
+agents/<name>/
+  ├── .claude/
+  │   ├── CLAUDE.md          ← 角色身份 + 领域知识
+  │   ├── settings.json      ← 权限 (allowedTools / disallowedTools)
+  │   └── skills/*.md        ← 领域技能文档
+  └── <name>.yaml            ← 路由元数据 (name, description, skills tags)
 ```
 
-这是 skills 最核心的用途：**将领域专业知识注入 agent 的 system prompt**，让 LLM 具备该领域的工作流程和质量标准。
+SDK 启动 sub-agent 时，以 `agents/<name>/` 为 `cwd`，设置 `settingSources: ["project"]`，SDK 自动读取 `.claude/` 下的所有配置：
 
-### 2.2 SDK Skills 字段 — AgentDefinition.skills
+- **CLAUDE.md** — 等效于旧架构中 `buildAgents()` 拼接的 system prompt（角色定义 + 工作流 + 约束）
+- **settings.json** — 等效于旧 YAML 的 `allowed-tools` / `disallowed-tools`（SDK 强制执行）
+- **skills/*.md** — 等效于旧的 `skills/*/SKILL.md` 知识注入，SDK 原生作为 context 加载
+
+### 2.2 路由标签
+
+`agents/<name>.yaml` 仅保留路由所需的最小元数据：
+
+```yaml
+name: screenwriter
+description: "编剧：负责剧本创作..."
+skills:
+  - script-adapt
+  - script-writer
+```
+
+Orchestrator 的 system prompt 中，`describeAgentList()` 使用这些元数据生成路由提示：
 
 ```typescript
-// agents.ts
-agents[name] = {
-  prompt: ...,
-  skills: config.skills ?? [],   // ["script-writer", "script-adapt"]
-  ...
-};
-```
-
-SDK `AgentDefinition.skills` 的语义是 "Array of skill names to preload into the agent context"。SDK 会尝试在 Claude Code 的 skill 系统中查找这些名称并加载到 agent 上下文。
-
-**当前状态**：
-- 我们传入的是项目自定义 skill 名称（如 "script-writer"）
-- 这些不是 Claude Code 平台 skills（如 "simplify", "loop"）
-- SDK 找不到同名平台 skill 时会静默忽略
-- 主要作用是让 SDK 的 session metadata 中记录 agent 配置了哪些 skills
-
-### 2.3 路由标签 — Orchestrator 的调度依据
-
-```typescript
-// options.ts — describeAgentList()
 "## Sub-Agents (dispatch via Agent tool, subagent_type = name)\n"
 "- **screenwriter**: 编剧... [skills: script-adapt, script-writer]"
-"- **art-director**: 美术设计... [skills: asset-gen, image-create, ...]"
 ```
 
-Orchestrator 的 system prompt 中，每个 agent 后面标注了 `[skills: ...]` 标签。当用户提到某个 skill 名称时，orchestrator LLM 可以据此定位到正确的 agent。
+### 2.3 新旧对比
 
-**三重角色对照**：
-
-| 层面 | 存储位置 | 消费者 | 作用 |
-|------|---------|--------|------|
-| 知识注入 | `AgentDefinition.prompt` | Sub-agent LLM | 赋予领域专业能力 |
-| SDK 注册 | `AgentDefinition.skills` | SDK 内部 | 元数据记录 |
-| 路由标签 | Orchestrator system prompt | Orchestrator LLM | 意图 → agent 映射 |
+| 维度 | 旧架构 | 新架构 |
+|------|--------|--------|
+| 知识来源 | `skills/*/SKILL.md` → `loadSkillContents()` → `buildAgents()` 拼接 | `agents/<name>/.claude/skills/*.md`，SDK 原生加载 |
+| 权限配置 | `agents/*.yaml` 的 `allowed-tools` 字段 → `buildAgents()` 传给 SDK | `.claude/settings.json`，SDK 原生执行 |
+| 角色身份 | `buildAgents()` 在代码中硬编码拼接 prompt | `.claude/CLAUDE.md` 声明式定义 |
+| 路由标签 | 同一 YAML 既承载运行配置又承载路由 | YAML 仅承载路由元数据 |
 
 ## 3. Orchestrator 分发模式
 
@@ -123,29 +108,56 @@ Orchestrator LLM 收到消息
   │   }
   │
   ▼ SDK 处理 Agent tool call:
-  │   1. 查找 agents["screenwriter"] → AgentDefinition
+  │   1. 查找 agents["screenwriter"]
   │   2. 创建子 query():
-  │      system prompt = AgentDefinition.prompt (含 skill 知识)
+  │      cwd           = agents/screenwriter/
+  │      settingSources = ["project"]
+  │      → SDK 读取 .claude/CLAUDE.md (角色 + 知识)
+  │      → SDK 读取 .claude/settings.json (权限)
+  │      → SDK 读取 .claude/skills/*.md (领域技能)
   │      user message  = Agent tool 的 prompt 参数
-  │      tools         = AgentDefinition.tools (YAML 白名单)
-  │      model         = AgentDefinition.model
-  │      cwd           = 继承 parent 的 cwd
   │
   ▼ Screenwriter LLM 执行任务
   │   调用 Read, Write, mcp__storage__write_json 等
-  │   按 SKILL.md 中定义的工作流产出剧本
+  │   按 skills/*.md 中定义的工作流产出剧本
   │
   ▼ 结果返回给 Orchestrator → 汇报给用户
 ```
 
-### 3.2 Dispatch Rules
+### 3.2 buildAgentOptions
+
+```typescript
+private buildAgentOptions(name: string): Record<string, unknown> {
+  const agentDir = path.resolve(this.config.agentsDir, name);
+  return {
+    ...rest,                          // inherit mcpServers, hooks, etc.
+    agent: name,
+    agents: undefined,                // prevent recursive Agent tool
+    cwd: agentDir,                    // agent's own directory
+    settingSources: ["project"],      // SDK loads .claude/ natively
+    systemPrompt: {
+      type: "preset",
+      preset: "claude_code",
+      append: `Project workspace: ${workspacePath}/\nAll file operations must use absolute paths within this workspace.`,
+    },
+  };
+}
+```
+
+关键变化：
+- `cwd` 指向 `agents/<name>/`（旧架构继承 workspace/）
+- `settingSources: ["project"]` 让 SDK 原生读取 `.claude/`（旧架构用 `[]` 隔离）
+- `systemPrompt` 仅追加 workspace 路径（旧架构无 systemPrompt，依赖 `AgentDefinition.prompt`）
+- 不再需要 `loadSkillContents()` → `buildAgents()` 的 prompt 拼接链路
+
+### 3.3 Dispatch Rules
 
 Orchestrator 的 system prompt 中定义了严格的分发规则：
 
 1. **所有领域任务必须分发** — 不得自己执行
 2. **Agent tool 的 prompt 必须包含用户完整消息** — 防止空消息 bug
 3. **Skill 名称路由** — 用户提到 skill 名时，映射到拥有该 skill 的 agent
-4. **不得读取 skills/ 目录** — 防止信息泄露
+4. **不得读取 agents/ 目录** — 防止信息泄露
 
 ## 4. Direct Mode（/enter）
 
@@ -171,10 +183,11 @@ Orchestrator 的 system prompt 中定义了严格的分发规则：
   │ query({
   │   prompt: "帮我写第1集剧本",
   │   options: {
-  │     agent: "screenwriter",       // 使用 screenwriter 的 AgentDefinition
-  │     agents: undefined,           // 禁止递归 dispatch
-  │     settingSources: [],          // 隔离全局配置
-  │     resume: "session-id-xxx",    // 恢复历史会话
+  │     agent: "screenwriter",
+  │     agents: undefined,              // prevent recursive dispatch
+  │     cwd: "agents/screenwriter/",    // agent's own directory
+  │     settingSources: ["project"],    // SDK loads .claude/ natively
+  │     resume: "session-id-xxx",       // resume history
   │   }
   │ })
   │
@@ -193,16 +206,20 @@ Orchestrator 的 system prompt 中定义了严格的分发规则：
 
 ## 5. E2B Sandbox 模式
 
-E2B 模式预创建所有 agent 的 worker，通过消息队列调度。
+E2B 模式通过消息队列调度 agent session，采用懒加载策略。
 
 ### 5.1 初始化
 
 ```typescript
 // SandboxOrchestrator.init()
-mainSession   = createSession("main", baseOptions)
-agents["screenwriter"]    = createSession("screenwriter", buildAgentOptions("screenwriter"))
-agents["art-director"]    = createSession("art-director", buildAgentOptions("art-director"))
-// ...
+mainSession = createSession("main", baseOptions)
+
+// Agent sessions — lazy creation on first use
+// Each agent gets its own cwd + settingSources
+for (const name of Object.keys(agentDefinitions)) {
+  agents[name] = createSession(name, buildAgentOptions(name));
+  // buildAgentOptions(name) → { cwd: agents/<name>/, settingSources: ["project"], ... }
+}
 ```
 
 ### 5.2 消息路由
@@ -225,62 +242,72 @@ await prev;  // 等待上一个 query 完成
 
 SDK 的 MCP Protocol 不支持并发连接，所有 agent session 共享同一个 MCP 通道，因此必须串行执行。
 
-### 5.4 Agent Options 隔离
+### 5.4 Agent Options — 与 Local 模式统一
 
 ```typescript
 buildAgentOptions(name):
-  { ...baseOptions }
-  - systemPrompt: 移除 (agent 使用自己的 AgentDefinition.prompt)
-  - agents: undefined (禁止 sub-agent 递归调用 Agent tool)
-  - settingSources: [] (隔离全局 CLAUDE.md)
-  + agent: name (指定身份)
+  { ...rest }                    // inherit mcpServers, hooks
+  + agent: name                  // agent identity
+  + agents: undefined            // prevent recursive Agent tool
+  + cwd: agents/<name>/          // agent's own directory
+  + settingSources: ["project"]  // SDK reads .claude/ natively
+  + systemPrompt: workspace path append
 ```
 
 ## 6. 数据流全景
 
 ```
-                         ┌──────────────────────┐
-                         │  skills/*/SKILL.md    │
-                         │  领域知识 + 工作流     │
-                         └──────────┬───────────┘
-                                    │ loadSkillContents()
-                                    ▼
-┌──────────────────┐    ┌──────────────────────┐
-│  agents/*.yaml    │───▶│  buildAgents()       │
-│  tools, model,    │    │  AgentDefinition =    │
-│  skills, policy   │    │    prompt (含 skill)  │
-└──────────────────┘    │    tools (白名单)      │
-                         │    skills (名称列表)   │
-                         │    model, mcpServers   │
-                         └──────────┬───────────┘
-                                    │
-                     ┌──────────────┴───────────────┐
-                     ▼                               ▼
-          ┌────────────────┐              ┌────────────────────┐
-          │  Orchestrator   │              │  Sub-Agent Session  │
-          │  system prompt: │              │  prompt = 角色+skills│
-          │   agent 列表     │              │  tools = YAML 白名单 │
-          │   [skills: ...] │              │  cwd = workspace/   │
-          │   dispatch rules│              └────────┬───────────┘
-          └────────┬───────┘                        │
-                   │ Agent tool                     │ Read/Write/MCP
-                   ▼                                ▼
-          ┌────────────────┐              ┌────────────────────┐
-          │  SDK 启动子 query│              │  workspace/         │
-          │  传入 prompt     │              │    draft/           │
-          │  + AgentDefinition│             │    assets/          │
-          └────────────────┘              │    output/          │
-                                          └────────────────────┘
+agents/<name>/
+  ├── .claude/                    ← SDK 原生读取
+  │   ├── CLAUDE.md               ← 角色身份 + 领域知识
+  │   ├── settings.json           ← 权限 (allow/deny tools)
+  │   └── skills/*.md             ← 领域技能文档
+  │
+  └── <name>.yaml                 ← 路由元数据 (name, description, skills)
+      │
+      ▼ loadAgentConfigs()
+      │   读取 YAML → { name, description, skills }
+      │
+      ▼ describeAgentList()
+          生成路由提示 → Orchestrator system prompt
+
+┌──────────────────────────────────────────────────────┐
+│  Orchestrator                                          │
+│  cwd = workspace/                                      │
+│  system prompt:                                        │
+│    agent 列表 + [skills: ...] tags + dispatch rules    │
+└───────────┬──────────────────────────────────────────┘
+            │ Agent tool
+            ▼
+┌──────────────────────────────────────────────────────┐
+│  Sub-Agent Session                                     │
+│  cwd = agents/<name>/                                  │
+│  settingSources = ["project"]                          │
+│  → SDK 自动加载:                                       │
+│      .claude/CLAUDE.md → system context                │
+│      .claude/settings.json → tool permissions          │
+│      .claude/skills/*.md → domain knowledge            │
+│  + systemPrompt.append: workspace path                 │
+└───────────┬──────────────────────────────────────────┘
+            │ Read / Write / MCP tools
+            ▼
+┌──────────────────────────────────────────────────────┐
+│  workspace/                                            │
+│    draft/          ← 草稿                              │
+│    assets/         ← 视觉资产                          │
+│    production/     ← 生产文件                          │
+│    output/         ← 最终产出                          │
+└──────────────────────────────────────────────────────┘
 ```
 
-## 7. 文件视野（当前状态）
+## 7. 文件视野与权限
 
-| 角色 | cwd | tools | 实际可访问 |
-|------|-----|-------|-----------|
-| Orchestrator | workspace/ | Agent, TodoWrite, Read, Write, Bash, Glob, Grep | **整个文件系统**（cwd 仅影响相对路径） |
-| Sub-agent | workspace/ (继承) | YAML 白名单 | 同上（有 Bash 的 agent 可访问任意路径） |
+| 角色 | cwd | 配置来源 | 权限控制 |
+|------|-----|---------|---------|
+| Orchestrator | workspace/ | `options.ts` systemPrompt | 所有 tools (Agent, TodoWrite, Read, Write, Bash, Glob, Grep) |
+| Sub-agent | agents/\<name\>/ | `.claude/CLAUDE.md` + `settings.json` | SDK 从 `settings.json` 读取 allow/deny，原生执行 |
 
-**待改进**：
-- Orchestrator 只需 Agent + TodoWrite + Read，不需要 Bash/Write/Glob/Grep
-- Agent YAML 中的 `file-policy` 字段已定义但未被代码消费
-- `cwd` 不是访问控制，只设置工作目录
+**关键区别**：
+- Orchestrator 的 `settingSources: ["project"]` 读取项目根 `.claude/`，权限通过 `allowedTools` 代码配置
+- Sub-agent 的 `settingSources: ["project"]` 读取 `agents/<name>/.claude/`，权限通过各自的 `settings.json` 声明式管理
+- `cwd` 决定 SDK 在哪里查找 `.claude/` 目录，从而实现每个 agent 独立的配置隔离
