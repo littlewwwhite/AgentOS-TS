@@ -8,6 +8,7 @@ import readline from "node:readline";
 
 import { SandboxOrchestrator } from "./sandbox-orchestrator.js";
 import { emit, parseCommand } from "./protocol.js";
+import { loadEnvToProcess } from "./env.js";
 import type { SandboxEvent } from "./protocol.js";
 
 // ---------- Global crash handlers ----------
@@ -32,28 +33,6 @@ process.on("unhandledRejection", (reason) => {
   });
   process.exit(1);
 });
-
-// ---------- .env loader ----------
-
-async function loadEnvFile(filePath: string): Promise<void> {
-  let text: string;
-  try {
-    text = await fs.readFile(filePath, "utf-8");
-  } catch {
-    return;
-  }
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx < 0) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const value = trimmed.slice(eqIdx + 1).trim();
-    if (!(key in process.env)) {
-      process.env[key] = value;
-    }
-  }
-}
 
 // ---------- CLI args ----------
 
@@ -147,7 +126,7 @@ async function main(): Promise<void> {
     delete process.env.ANTHROPIC_BASE_URL;
   }
 
-  await loadEnvFile(path.resolve(".env"));
+  loadEnvToProcess(path.resolve(".env"));
 
   const { projectPath: rawPath, agentsDir, skillsDir, model } = parseArgs(
     process.argv.slice(2),

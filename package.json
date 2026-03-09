@@ -10,7 +10,7 @@
     "start": "bun src/index.ts",
     "server": "bun src/server.ts",
     "sandbox": "bun src/sandbox.ts",
-    "dev": "tsx src/index.ts",
+    "start:e2b": "bun scripts/e2b-repl.ts",
     "build": "tsc",
     "build:e2b": "bun run build && bun e2b/build.ts",
     "test": "vitest run",

@@ -32,3 +32,13 @@ export function loadDotEnv(envPath?: string): DotEnv {
     return {};
   }
 }
+
+/** Load .env into process.env (skip keys already set). */
+export function loadEnvToProcess(envPath?: string): void {
+  const vars = loadDotEnv(envPath);
+  for (const [key, value] of Object.entries(vars)) {
+    if (value !== undefined && !(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}

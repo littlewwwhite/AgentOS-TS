@@ -5,29 +5,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { repl } from "./orchestrator.js";
-
-// ---------- .env loader ----------
-
-async function loadEnvFile(filePath: string): Promise<void> {
-  let text: string;
-  try {
-    text = await fs.readFile(filePath, "utf-8");
-  } catch {
-    return; // .env is optional
-  }
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx < 0) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const value = trimmed.slice(eqIdx + 1).trim();
-    // Don't overwrite explicitly set env vars
-    if (!(key in process.env)) {
-      process.env[key] = value;
-    }
-  }
-}
+import { loadEnvToProcess } from "./env.js";
 
 // ---------- CLI config ----------
 
@@ -84,7 +62,7 @@ Options:
 
 async function main(): Promise<void> {
   // Load .env before anything else
-  await loadEnvFile(path.resolve(".env"));
+  loadEnvToProcess(path.resolve(".env"));
 
   const config = parseArgs(process.argv.slice(2));
   if (config === "help") {
