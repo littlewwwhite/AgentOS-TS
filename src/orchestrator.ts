@@ -333,6 +333,11 @@ type SlashHandler = (args: {
 
 const SLASH_COMMANDS: Record<string, SlashHandler> = {
   "/help": async ({ activeAgent }) => {
+    if (activeAgent) {
+      console.log(chalk.dim("  Current agent: ") + chalk.cyan.bold(activeAgent));
+    } else {
+      console.log(chalk.dim("  Current: orchestrator (no active agent)"));
+    }
     console.log(`  ${chalk.cyan("/agents")}   — list available sub-agents`);
     console.log(`  ${chalk.cyan("/enter")}    — enter a sub-agent for direct conversation`);
     if (activeAgent) {

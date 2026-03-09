@@ -232,6 +232,11 @@ async function main() {
       }
 
       if (cmd === "/help" || cmd === "/") {
+        if (activeAgent) {
+          console.log(dim(`  Current agent: `) + cyan(bold(activeAgent)));
+        } else {
+          console.log(dim("  Current: orchestrator (no active agent)"));
+        }
         console.log(dim("  Commands:"));
         console.log(`    ${cyan("/enter <agent>")}  ${dim("switch to agent session")}`);
         console.log(`    ${cyan("/exit")}           ${dim("return to orchestrator")}`);
