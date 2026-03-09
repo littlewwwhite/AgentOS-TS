@@ -95,7 +95,7 @@ function renderTodoList(inputJson: string, indent: string): void {
     console.log(`${indent}${chalk.dim("Plan:")}`);
     for (const todo of input.todos) {
       const icon = TODO_ICONS[todo.status] ?? "○";
-      const color = todo.status === "completed" ? chalk.green
+      const color = todo.status === "completed" ? chalk.green.strikethrough
         : todo.status === "in_progress" ? chalk.yellow
         : chalk.dim;
       console.log(`${indent}  ${color(`${icon} ${todo.content}`)}`);
@@ -114,11 +114,33 @@ function formatToolLabel(name: string, inputJson: string): string {
       if (desc) return `Agent(${desc})`;
       return "Agent";
     }
+    // MCP tools: mcp__server__tool → server:tool(key: "value", ...)
+    const mcpMatch = name.match(/^mcp__(\w+)__(.+)$/);
+    if (mcpMatch) {
+      const [, server, tool] = mcpMatch;
+      const params = Object.entries(input)
+        .filter(([, v]) => v !== undefined && v !== null)
+        .slice(0, 3)
+        .map(([k, v]) => {
+          const sv = typeof v === "string"
+            ? (v.length > 30 ? `"${v.slice(0, 30)}…"` : `"${v}"`)
+            : JSON.stringify(v);
+          return `${k}: ${sv}`;
+        })
+        .join(", ");
+      return `${server}:${tool}${params ? `(${params})` : ""}`;
+    }
+    // Built-in tools: show primary argument
     const arg =
       input.file_path ?? input.command ?? input.pattern ??
       input.project_path ?? input.url ??
       (typeof input.prompt === "string" ? input.prompt.slice(0, 60) : null) ?? "";
     if (arg) {
+      // Skill file: show as "Read skill: skill-name/relative-path"
+      if (name === "Read" && typeof arg === "string") {
+        const skillMatch = arg.match(/skills\/([^/]+)\/(.+)/);
+        if (skillMatch) return `Read skill: ${skillMatch[1]}/${skillMatch[2]}`;
+      }
       const short = typeof arg === "string" && arg.length > 80 ? arg.slice(0, 80) + "…" : arg;
       return `${name}(${short})`;
     }
@@ -172,7 +194,7 @@ async function sendAndStream(
               renderTodoList(tool.input, indent);
             } else {
               const label = formatToolLabel(tool.name, tool.input);
-              console.log(chalk.dim(`${indent}● ${label}`));
+              console.log(`${indent}${chalk.cyan("⏺")} ${chalk.white(label)}`);
             }
             toolBlocks.delete(idx);
           }
@@ -191,10 +213,11 @@ async function sendAndStream(
       }
 
       case "tool_use_summary": {
-        const s = msg as unknown as { summary: string };
-        if (s.summary) {
+        const s = msg as unknown as { summary?: string; tool_summary?: string };
+        const text = s.summary ?? s.tool_summary;
+        if (text) {
           ensureNewline();
-          console.log(chalk.cyan(`  ▸ ${s.summary}`));
+          console.log(`  ${chalk.dim("⎿")}  ${text}`);
         }
         break;
       }
@@ -210,7 +233,7 @@ async function sendAndStream(
         if (r.total_cost_usd) parts.push(`$${r.total_cost_usd.toFixed(4)}`);
         parts.push(`${elapsed}s`);
         if (r.num_turns) parts.push(`${r.num_turns} turns`);
-        console.log(chalk.dim(`  ${parts.join(" · ")}`));
+        console.log(chalk.dim(`  ⎿  ${parts.join(" · ")}`));
         if (r.is_error) console.error(chalk.red(`  ✗ ${r.result}`));
         if (r.session_id) {
           resultSessionId = r.session_id;
@@ -227,17 +250,30 @@ async function sendAndStream(
         };
         if (sys.subtype === "status" && sys.status === "compacting") {
           ensureNewline();
-          console.log(chalk.yellow("  ⟳ compacting context..."));
+          console.log(`  ${chalk.cyan("⏺")} ${chalk.yellow("compacting context…")}`);
         } else if (sys.subtype === "compact_boundary" && sys.compact_metadata) {
           const tokens = sys.compact_metadata.pre_tokens;
           const trigger = sys.compact_metadata.trigger;
-          console.log(chalk.dim(`  ⟳ compacted (${trigger}, ${tokens} tokens before)`));
+          console.log(`    ${chalk.dim("⎿")}  ${chalk.dim(`compacted (${trigger}, ${tokens} tokens before)`)}`);
         }
         break;
       }
 
-      default:
+      default: {
+        // Handle SDK message types not yet in the type union
+        const t = (msg as Record<string, unknown>).type;
+        if (t === "streamlined_tool_use_summary") {
+          const s = msg as unknown as { summary?: string; tool_summary?: string };
+          const text = s.summary ?? s.tool_summary;
+          if (text) {
+            ensureNewline();
+            console.log(`  ${chalk.dim("⎿")}  ${text}`);
+          }
+        } else if (t && t !== "user" && t !== "keep_alive") {
+          console.log(chalk.dim(`  [debug] unhandled msg.type: ${t}`));
+        }
         break;
+      }
     }
   }
   return resultSessionId;
@@ -490,9 +526,10 @@ export async function repl(config: {
           const desc = agents[name].description;
           const short = desc.length > 60 ? desc.slice(0, 60) + "…" : desc;
           const hasSavedSession = agentSessions.has(name);
-          console.log(`  ${chalk.green("→")} ${chalk.cyan(name)} ${chalk.dim(short)}`);
-          if (hasSavedSession) console.log(chalk.dim("  resuming previous session"));
-          console.log(chalk.dim("  /exit to return to orchestrator"));
+          console.log();
+          console.log(`  ${chalk.cyan("⏺")} ${chalk.bgCyan.black(` ${name} `)} ${chalk.dim(short)}`);
+          if (hasSavedSession) console.log(`    ${chalk.dim("⎿")}  ${chalk.yellow("resuming previous session")}`);
+          console.log(`    ${chalk.dim("⎿")}  ${chalk.dim("/exit to return to orchestrator")}`);
         }
         continue;
       }
@@ -502,7 +539,7 @@ export async function repl(config: {
         if (!activeAgent) {
           console.log(chalk.dim("  Not in an agent session"));
         } else {
-          console.log(`  ${chalk.yellow("←")} returned to orchestrator`);
+          console.log(`\n  ${chalk.cyan("⏺")} ${chalk.dim(`exited ${activeAgent}`)} ${chalk.yellow("← orchestrator")}`);
           activeAgent = null;
         }
         continue;
