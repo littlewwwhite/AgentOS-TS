@@ -2,13 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock all external dependencies before importing the module under test
 vi.mock("../src/loader.js", () => ({
-  loadAgentConfigs: vi.fn().mockResolvedValue({}),
-  loadSkillContents: vi.fn().mockResolvedValue({}),
-}));
-
-vi.mock("../src/agents.js", () => ({
-  buildAgents: vi.fn().mockReturnValue({
-    "script-writer": { description: "Writes scripts" },
+  loadAgentConfigs: vi.fn().mockResolvedValue({
+    "script-writer": {
+      name: "script-writer",
+      description: "Writes scripts",
+      skills: ["script-writing"],
+    },
   }),
 }));
 
@@ -54,7 +53,7 @@ describe("buildOptions", () => {
     expect(buildSandboxHooks).toHaveBeenCalled();
   });
 
-  it("includes agent list in systemPrompt", async () => {
+  it("includes agent list in systemPrompt from loadAgentConfigs", async () => {
     const opts = await buildOptions("/tmp/test-ws", "agents", "skills");
     const prompt = opts.systemPrompt as { append: string };
     expect(prompt.append).toContain("Sub-Agents");

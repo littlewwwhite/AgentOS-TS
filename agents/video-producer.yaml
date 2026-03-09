@@ -1,22 +1,5 @@
 name: video-producer
 description: "视频制作：负责视频生成与质量审核，支持图生视频、文生视频等操作，自动识别不合格视频并触发重新生成。"
-model: sonnet
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - mcp__video__generate_video
-  - mcp__video__check_video_status
-  - mcp__storage__read_json
-  - mcp__storage__list_assets
 skills:
   - video-create
   - video-review
-file-policy:
-  readable:
-    - output/script.json
-    - assets/**
-    - storyboard/**
-    - production/**
-  writable:
-    - production/**

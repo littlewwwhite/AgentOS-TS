@@ -1,13 +1,12 @@
-// input: Project path, agents dir, skills dir, CLI flags
-// output: SDK-compatible options object
-// pos: Configuration factory — builds ClaudeAgentOptions without REPL or permission concerns
+// input: Project path, agents dir, CLI flags
+// output: SDK-compatible options with lightweight agent routing map
+// pos: Configuration factory — builds orchestrator options; agent config loaded by SDK from .claude/ dirs
 
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { buildAgents } from "./agents.js";
 import { buildSandboxHooks } from "./hooks/index.js";
-import { loadAgentConfigs, loadSkillContents } from "./loader.js";
+import { loadAgentConfigs } from "./loader.js";
 import { toolServers } from "./tools/index.js";
 
 export const WORKSPACE_DIRS = ["draft", "draft/episodes", "assets", "production", "output"];
@@ -59,8 +58,17 @@ export async function buildOptions(
   continueConversation = false,
 ) {
   const agentConfigs = await loadAgentConfigs(agentsDir);
-  const skillContents = await loadSkillContents(skillsDir);
-  const agents = buildAgents(agentConfigs, skillContents, toolServers, projectPath);
+
+  // Build lightweight agent definitions for orchestrator routing only.
+  // Full agent config (prompt, skills, permissions) lives in agents/<name>/.claude/
+  // and is loaded natively by SDK when cwd points to the agent directory.
+  const agents: Record<string, { description: string; configuredSkills?: string[] }> = {};
+  for (const [name, config] of Object.entries(agentConfigs)) {
+    agents[name] = {
+      description: config.description,
+      configuredSkills: config.skills,
+    };
+  }
 
   return {
     agents,

@@ -1,22 +1,4 @@
 name: post-production
 description: "后期制作：负责配乐与音效，支持智能音乐风格推荐、向量语义匹配选曲、音效生成与合成输出。"
-model: sonnet
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - mcp__audio__generate_music
-  - mcp__audio__generate_sfx
-  - mcp__storage__read_json
-  - mcp__storage__write_json
-  - mcp__storage__list_assets
 skills:
   - music-matcher
-file-policy:
-  readable:
-    - output/script.json
-    - editing/**
-    - audio/**
-  writable:
-    - editing/audio_plan.json
-    - audio/**

@@ -1,22 +1,5 @@
 name: screenwriter
 description: "编剧：负责剧本创作，支持原创和小说改编两种模式，通过多阶段流程产出可指导 AI 生成画面的结构化剧本。"
-model: sonnet
-max-turns: 30
-allowed-tools:
-  - Read
-  - Write
-  - mcp__storage__write_json
-  - mcp__storage__read_json
-  - mcp__storage__list_assets
-  - mcp__script__parse_script
 skills:
   - script-adapt
   - script-writer
-file-policy:
-  readable:
-    - source.txt
-    - draft/**
-    - output/script.json
-  writable:
-    - draft/**
-    - output/script.json

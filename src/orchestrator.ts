@@ -557,14 +557,21 @@ export async function repl(config: {
     const sf = sessionFilePath(projectPath, activeAgent);
     let effectiveOptions: Record<string, unknown>;
     if (activeAgent) {
-      // Strip orchestrator identity; agent uses its own AgentDefinition.prompt
+      // Agent uses its own .claude/ directory — SDK loads CLAUDE.md + settings.json + skills natively
       const { systemPrompt: _orchestratorPrompt, ...agentOptions } = options;
+      const agentDir = path.resolve(agentsDir, activeAgent);
       effectiveOptions = {
         ...agentOptions,
         agent: activeAgent,
         resume: agentSessions.get(activeAgent),
         continueConversation: false,
-        settingSources: [], // prevent global CLAUDE.md from overriding agent role
+        cwd: agentDir,
+        settingSources: ["project"],
+        systemPrompt: {
+          type: "preset",
+          preset: "claude_code",
+          append: `Project workspace: ${projectPath}/\nAll file operations must use absolute paths within this workspace.`,
+        },
       };
     } else {
       effectiveOptions = options;

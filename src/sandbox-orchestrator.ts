@@ -1,7 +1,8 @@
 // input: Project path, agent configs, SDK options
 // output: Manages agent sessions, routes commands, emits events
-// pos: Sole orchestration core — replaces both REPL orchestrator and sandbox worker
+// pos: Sole orchestration core — routes to per-agent .claude/ directories via SDK-native loading
 
+import path from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Query, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
@@ -92,35 +93,50 @@ export class SandboxOrchestrator {
 
     this.mainSession = this.createSession("main", this.baseOptions);
 
-    for (const name of Object.keys(this.agentDefinitions)) {
-      this.agents.set(name, this.createSession(name, this.buildAgentOptions(name)));
-    }
+    // Agent sessions are created lazily on first use via getOrCreateAgent()
 
     emit({ type: "ready", skills: Object.keys(this.agentDefinitions) });
   }
 
   async startWorkers(): Promise<void> {
-    const workers: Promise<void>[] = [];
-    if (this.mainSession) workers.push(this.runWorker(this.mainSession));
-    for (const session of this.agents.values()) {
-      workers.push(this.runWorker(session));
+    if (!this.mainSession) return;
+    // Only start main worker; agent workers start on-demand in getOrCreateAgent()
+    await this.runWorker(this.mainSession);
+  }
+
+  // -- Lazy agent session management --
+
+  /** Create agent session on first use and start its worker */
+  private getOrCreateAgent(name: string): AgentSession | null {
+    if (!this.agentDefinitions[name]) return null;
+
+    let session = this.agents.get(name);
+    if (!session) {
+      session = this.createSession(name, this.buildAgentOptions(name));
+      this.agents.set(name, session);
+      // Start worker in background — fire and forget
+      this.runWorker(session).catch((err) => {
+        emit({
+          type: "error",
+          message: `Agent worker "${name}" crashed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      });
     }
-    // Exit when any worker ends (e.g. fatal error)
-    await Promise.race(workers);
+    return session;
   }
 
   // -- Agent context switching --
 
   enterAgent(name: string): void {
-    if (!this.agents.has(name)) {
+    const session = this.getOrCreateAgent(name);
+    if (!session) {
       emit({
         type: "error",
-        message: `Unknown agent: "${name}". Available: ${[...this.agents.keys()].join(", ")}`,
+        message: `Unknown agent: "${name}". Available: ${Object.keys(this.agentDefinitions).join(", ")}`,
       });
       return;
     }
     this._activeAgent = name;
-    const session = this.agents.get(name)!;
     emit({
       type: "agent_entered",
       agent: name,
@@ -142,7 +158,7 @@ export class SandboxOrchestrator {
 
   resolveTarget(cmd: ChatCommand): string | null {
     if (cmd.target) {
-      if (this.agents.has(cmd.target)) return cmd.target;
+      if (this.agentDefinitions[cmd.target]) return cmd.target;
       emit({
         type: "error",
         message: `Unknown target agent: "${cmd.target}"`,
@@ -156,7 +172,9 @@ export class SandboxOrchestrator {
   // -- Commands --
 
   chat(message: string, target?: string | null, requestId?: string): void {
-    const session = target ? this.agents.get(target) : this.mainSession;
+    const session = target
+      ? this.getOrCreateAgent(target)
+      : this.mainSession;
     if (!session) {
       emit({ type: "error", message: "No session available", request_id: requestId });
       return;
@@ -188,6 +206,11 @@ export class SandboxOrchestrator {
     return map;
   }
 
+  /** List all known agent names (from routing YAML), regardless of session state */
+  get agentNames(): string[] {
+    return Object.keys(this.agentDefinitions);
+  }
+
   // -- Internal --
 
   private createSession(
@@ -204,10 +227,23 @@ export class SandboxOrchestrator {
     };
   }
 
-  /** Derive agent-level options: strip orchestrator prompt, prevent agent recursion */
+  /** Derive agent-level options: per-agent cwd + SDK-native .claude/ loading */
   private buildAgentOptions(name: string): Record<string, unknown> {
     const { systemPrompt: _orchestratorPrompt, ...rest } = this.baseOptions;
-    return { ...rest, agent: name, agents: undefined, settingSources: [] };
+    const agentDir = path.resolve(this.config.agentsDir, name);
+    const workspacePath = this.config.projectPath;
+    return {
+      ...rest,
+      agent: name,
+      agents: undefined,
+      cwd: agentDir,
+      settingSources: ["project"],
+      systemPrompt: {
+        type: "preset",
+        preset: "claude_code",
+        append: `Project workspace: ${workspacePath}/\nAll file operations must use absolute paths within this workspace.`,
+      },
+    };
   }
 
   private async runWorker(session: AgentSession): Promise<void> {
