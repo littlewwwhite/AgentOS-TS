@@ -1,4 +1,4 @@
-// input: UI events, SSE events from API layer
+// input: UI events, WebSocket events from API layer
 // output: Reactive state for all panels + sandbox lifecycle
 // pos: Central state management — Zustand store bridging API and UI
 
@@ -286,7 +286,7 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         if (event.state === "disconnected") {
           set({ sandboxState: "disconnected" });
         } else if (event.state === "idle" || event.state === "busy") {
-          // SSE initial status or heartbeat — sandbox process is alive
+          // WS initial status — sandbox process is alive
           if (get().sandboxState !== "ready") {
             set({ sandboxState: "ready" });
             get().loadFiles();

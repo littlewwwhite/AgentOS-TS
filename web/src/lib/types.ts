@@ -66,7 +66,7 @@ export const PIPELINE_STAGES: PipelineStage[] = [
   },
 ];
 
-// ---------- Sandbox Events (SSE → frontend) ----------
+// ---------- Sandbox Events (WebSocket → frontend) ----------
 
 export type SandboxEvent =
   | { type: "ready"; skills: string[] }

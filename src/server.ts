@@ -1,13 +1,14 @@
-// input: SandboxClient (E2B bridge), Hono framework
-// output: HTTP API + SSE event stream for frontend consumption
+// input: SandboxClient (E2B bridge), Hono framework, Bun WebSocket
+// output: HTTP API + WebSocket event stream for frontend consumption
 // pos: API bridge — connects React frontend to E2B sandbox backend
 
 import { readFileSync } from "node:fs";
 import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
+import { upgradeWebSocket, websocket } from "hono/bun";
+import type { WSContext } from "hono/ws";
 import type { Sandbox } from "e2b";
 import { SandboxClient } from "./e2b-client.js";
-import type { SandboxEvent } from "./protocol.js";
+import { parseCommand, type SandboxEvent } from "./protocol.js";
 
 // ---------- .env loader (bypass Claude Code env hijacking) ----------
 
@@ -28,21 +29,19 @@ function readEnvFile(path: string): Record<string, string> {
 
 const dotEnv = readEnvFile(".env");
 
-// ---------- SSE broadcast ----------
+// ---------- WebSocket broadcast ----------
 
-interface SSEWriter {
-  writeSSE(msg: { event?: string; data: string }): Promise<void>;
-}
-
-const sseClients = new Set<SSEWriter>();
+const wsClients = new Set<WSContext>();
 let client: SandboxClient | null = null;
 
 function broadcast(event: SandboxEvent): void {
   const data = JSON.stringify(event);
-  for (const writer of sseClients) {
-    writer.writeSSE({ event: event.type, data }).catch(() => {
-      sseClients.delete(writer);
-    });
+  for (const ws of wsClients) {
+    try {
+      ws.send(data);
+    } catch {
+      wsClients.delete(ws);
+    }
   }
 }
 
@@ -121,56 +120,63 @@ app.delete("/api/sandbox", async (c) => {
   return c.json({ ok: true });
 });
 
-app.post("/api/sandbox/chat", async (c) => {
-  const { message } = await c.req.json<{ message: string }>();
-  if (!client?.isConnected) {
-    return c.json({ error: "Sandbox not connected" }, 400);
-  }
-  try {
-    await client.chat(message);
-    return c.json({ ok: true });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: msg }, 500);
-  }
-});
+// --- WebSocket (chat + events) ---
 
-app.post("/api/sandbox/interrupt", async (c) => {
-  if (!client?.isConnected) {
-    return c.json({ error: "Sandbox not connected" }, 400);
-  }
-  await client.interrupt();
-  return c.json({ ok: true });
-});
+app.get(
+  "/ws",
+  upgradeWebSocket(() => ({
+    onOpen(_event, ws) {
+      wsClients.add(ws);
+      ws.send(
+        JSON.stringify({
+          type: "status",
+          state: client?.isConnected ? "idle" : "disconnected",
+        }),
+      );
+    },
+
+    onMessage(event, ws) {
+      const cmd = parseCommand(String(event.data));
+      if (!cmd) {
+        ws.send(JSON.stringify({ type: "error", message: "Invalid command" }));
+        return;
+      }
+
+      if (!client?.isConnected) {
+        ws.send(
+          JSON.stringify({ type: "error", message: "Sandbox not connected" }),
+        );
+        return;
+      }
+
+      switch (cmd.cmd) {
+        case "chat":
+          client.chat(cmd.message).catch((err) => {
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                message: err instanceof Error ? err.message : String(err),
+              }),
+            );
+          });
+          break;
+        case "interrupt":
+          client.interrupt().catch(() => {});
+          break;
+      }
+    },
+
+    onClose(_event, ws) {
+      wsClients.delete(ws);
+    },
+  })),
+);
 
 app.get("/api/sandbox/status", (c) => {
   return c.json({
     connected: client?.isConnected ?? false,
     sandboxId: client?.sandboxId ?? null,
     state: client?.isConnected ? "ready" : "disconnected",
-  });
-});
-
-// --- SSE event stream ---
-
-app.get("/api/sandbox/events", (c) => {
-  return streamSSE(c, async (stream) => {
-    sseClients.add(stream as unknown as SSEWriter);
-    stream.onAbort(() => { sseClients.delete(stream as unknown as SSEWriter); });
-
-    // Send current sandbox status on connect
-    await stream.writeSSE({
-      event: "status",
-      data: JSON.stringify({
-        type: "status",
-        state: client?.isConnected ? "idle" : "disconnected",
-      }),
-    });
-
-    // Keep alive with heartbeat
-    while (true) {
-      await stream.sleep(30_000);
-    }
   });
 });
 
@@ -220,4 +226,4 @@ app.get("/api/workspace/file", async (c) => {
 const port = Number(process.env.API_PORT) || 3001;
 console.log(`AgentOS API server → http://localhost:${port}`);
 
-export default { port, fetch: app.fetch, idleTimeout: 255 };
+export default { port, fetch: app.fetch, websocket, idleTimeout: 255 };
