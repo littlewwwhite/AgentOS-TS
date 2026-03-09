@@ -1,35 +1,39 @@
 // input: stdin JSON commands, CLI args (project path, skills dir)
 // output: stdout JSON events via protocol
-// pos: Sandbox entry point — replaces REPL with JSON protocol, reuses buildOptions()
+// pos: Sandbox entry point — thin adapter over SandboxOrchestrator
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { Query, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
-import { buildOptions } from "./orchestrator.js";
+import { SandboxOrchestrator } from "./sandbox-orchestrator.js";
 import { emit, parseCommand } from "./protocol.js";
 import type { SandboxEvent } from "./protocol.js";
 
 // ---------- Global crash handlers ----------
-// Capture unhandled errors to stderr so E2B onStderr callback can relay them
 
 process.on("uncaughtException", (err) => {
   const msg = err instanceof Error ? err.stack ?? err.message : String(err);
   process.stderr.write(`[FATAL] uncaughtException: ${msg}\n`);
-  emit({ type: "error", message: `uncaughtException: ${err instanceof Error ? err.message : String(err)}` });
+  emit({
+    type: "error",
+    message: `uncaughtException: ${err instanceof Error ? err.message : String(err)}`,
+  });
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason) => {
-  const msg = reason instanceof Error ? reason.stack ?? reason.message : String(reason);
+  const msg =
+    reason instanceof Error ? reason.stack ?? reason.message : String(reason);
   process.stderr.write(`[FATAL] unhandledRejection: ${msg}\n`);
-  emit({ type: "error", message: `unhandledRejection: ${reason instanceof Error ? reason.message : String(reason)}` });
+  emit({
+    type: "error",
+    message: `unhandledRejection: ${reason instanceof Error ? reason.message : String(reason)}`,
+  });
   process.exit(1);
 });
 
-// ---------- .env loader (inline, same as index.ts) ----------
+// ---------- .env loader ----------
 
 async function loadEnvFile(filePath: string): Promise<void> {
   let text: string;
@@ -80,109 +84,9 @@ function parseArgs(argv: string[]): {
   };
 }
 
-// ---------- Async Queue ----------
+// ---------- stdin command loop ----------
 
-class AsyncQueue<T> {
-  private waiters: Array<(value: T) => void> = [];
-  private buffer: T[] = [];
-
-  push(item: T): void {
-    const waiter = this.waiters.shift();
-    if (waiter) {
-      waiter(item);
-    } else {
-      this.buffer.push(item);
-    }
-  }
-
-  pull(): Promise<T> {
-    const item = this.buffer.shift();
-    if (item !== undefined) return Promise.resolve(item);
-    return new Promise<T>((resolve) => this.waiters.push(resolve));
-  }
-}
-
-// ---------- State ----------
-
-interface SandboxState {
-  busy: boolean;
-  activeQuery: Query | null;
-  sessionId: string | null;
-  skillMap: Record<string, string>;
-}
-
-// ---------- Process a single query ----------
-
-async function processQuery(
-  prompt: string,
-  options: Record<string, unknown>,
-  state: SandboxState,
-): Promise<void> {
-  const t0 = Date.now();
-  const q = query({ prompt, options });
-  state.activeQuery = q;
-
-  try {
-    for await (const msg of q as AsyncIterable<SDKMessage>) {
-      if (msg.type === "assistant") {
-        // Skip — text is already emitted incrementally via stream_event deltas.
-        // Emitting here would duplicate the full response.
-      } else if (msg.type === "stream_event") {
-        const ev = msg.event as {
-          type?: string;
-          delta?: { type?: string; text?: string };
-        };
-        if (
-          ev.type === "content_block_delta" &&
-          ev.delta?.type === "text_delta" &&
-          ev.delta.text
-        ) {
-          emit({ type: "text", text: ev.delta.text });
-        }
-      } else if (msg.type === "tool_progress") {
-        const tp = msg as unknown as {
-          tool_name?: string;
-          tool_use_id?: string;
-        };
-        emit({
-          type: "tool_use",
-          tool: tp.tool_name ?? "unknown",
-          id: tp.tool_use_id ?? "",
-        });
-      } else if (msg.type === "result") {
-        const r = msg as unknown as {
-          total_cost_usd?: number;
-          is_error?: boolean;
-          duration_ms?: number;
-          session_id?: string;
-        };
-        const sessionId = r.session_id ?? state.sessionId ?? "";
-        if (r.session_id) {
-          state.sessionId = r.session_id;
-          // Update options for session resume on next query
-          (options as Record<string, unknown>).resume = r.session_id;
-          (options as Record<string, unknown>).continueConversation = false;
-        }
-        emit({
-          type: "result",
-          cost: r.total_cost_usd ?? 0,
-          duration_ms: r.duration_ms ?? Date.now() - t0,
-          session_id: sessionId,
-          is_error: r.is_error ?? false,
-        });
-      }
-    }
-  } finally {
-    state.activeQuery = null;
-  }
-}
-
-// ---------- stdin loop ----------
-
-function stdinLoop(
-  chatQueue: AsyncQueue<string>,
-  state: SandboxState,
-): Promise<void> {
+function stdinLoop(orchestrator: SandboxOrchestrator): Promise<void> {
   return new Promise<void>((resolve) => {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -194,24 +98,34 @@ function stdinLoop(
       if (!cmd) return;
 
       switch (cmd.cmd) {
-        case "chat":
-          chatQueue.push(cmd.message);
+        case "chat": {
+          const target = orchestrator.resolveTarget(cmd);
+          orchestrator.chat(cmd.message, target, cmd.request_id);
           break;
+        }
         case "interrupt":
-          if (state.activeQuery) {
-            state.activeQuery.close();
-            state.activeQuery = null;
-          }
+          orchestrator.interrupt(orchestrator.activeAgent);
           break;
-        case "status":
+        case "status": {
+          const status = orchestrator.getStatus(orchestrator.activeAgent);
           emit({
             type: "status",
-            state: state.busy ? "busy" : "idle",
-            ...(state.sessionId ? { session_id: state.sessionId } : {}),
+            state: status.busy ? "busy" : "idle",
+            ...(status.sessionId ? { session_id: status.sessionId } : {}),
           } as SandboxEvent);
           break;
+        }
         case "list_skills":
-          emit({ type: "skills", skills: state.skillMap });
+          emit({ type: "skills", skills: orchestrator.getSkillMap() });
+          break;
+        case "enter_agent":
+          orchestrator.enterAgent(cmd.agent);
+          break;
+        case "exit_agent":
+          orchestrator.exitAgent();
+          break;
+        case "resume":
+          emit({ type: "error", message: "Resume not yet implemented" });
           break;
       }
     });
@@ -220,39 +134,16 @@ function stdinLoop(
   });
 }
 
-// ---------- Worker loop ----------
-
-async function workerLoop(
-  chatQueue: AsyncQueue<string>,
-  options: Record<string, unknown>,
-  state: SandboxState,
-): Promise<void> {
-  // Worker runs forever until process exits; driven by chatQueue
-  while (true) {
-    const prompt = await chatQueue.pull();
-    state.busy = true;
-    try {
-      await processQuery(prompt, options, state);
-    } catch (err) {
-      emit({
-        type: "error",
-        message: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      state.busy = false;
-    }
-  }
-}
-
 // ---------- main ----------
 
 async function main(): Promise<void> {
   // Clean host Claude Code env vars that break nested SDK subprocess
-  // CLAUDECODE: triggers "cannot launch inside another session" guard
-  // ANTHROPIC_BASE_URL: only clear if it's the Claude Code internal proxy (localhost)
-  //   — preserve legitimate external base URLs (e.g. PackyAPI)
   delete process.env.CLAUDECODE;
-  if (process.env.ANTHROPIC_BASE_URL?.match(/^https?:\/\/(127\.0\.0\.1|localhost)/)) {
+  if (
+    process.env.ANTHROPIC_BASE_URL?.match(
+      /^https?:\/\/(127\.0\.0\.1|localhost)/,
+    )
+  ) {
     delete process.env.ANTHROPIC_BASE_URL;
   }
 
@@ -264,41 +155,21 @@ async function main(): Promise<void> {
   const projectPath = path.resolve(rawPath);
   await fs.mkdir(projectPath, { recursive: true });
 
-  const options = (await buildOptions(
+  const orchestrator = new SandboxOrchestrator({
     projectPath,
     agentsDir,
     skillsDir,
     model,
-  )) as Record<string, unknown>;
+  });
+  await orchestrator.init();
 
-  const agents = (options.agents ?? {}) as Record<
-    string,
-    { description: string }
-  >;
-  const skillMap: Record<string, string> = {};
-  for (const [name, defn] of Object.entries(agents)) {
-    skillMap[name] = defn.description;
-  }
-
-  const state: SandboxState = {
-    busy: false,
-    activeQuery: null,
-    sessionId: null,
-    skillMap,
-  };
-
-  emit({ type: "ready", skills: Object.keys(agents) });
-
-  const chatQueue = new AsyncQueue<string>();
-
-  // stdin close → process exits; worker runs until then
-  await Promise.race([
-    stdinLoop(chatQueue, state),
-    workerLoop(chatQueue, options, state),
-  ]);
+  await Promise.race([stdinLoop(orchestrator), orchestrator.startWorkers()]);
 }
 
 main().catch((err) => {
-  emit({ type: "error", message: err instanceof Error ? err.message : String(err) });
+  emit({
+    type: "error",
+    message: err instanceof Error ? err.message : String(err),
+  });
   process.exit(1);
 });

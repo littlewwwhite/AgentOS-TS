@@ -91,4 +91,24 @@ describe("sandbox integration", () => {
     // Process should exit without crashing (code 0 or null from signal)
     expect(code === 0 || code === null).toBe(true);
   }, 20_000);
+
+  it("responds to enter_agent with error for unknown agent", async () => {
+    proc = spawnSandbox();
+    await readLine(proc); // ready
+    send(proc, { cmd: "enter_agent", agent: "nonexistent" });
+    const line = await readLine(proc);
+    const event = JSON.parse(line);
+    expect(event.type).toBe("error");
+    expect(event.message).toContain("nonexistent");
+  }, 20_000);
+
+  it("responds to exit_agent with error when not in agent", async () => {
+    proc = spawnSandbox();
+    await readLine(proc); // ready
+    send(proc, { cmd: "exit_agent" });
+    const line = await readLine(proc);
+    const event = JSON.parse(line);
+    expect(event.type).toBe("error");
+    expect(event.message).toContain("Not in");
+  }, 20_000);
 });
