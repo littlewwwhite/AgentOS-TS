@@ -1,5 +1,5 @@
 // input: Base SDK options, agent directory, project path, agent name
-// output: SDK-compatible options with per-agent cwd + settingSources
+// output: SDK-compatible options with per-agent cwd + settingSources (orchestrator MCP stripped)
 // pos: Shared factory — single source of truth for agent session options
 
 import path from "node:path";
@@ -11,9 +11,11 @@ export function buildAgentOptions(
   agentName: string,
   extraMcpServers?: Record<string, unknown>,
 ): Record<string, unknown> {
-  const { systemPrompt: _orchestratorPrompt, ...rest } = baseOptions;
+  const { systemPrompt: _orchestratorPrompt, mcpServers: rawMcp, ...rest } = baseOptions;
+  // Strip orchestrator's `switch` server so agents never inherit `switch_to_agent`
+  const { switch: _switchServer, ...baseMcp } = (rawMcp as Record<string, unknown>) ?? {};
   const mcpServers = {
-    ...(rest.mcpServers as Record<string, unknown> ?? {}),
+    ...baseMcp,
     ...extraMcpServers,
   };
   return {
