@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
+  createSdkMcpServer: vi.fn(() => ({ type: "mock-mcp-server" })),
+  tool: vi.fn((_name: string, _desc: string, _schema: unknown, handler: unknown) => ({ handler })),
 }));
 
 vi.mock("../src/protocol.js", () => ({

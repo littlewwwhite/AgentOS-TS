@@ -2,13 +2,21 @@
 // output: Manages agent sessions, routes commands, emits events
 // pos: Sole orchestration core — routes to per-agent .claude/ directories via SDK-native loading
 
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import fs from "node:fs";
+import path from "node:path";
+import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { Query, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { buildAgentOptions } from "./agent-options.js";
 import { buildOptions } from "./options.js";
 import { emit } from "./protocol.js";
 import type { ChatCommand } from "./protocol.js";
+import {
+  createSwitchSignal,
+  createSwitchToAgent,
+  createReturnToMain,
+  type SwitchSignal,
+} from "./tools/agent-switch.js";
 
 // ---------- AsyncQueue ----------
 
@@ -67,8 +75,15 @@ export class SandboxOrchestrator {
   /** Mutex — SDK shares global MCP Protocol, so only one query() at a time */
   private queryLock: Promise<void> = Promise.resolve();
 
+  // Signal-driven agent switching
+  private signal: SwitchSignal = createSwitchSignal();
+  private masterSwitchServer: unknown = null;
+  private agentSwitchServer: unknown = null;
+  private sessionsFile: string;
+
   constructor(config: OrchestratorConfig) {
     this.config = config;
+    this.sessionsFile = path.join(config.projectPath, ".sessions.json");
   }
 
   get activeAgent(): string | null {
@@ -88,6 +103,24 @@ export class SandboxOrchestrator {
       string,
       { description: string }
     >;
+
+    // Create MCP servers for signal-driven switching
+    const agentNames = Object.keys(this.agentDefinitions);
+    if (agentNames.length > 0) {
+      const switchTool = createSwitchToAgent(this.signal, agentNames);
+      this.masterSwitchServer = createSdkMcpServer({ name: "switch", tools: [switchTool] });
+
+      const returnTool = createReturnToMain(this.signal);
+      this.agentSwitchServer = createSdkMcpServer({ name: "switch", tools: [returnTool] });
+
+      // Inject switch server into master options
+      const mcpServers = { ...(this.baseOptions.mcpServers as Record<string, unknown> ?? {}) };
+      mcpServers.switch = this.masterSwitchServer;
+      this.baseOptions.mcpServers = mcpServers;
+    }
+
+    // Restore persisted session IDs
+    this.loadSessions();
 
     this.mainSession = this.createSession("main", this.baseOptions);
 
@@ -110,8 +143,11 @@ export class SandboxOrchestrator {
 
     let session = this.agents.get(name);
     if (!session) {
+      const extraMcp = this.agentSwitchServer
+        ? { switch: this.agentSwitchServer }
+        : undefined;
       session = this.createSession(name, buildAgentOptions(
-        this.baseOptions, this.config.agentsDir, this.config.projectPath, name,
+        this.baseOptions, this.config.agentsDir, this.config.projectPath, name, extraMcp,
       ));
       this.agents.set(name, session);
       // Start worker in background — fire and forget
@@ -332,6 +368,84 @@ export class SandboxOrchestrator {
     } finally {
       session.activeQuery = null;
       release!();
+    }
+
+    // Persist session IDs after each query
+    this.saveSessions();
+
+    // -- Signal-driven agent switching --
+
+    // Master → Agent: main LLM called switch_to_agent
+    if (session.name === "main" && this.signal.switchRequest) {
+      const req = this.signal.switchRequest;
+      this.signal.switchRequest = null;
+
+      const agentSession = this.getOrCreateAgent(req.agent);
+      if (agentSession) {
+        this._activeAgent = req.agent;
+        emit({ type: "agent_entered", agent: req.agent });
+        if (req.task) {
+          agentSession.queue.push({ prompt: req.task, requestId });
+        }
+      }
+    }
+
+    // Agent → Master: agent LLM called return_to_main
+    if (session.name !== "main" && this.signal.returnRequest) {
+      const req = this.signal.returnRequest;
+      this.signal.returnRequest = null;
+
+      const returned = session.name;
+      this._activeAgent = null;
+      emit({ type: "agent_exited", agent: returned });
+
+      if (this.mainSession && req.summary) {
+        this.mainSession.queue.push({
+          prompt: `[${returned} completed] ${req.summary}`,
+          requestId,
+        });
+      }
+    }
+  }
+
+  // -- Session persistence --
+
+  private loadSessions(): void {
+    try {
+      const data = JSON.parse(fs.readFileSync(this.sessionsFile, "utf-8")) as Record<string, string>;
+      // Session IDs will be applied when sessions are created
+      if (data.main && this.mainSession) {
+        this.mainSession.sessionId = data.main;
+        this.mainSession.options.resume = data.main;
+        this.mainSession.options.continueConversation = false;
+      }
+      // Agent sessions are lazy — IDs are stored for later use
+      for (const [name, sessionId] of Object.entries(data)) {
+        if (name !== "main" && sessionId) {
+          // Pre-create agent session so it picks up the session ID
+          const session = this.getOrCreateAgent(name);
+          if (session) {
+            session.sessionId = sessionId;
+            session.options.resume = sessionId;
+            session.options.continueConversation = false;
+          }
+        }
+      }
+    } catch {
+      // First run or corrupt file — start fresh
+    }
+  }
+
+  private saveSessions(): void {
+    const data: Record<string, string> = {};
+    if (this.mainSession?.sessionId) data.main = this.mainSession.sessionId;
+    for (const [name, session] of this.agents) {
+      if (session.sessionId) data[name] = session.sessionId;
+    }
+    try {
+      fs.writeFileSync(this.sessionsFile, JSON.stringify(data, null, 2));
+    } catch {
+      // Non-critical — session restore is best-effort
     }
   }
 }

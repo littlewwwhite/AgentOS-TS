@@ -6,12 +6,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 import chalk from "chalk";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { buildAgentOptions } from "./agent-options.js";
 import { buildOptions } from "./options.js";
 import { matchEnterAgent } from "./protocol.js";
+import {
+  createSwitchSignal,
+  createSwitchToAgent,
+  createReturnToMain,
+} from "./tools/agent-switch.js";
 
 const VERSION = "0.1.0";
 const SESSION_FILE = ".session";
@@ -406,6 +411,22 @@ export async function repl(config: {
   const agents = (options.agents ?? {}) as Record<string, { description: string }>;
   const agentNames = Object.keys(agents);
 
+  // Signal-driven agent dispatch (LLM calls switch_to_agent / return_to_main)
+  const signal = createSwitchSignal();
+  let returnServer: unknown = null;
+  if (agentNames.length > 0) {
+    const switchServer = createSdkMcpServer({
+      name: "switch",
+      tools: [createSwitchToAgent(signal, agentNames)],
+    });
+    returnServer = createSdkMcpServer({
+      name: "switch",
+      tools: [createReturnToMain(signal)],
+    });
+    const baseMcp = (options.mcpServers ?? {}) as Record<string, unknown>;
+    (options as Record<string, unknown>).mcpServers = { ...baseMcp, switch: switchServer };
+  }
+
   // Header
   console.log(`\n  ${chalk.bold("AgentOS")} ${chalk.dim(`v${VERSION}`)}`);
   const label = projectName ?? "general session";
@@ -557,8 +578,9 @@ export async function repl(config: {
     let effectiveOptions: Record<string, unknown>;
     if (activeAgent) {
       // Agent uses its own .claude/ directory — SDK loads CLAUDE.md + settings.json + skills natively
+      const extraMcp = returnServer ? { switch: returnServer } : undefined;
       effectiveOptions = {
-        ...buildAgentOptions(options, agentsDir, projectPath, activeAgent),
+        ...buildAgentOptions(options, agentsDir, projectPath, activeAgent, extraMcp),
         resume: agentSessions.get(activeAgent),
         continueConversation: false,
       };
@@ -567,6 +589,68 @@ export async function repl(config: {
     }
 
     const sid = await sendAndStream(input, effectiveOptions, sf);
+
+    // -- Signal-driven dispatch: main LLM called switch_to_agent --
+    if (!activeAgent && signal.switchRequest) {
+      const { agent, task } = signal.switchRequest;
+      signal.switchRequest = null;
+
+      activeAgent = agent;
+      if (!agentSessions.has(agent)) {
+        const saved = await readText(sessionFilePath(projectPath, agent));
+        if (saved) agentSessions.set(agent, saved);
+      }
+      console.log(`\n  ${chalk.cyan("⏺")} dispatched to ${chalk.bold(agent)}`);
+
+      // Send the delegated task to the agent
+      const agentSf = sessionFilePath(projectPath, agent);
+      const extraMcp = returnServer ? { switch: returnServer } : undefined;
+      const agentOpts: Record<string, unknown> = {
+        ...buildAgentOptions(options, agentsDir, projectPath, agent, extraMcp),
+        resume: agentSessions.get(agent),
+        continueConversation: false,
+      };
+      const agentSid = await sendAndStream(task, agentOpts, agentSf);
+      if (agentSid) agentSessions.set(agent, agentSid);
+
+      // Check if agent returned immediately
+      if (signal.returnRequest) {
+        const { summary } = signal.returnRequest;
+        signal.returnRequest = null;
+        const returned = activeAgent;
+        activeAgent = null;
+        console.log(`\n  ${chalk.cyan("⏺")} ${chalk.dim(`${returned} returned`)}`);
+        console.log(`  ${chalk.dim("Summary:")} ${summary}`);
+
+        // Route summary back to main session
+        const mainSf = sessionFilePath(projectPath);
+        const mainSid = await sendAndStream(
+          `[${returned} completed] ${summary}`,
+          options,
+          mainSf,
+        );
+        if (mainSid) (options as Record<string, unknown>).resume = mainSid;
+      }
+    }
+
+    // -- Signal-driven return: agent LLM called return_to_main --
+    if (activeAgent && signal.returnRequest) {
+      const { summary } = signal.returnRequest;
+      signal.returnRequest = null;
+      const returned = activeAgent;
+      activeAgent = null;
+      console.log(`\n  ${chalk.cyan("⏺")} ${chalk.dim(`${returned} returned`)}`);
+      console.log(`  ${chalk.dim("Summary:")} ${summary}`);
+
+      // Route summary back to main session
+      const mainSf = sessionFilePath(projectPath);
+      const mainSid = await sendAndStream(
+        `[${returned} completed] ${summary}`,
+        options,
+        mainSf,
+      );
+      if (mainSid) (options as Record<string, unknown>).resume = mainSid;
+    }
 
     // Update session tracking for subsequent queries
     if (sid) {
