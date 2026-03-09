@@ -12,7 +12,7 @@ export interface SandboxClientOptions {
   templateId?: string;
   /** E2B API key (defaults to E2B_API_KEY env var) */
   apiKey?: string;
-  /** Sandbox timeout in ms (default: 5 min) */
+  /** Sandbox timeout in ms (default: 10 min) */
   timeoutMs?: number;
   /** Event callback — receives every parsed JSON line from sandbox stdout */
   onEvent?: (event: SandboxEvent) => void;
@@ -63,7 +63,7 @@ export class SandboxClient {
       this.opts.templateId ?? "agentos-sandbox",
       {
         apiKey: this.opts.apiKey,
-        timeoutMs: this.opts.timeoutMs ?? 300_000,
+        timeoutMs: this.opts.timeoutMs ?? 600_000,
       },
     );
 
@@ -238,7 +238,7 @@ export class SandboxClient {
             this.opts.templateId ?? "agentos-sandbox",
             {
               apiKey: this.opts.apiKey,
-              timeoutMs: this.opts.timeoutMs ?? 300_000,
+              timeoutMs: this.opts.timeoutMs ?? 600_000,
             },
           );
         }
@@ -271,7 +271,7 @@ export class SandboxClient {
     this.heartbeatTimer = setInterval(() => {
       if (!this._sandbox || this.reconnecting) return;
       // Extend sandbox lifetime so E2B platform doesn't reclaim it
-      const timeout = this.opts.timeoutMs ?? 300_000;
+      const timeout = this.opts.timeoutMs ?? 600_000;
       this._sandbox.setTimeout(timeout).catch(() => {});
       // Also ping the agent process
       if (this.handle) {
