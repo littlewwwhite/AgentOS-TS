@@ -64,6 +64,8 @@ export class SandboxOrchestrator {
   private agentDefinitions: Record<string, { description: string }> = {};
   private _activeAgent: string | null = null;
   private baseOptions: Record<string, unknown> = {};
+  /** Mutex — SDK shares global MCP Protocol, so only one query() at a time */
+  private queryLock: Promise<void> = Promise.resolve();
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
@@ -232,10 +234,26 @@ export class SandboxOrchestrator {
     session: AgentSession,
     requestId?: string,
   ): Promise<void> {
+    // Serialize SDK queries — shared MCP Protocol cannot handle concurrent connections
+    let release: () => void;
+    const next = new Promise<void>((r) => { release = r; });
+    const prev = this.queryLock;
+    this.queryLock = next;
+    await prev;
+
     const t0 = Date.now();
     const agentField = session.name === "main" ? undefined : session.name;
 
-    const q = query({ prompt, options: session.options });
+    const q = query({
+      prompt,
+      options: {
+        ...session.options,
+        stderr: (data: string) => {
+          const trimmed = data.trim();
+          if (trimmed) emit({ type: "error", message: `[sdk-stderr] ${trimmed}`, agent: agentField, request_id: requestId });
+        },
+      },
+    });
     session.activeQuery = q;
 
     try {
@@ -286,6 +304,7 @@ export class SandboxOrchestrator {
       }
     } finally {
       session.activeQuery = null;
+      release!();
     }
   }
 }

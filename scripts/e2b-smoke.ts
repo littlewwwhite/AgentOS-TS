@@ -1,21 +1,21 @@
-/**
- * E2B end-to-end integration test
- *
- * Pre-req: bun run build (dist/ must exist)
- * Usage: bun scripts/e2b-smoke.ts
- *
- * Tests the full sandbox protocol chain:
- * 1. Create E2B sandbox
- * 2. Upload project bundle + install deps
- * 3. Start sandbox.js process (background + stdin)
- * 4. Verify ready / list_skills / status events
- */
-import { execSync } from "node:child_process";
+// input: SandboxClient, .env (E2B_API_KEY + ANTHROPIC_API_KEY)
+// output: End-to-end smoke test results for SandboxOrchestrator on E2B
+// pos: Manual validation script — tests protocol commands including agent routing
+//
+// Pre-req: bun e2b/build.ts (template must be built)
+// Usage: bun scripts/e2b-smoke.ts [--chat]
+//   --chat  Run LLM chat tests (requires ANTHROPIC_API_KEY, costs ~$0.05)
+
+import { SandboxClient } from "../src/e2b-client.js";
+import type { SandboxEvent, SandboxCommand } from "../src/protocol.js";
 import fs from "node:fs";
 import path from "node:path";
-import { Sandbox } from "e2b";
 
 // ---------- .env ----------
+// Always prefer .env values over process.env for sandbox envs,
+// because Claude Code sets ANTHROPIC_BASE_URL to a local proxy
+// that is unreachable from inside the E2B sandbox.
+const dotEnv: Record<string, string> = {};
 const envPath = path.resolve(import.meta.dir, "../.env");
 if (fs.existsSync(envPath)) {
   for (const line of fs.readFileSync(envPath, "utf-8").split("\n")) {
@@ -23,162 +23,222 @@ if (fs.existsSync(envPath)) {
     if (!t || t.startsWith("#")) continue;
     const eq = t.indexOf("=");
     if (eq < 0) continue;
-    const k = t.slice(0, eq).trim();
-    const v = t.slice(eq + 1).trim();
-    if (!(k in process.env)) process.env[k] = v;
+    dotEnv[t.slice(0, eq).trim()] = t.slice(eq + 1).trim();
   }
 }
 
-const API_KEY = process.env.E2B_API_KEY;
-if (!API_KEY) {
+if (!dotEnv.E2B_API_KEY && !process.env.E2B_API_KEY) {
   console.error("E2B_API_KEY not set");
   process.exit(1);
 }
 
-// ---------- Helpers ----------
-type Ev = Record<string, unknown>;
-const log = (m: string) => console.log(`[e2b] ${m}`);
+const RUN_CHAT = process.argv.includes("--chat");
 
-async function waitFor(
-  pred: () => boolean,
-  ms: number,
-): Promise<boolean> {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
-    if (pred()) return true;
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return false;
+// ---------- Helpers ----------
+const log = (m: string) => console.log(`[e2b] ${m}`);
+let passed = 0;
+let failed = 0;
+
+function assert(condition: boolean, msg: string): void {
+  if (!condition) throw new Error(`Assertion failed: ${msg}`);
 }
 
-// ---------- Main ----------
-async function main() {
-  // 0. Build bundle
-  log("Building tar bundle...");
-  execSync("bun run build", { stdio: "inherit" });
-  execSync(
-    "tar czf /tmp/agentos-lite.tar.gz dist/ skills/ package.json bun.lock",
-    { stdio: "inherit" },
-  );
-  const bundle = fs.readFileSync("/tmp/agentos-lite.tar.gz");
-  log(`Bundle size: ${(bundle.length / 1024).toFixed(0)} KB`);
+// ---------- Client ----------
+const events: SandboxEvent[] = [];
+let cursor = 0; // watermark — search from here forward
 
-  // 1. Create sandbox (5 min timeout)
-  log("Creating sandbox...");
-  const sandbox = await Sandbox.create({
-    apiKey: API_KEY,
-    timeoutMs: 300_000,
-  });
-  log(`Sandbox: ${sandbox.sandboxId}`);
+const client = new SandboxClient({
+  templateId: "agentos-sandbox",
+  apiKey: dotEnv.E2B_API_KEY ?? process.env.E2B_API_KEY,
+  onEvent: (event) => {
+    events.push(event);
+    log(`  << ${event.type} ${JSON.stringify(event).slice(0, 100)}`);
+  },
+  onStderr: (data) => console.error(`  [stderr] ${data.trim()}`),
+  envs: {
+    ANTHROPIC_API_KEY: dotEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
+    ANTHROPIC_BASE_URL: dotEnv.ANTHROPIC_BASE_URL ?? process.env.ANTHROPIC_BASE_URL ?? "",
+  },
+});
 
-  try {
-    // 2. Install bun
-    log("Installing bun in sandbox...");
-    const bunInstall = await sandbox.commands.run(
-      "curl -fsSL https://bun.sh/install | bash 2>&1",
-      { timeoutMs: 60_000 },
-    );
-    if (bunInstall.exitCode !== 0) throw new Error("bun install failed");
-    log("bun installed");
-
-    // 3. Upload + extract bundle
-    const APP = "/home/user/app";
-    log("Uploading bundle...");
-    await sandbox.files.write("/tmp/bundle.tar.gz", bundle);
-    const extract = await sandbox.commands.run(
-      `mkdir -p ${APP} && cd ${APP} && tar xzf /tmp/bundle.tar.gz`,
-      { timeoutMs: 10_000 },
-    );
-    if (extract.exitCode !== 0) throw new Error("extract failed");
-    log("Bundle extracted");
-
-    // 4. Install node dependencies
-    log("Installing dependencies...");
-    const deps = await sandbox.commands.run(
-      `cd ${APP} && /home/user/.bun/bin/bun install --frozen-lockfile 2>&1`,
-      { timeoutMs: 60_000 },
-    );
-    log(`bun install exit: ${deps.exitCode}`);
-    if (deps.exitCode !== 0) {
-      log(`stdout: ${deps.stdout.slice(0, 500)}`);
-      throw new Error("bun install failed");
+/** Search for event of given type starting from cursor */
+async function waitForEvent(
+  type: string,
+  timeoutMs = 10000,
+): Promise<SandboxEvent> {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    for (let i = cursor; i < events.length; i++) {
+      if (events[i].type === type) {
+        cursor = i + 1; // advance past this event
+        return events[i];
+      }
     }
-
-    // 5. Create workspace
-    await sandbox.commands.run(`mkdir -p ${APP}/workspace`);
-
-    // 6. Start sandbox process
-    log("Starting sandbox process...");
-    const events: Ev[] = [];
-    const stderr: string[] = [];
-
-    const cmd = await sandbox.commands.run(
-      `/home/user/.bun/bin/bun ${APP}/dist/sandbox.js ${APP}/workspace --skills ${APP}/skills`,
-      {
-        background: true,
-        stdin: true,
-        cwd: APP,
-        onStdout: (data: string) => {
-          for (const line of data.split("\n").filter((l) => l.trim())) {
-            try {
-              const ev = JSON.parse(line);
-              events.push(ev);
-              log(`  << ${JSON.stringify(ev).slice(0, 120)}`);
-            } catch {
-              log(`  [raw] ${line.slice(0, 80)}`);
-            }
-          }
-        },
-        onStderr: (data: string) => stderr.push(data),
-      },
-    );
-    log(`PID: ${cmd.pid}`);
-
-    // 7. Test: ready event
-    log("Waiting for ready...");
-    const readyOk = await waitFor(
-      () => events.some((e) => e.type === "ready"),
-      20_000,
-    );
-    if (!readyOk) {
-      log("FAIL: no ready event");
-      log(`stderr: ${stderr.join("").slice(0, 500)}`);
-      return false;
-    }
-    log("PASS: ready");
-
-    // 8. Test: list_skills
-    log("Testing list_skills...");
-    await sandbox.commands.sendStdin(cmd.pid, '{"cmd":"list_skills"}\n');
-    const skillsOk = await waitFor(
-      () => events.some((e) => e.type === "skills"),
-      5_000,
-    );
-    log(skillsOk ? "PASS: skills" : "FAIL: skills");
-
-    // 9. Test: status
-    log("Testing status...");
-    await sandbox.commands.sendStdin(cmd.pid, '{"cmd":"status"}\n');
-    const statusOk = await waitFor(
-      () => events.some((e) => e.type === "status"),
-      5_000,
-    );
-    log(statusOk ? "PASS: status" : "FAIL: status");
-
-    await cmd.kill().catch(() => {});
-
-    const allPassed = readyOk && skillsOk && statusOk;
-    log(allPassed ? "\nALL E2B TESTS PASSED" : "\nSOME TESTS FAILED");
-    return allPassed;
-  } finally {
-    log("Destroying sandbox...");
-    await sandbox.kill().catch(() => {});
+    await new Promise((r) => setTimeout(r, 200));
   }
+  throw new Error(`Timeout (${timeoutMs}ms) waiting for event: ${type}`);
+}
+
+/** Find event of given type from cursor without advancing */
+function findEvent(type: string): SandboxEvent | null {
+  for (let i = cursor; i < events.length; i++) {
+    if (events[i].type === type) return events[i];
+  }
+  return null;
+}
+
+async function send(cmd: SandboxCommand) {
+  await client.sendCommand(cmd);
+}
+
+async function test(name: string, fn: () => Promise<void>) {
+  cursor = events.length; // new watermark
+  process.stdout.write(`\n--- ${name} ---\n`);
+  try {
+    await fn();
+    passed++;
+    log(`PASS: ${name}`);
+  } catch (err) {
+    failed++;
+    log(`FAIL: ${name} — ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+// ---------- Tests ----------
+async function main() {
+  log("Creating sandbox from template 'agentos-sandbox'...");
+  await client.start();
+  log(`Sandbox ID: ${client.sandboxId}`);
+
+  // Wait for ready
+  await waitForEvent("ready", 30000);
+  log("Sandbox ready!");
+  await new Promise((r) => setTimeout(r, 2000));
+  log("Starting tests...\n");
+
+  // --- Protocol tests (no LLM calls) ---
+
+  await test("status returns idle", async () => {
+    await send({ cmd: "status" });
+    const evt = await waitForEvent("status");
+    assert((evt as any).state === "idle", `state=${(evt as any).state}`);
+  });
+
+  await test("list_skills returns skills", async () => {
+    await send({ cmd: "list_skills" });
+    const evt = await waitForEvent("skills");
+    const skills = (evt as any).skills;
+    assert(typeof skills === "object" && skills !== null, "skills not object");
+    const names = Object.keys(skills);
+    assert(names.length > 0, "no skills loaded");
+    log(`  Skills: ${names.join(", ")}`);
+  });
+
+  await test("enter_agent (screenwriter)", async () => {
+    await send({ cmd: "enter_agent", agent: "screenwriter" });
+    const evt = await waitForEvent("agent_entered");
+    assert((evt as any).agent === "screenwriter", `agent=${(evt as any).agent}`);
+  });
+
+  await test("status after enter_agent shows busy=false", async () => {
+    await send({ cmd: "status" });
+    const evt = await waitForEvent("status");
+    assert((evt as any).state === "idle", `state=${(evt as any).state}`);
+  });
+
+  await test("exit_agent", async () => {
+    await send({ cmd: "exit_agent" });
+    const evt = await waitForEvent("agent_exited");
+  });
+
+  await test("exit_agent when not in agent returns error", async () => {
+    await send({ cmd: "exit_agent" });
+    const evt = await waitForEvent("error");
+    assert((evt as any).message.includes("Not in"), (evt as any).message);
+  });
+
+  await test("enter_agent with invalid name returns error", async () => {
+    await send({ cmd: "enter_agent", agent: "nonexistent-agent-xyz" });
+    const evt = await waitForEvent("error");
+    assert(
+      (evt as any).message.includes("not found") ||
+        (evt as any).message.includes("Unknown"),
+      (evt as any).message,
+    );
+  });
+
+  // --- LLM chat tests (optional, costs money) ---
+
+  if (RUN_CHAT) {
+    if (!dotEnv.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+      log("SKIP: chat tests require ANTHROPIC_API_KEY");
+    } else {
+      await test("chat (main session)", async () => {
+        await send({
+          cmd: "chat",
+          message: "Reply with exactly one word: pong",
+          request_id: "smoke-main",
+        });
+        const evt = await waitForEvent("result", 30000);
+        assert(!(evt as any).is_error, "query returned error");
+        log(
+          `  Cost: $${(evt as any).cost}, session: ${(evt as any).session_id}`,
+        );
+      });
+
+      await test("chat with target=screenwriter", async () => {
+        await send({
+          cmd: "chat",
+          message: "Reply with exactly one word: pong",
+          target: "screenwriter",
+          request_id: "smoke-target",
+        });
+        const result = await waitForEvent("result", 30000);
+        assert(!(result as any).is_error, "query returned error");
+        // Check for agent correlation in text events
+        const textEvt = findEvent("text");
+        if (textEvt && (textEvt as any).agent === "screenwriter") {
+          log("  Agent correlation: yes");
+        }
+        log(`  Cost: $${(result as any).cost}`);
+      });
+
+      await test("enter_agent + chat + exit_agent", async () => {
+        await send({ cmd: "enter_agent", agent: "screenwriter" });
+        await waitForEvent("agent_entered");
+
+        await send({
+          cmd: "chat",
+          message: "Reply with exactly one word: active",
+          request_id: "smoke-entered",
+        });
+        const result = await waitForEvent("result", 30000);
+        assert(!(result as any).is_error, "query returned error");
+        log(`  Cost: $${(result as any).cost}`);
+
+        await send({ cmd: "exit_agent" });
+        await waitForEvent("agent_exited");
+      });
+    }
+  } else {
+    log("\nSKIP: chat tests (use --chat to enable, costs ~$0.05)");
+  }
+
+  // --- Summary ---
+  console.log(`\n${"=".repeat(40)}`);
+  console.log(`  PASSED: ${passed}`);
+  console.log(`  FAILED: ${failed}`);
+  console.log(`${"=".repeat(40)}`);
+
+  await client.destroy();
+  log("Sandbox destroyed.");
+  return failed === 0;
 }
 
 main()
   .then((ok) => process.exit(ok ? 0 : 1))
-  .catch((e) => {
+  .catch(async (e) => {
     console.error("Fatal:", e);
+    await client.destroy().catch(() => {});
     process.exit(1);
   });
