@@ -19,20 +19,24 @@ Phase 3 是**纯确定性解析**，不需要 LLM。调用 `mcp__script__parse_s
 
 ### script.json
 
-结构化剧本，嵌套 episodes > scenes > actions。解析器会从 catalog.json 映射角色名和地点名到已有 ID，未在 catalog 中的角色/地点自动生成新 ID。解析完成后计算反向索引：每个角色/地点出现在哪些场。
+结构化剧本，嵌套 episodes > scenes > actions。解析器会从 catalog.json 映射角色名和地点名到已有 ID，未在 catalog 中的角色/地点自动生成新 ID。
 
 ```json
 {
   "title": "从 design.json 读取",
+  "worldview": "从 design.json 读取（可为 null）",
+  "style": "从 design.json 读取（可为 null）",
   "actors": [
-    {"id": "chr_001", "name": "楚凡", "scene_ids": ["scn_001", "scn_002", "scn_005"], "states": {"default": ["scn_001", "scn_005"], "幼年": ["scn_002"]}},
-    {"id": "chr_002", "name": "林雪", "scene_ids": ["scn_001"], "states": {"default": ["scn_001"]}}
+    {"id": "act_001", "name": "楚凡", "states": [{"id": "st_001", "name": "幼年"}]},
+    {"id": "act_002", "name": "林雪"}
   ],
   "locations": [
-    {"id": "loc_001", "name": "觉醒大厅", "scene_ids": ["scn_001"]},
-    {"id": "loc_002", "name": "学院街道", "scene_ids": ["scn_002"]}
+    {"id": "loc_001", "name": "觉醒大厅"},
+    {"id": "loc_002", "name": "学院街道"}
   ],
-  "props": [],
+  "props": [
+    {"id": "prp_001", "name": "玉佩"}
+  ],
   "episodes": [
     {
       "episode": 1,
@@ -44,14 +48,29 @@ Phase 3 是**纯确定性解析**，不需要 LLM。调用 `mcp__script__parse_s
           "location": "觉醒大厅",
           "location_id": "loc_001",
           "time_of_day": "day",
-          "actor_ids": ["chr_001", "chr_002"],
-          "actor_states": {},
+          "cast": [
+            {"actor_id": "act_001", "state_id": null},
+            {"actor_id": "act_002", "state_id": null}
+          ],
+          "prop_ids": ["prp_001"],
           "actions": [
             {"sequence": 1, "type": "sfx", "content": "异能觉醒时代"},
             {"sequence": 2, "type": "action", "content": "聚光灯下，巨大的能量水晶闪烁着耀眼的光芒。"},
-            {"sequence": 3, "type": "dialogue", "actor_id": "chr_002", "content": "恭喜林雪同学，觉醒A级异能！", "emotion": "高声宣布"},
-            {"sequence": 4, "type": "inner_thought", "actor_id": "chr_001", "content": "一夜之间，什么都没了……"}
+            {"sequence": 3, "type": "dialogue", "actor_id": "act_002", "content": "恭喜林雪同学，觉醒A级异能！", "emotion": "高声宣布"},
+            {"sequence": 4, "type": "inner_thought", "actor_id": "act_001", "content": "一夜之间，什么都没了……"}
           ]
+        },
+        {
+          "id": "scn_002",
+          "sequence": 2,
+          "location": "学院街道",
+          "location_id": "loc_002",
+          "time_of_day": "night",
+          "cast": [
+            {"actor_id": "act_001", "state_id": null}
+          ],
+          "prop_ids": [],
+          "actions": []
         }
       ]
     }
@@ -61,16 +80,19 @@ Phase 3 是**纯确定性解析**，不需要 LLM。调用 `mcp__script__parse_s
 ```
 
 **结构说明**：
-- `actors`：角色列表（id + name + scene_ids + states），优先使用 catalog.json 中的 ID
-- `actors[*].scene_ids`：该角色出现的所有场景 ID
-- `actors[*].states`：角色-状态-场景映射（如 `{"default": ["scn_001"], "幼年": ["scn_002"]}`），asset_gen 用来确定需要生成几套素材
-- `locations`：地点列表（id + name + scene_ids），优先使用 catalog.json 中的 ID
-- `locations[*].scene_ids`：使用该地点的所有场景 ID
+- `worldview`：从 design.json 读取的世界观描述（可为 null）
+- `style`：从 design.json 读取的风格描述（可为 null）
+- `actors`：角色列表（id + name），优先使用 catalog.json 中的 ID，ID 前缀 `act_`
+- `actors[*].states`：可选，角色造型状态列表 `[{id: "st_001", name: "幼年"}]`，仅当角色有非 default 造型时存在
+- `locations`：地点列表（id + name），优先使用 catalog.json 中的 ID，ID 前缀 `loc_`
+- `locations[*].states`：可选，地点状态列表 `[{id: "lst_001", name: "废墟"}]`，仅当地点有状态变体时存在
+- `props`：道具列表（id + name），ID 前缀 `prp_`，从剧本道具行提取
 - `episodes`：按集嵌套，每集包含 scenes
 - `scenes`：每场包含 location_id（映射到 catalog）和 actions
-- `scenes[*].actor_states`：场景维度的角色状态（如 `{"chr_001": "幼年"}`），仅记录非 default 状态，Producer 用来确定某场使用哪个素材变体
+- `scenes[*].cast`：该场出演角色及其造型状态 `[{actor_id, state_id}]`，state_id 为 null 表示 default 造型
+- `scenes[*].prop_ids`：该场使用的道具 ID 列表
+- `scenes[*].location_state_id`：可选，地点状态 ID（如 `"lst_001"`），仅当场次头标注了地点状态时存在
 - `actions.type`：action | dialogue | inner_thought | sfx | narration
-- 道具：不做映射（由下游 LLM 从 action 文本推断）
 - 排除群演描述（"同学若干""路人×3"）
 
 ## 执行
