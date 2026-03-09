@@ -1,267 +1,438 @@
 # Skills
 
-AgentOS 的 Skill 目录，共 11 个 skill，覆盖从剧本创作到视频交付的完整 AI 微短剧生产管线。
+AgentOS skill directory. Each subdirectory is an independent skill — a set of instructions that teaches Claude how to execute specific workflows.
 
-## 架构概览
-
-### Skill 标准结构
-
-每个 skill 是一个独立目录，包含 `SKILL.md`（必需）和可选的支撑文件：
-
-```
-skill-name/
-├── SKILL.md              # 入口：YAML frontmatter + Markdown 指令
-├── references/           # 按需加载的参考文档（详细规则、协议等）
-├── resources/            # 共享知识库（领域知识、写作规则等）
-├── assets/               # 输出模板（交付物模板、风格指南等）
-└── scripts/              # 可执行脚本（Python/Bash）
-```
-
-### Frontmatter 字段
-
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| `name` | Skill 标识符（省略时用目录名） | `script-writer` |
-| `description` | 功能描述 + 触发条件（主触发机制） | `"微短剧剧本写作流水线..."` |
-| `allowed-tools` | 限制可用工具集（可选） | `["Read", "Write"]` |
-| `model` | 指定模型（可选） | `sonnet` |
-| `argument-hint` | 参数提示（可选） | `<视频文件路径>` |
-
-### Loader 机制
-
-`src/agentos/loader.py` 递归扫描 `skills/` 下的 `SKILL.md`，解析 frontmatter 构建 `AgentDefinition`。支撑文件（references/、resources/、assets/）在 skill 调用时按需加载到 prompt 上下文中。
+> Authoring reference: `docs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf`
 
 ---
 
-## 数据管线（DAG）
+## Part I — Authoring Guide
+
+This section defines the **mandatory conventions** for creating and maintaining skills in this repository.
+
+### 1. Progressive Disclosure
+
+Skills use a three-level loading system to minimize token usage:
+
+| Level | Location | Loaded When | Purpose |
+|-------|----------|-------------|---------|
+| **L1** | YAML frontmatter | Always (injected into system prompt) | Claude decides whether to activate this skill |
+| **L2** | SKILL.md body | Skill activated by Claude | Full workflow instructions |
+| **L3** | `references/`, `resources/`, `assets/` | Explicitly requested in SKILL.md | Detailed docs, data, templates |
+
+**Core principle**: SKILL.md is the **routing hub**, not the knowledge dump. Move detail to L3.
+
+### 2. File Structure
 
 ```
-创意/小说
+your-skill-name/               # kebab-case only
+├── SKILL.md                    # REQUIRED — main instruction file
+├── scripts/                    # Optional — executable code (Python, Bash)
+│   ├── auth.py
+│   └── submit_task.py
+├── references/                 # Optional — workflow guides, API specs (load per-phase)
+│   ├── api.md
+│   └── phase1-guide.md
+├── resources/                  # Optional — shared knowledge base (load once, reuse cross-phase)
+│   └── writing-rules.md
+└── assets/                     # Optional — output templates, static data
+    └── report-template.md
+```
+
+**Naming rules:**
+
+| Item | Convention | Good | Bad |
+|------|-----------|------|-----|
+| Skill folder | `kebab-case` | `image-create` | `Image_Create` |
+| Main file | Exactly `SKILL.md` | `SKILL.md` | `skill.md`, `SKILL.MD` |
+| Scripts | `snake_case.py` | `submit_task.py` | `submitTask.py` |
+| Reference docs | `kebab-case.md` | `phase3-extraction.md` | `Phase3Extraction.md` |
+
+**Forbidden inside skill folders:**
+- `README.md` — all documentation goes in SKILL.md or references/
+- `.env` files — document required env vars in SKILL.md, actual values live outside
+- `node_modules/`, `__pycache__/` — already gitignored
+
+### 3. YAML Frontmatter (REQUIRED)
+
+Every SKILL.md **must** begin with YAML frontmatter. This is the L1 trigger mechanism.
+
+```yaml
+---
+name: your-skill-name
+description: >
+  What it does. Use when user says "trigger phrase A" or "trigger phrase B".
+  Key capabilities and scope boundaries.
+---
+```
+
+**Field specification:**
+
+| Field | Required | Rules |
+|-------|----------|-------|
+| `name` | Yes | `kebab-case`, must match folder name |
+| `description` | Yes | Under 1024 chars, no XML tags (`<` or `>`), must include trigger phrases |
+| `allowed-tools` | Optional | Restrict available tools: `["Read", "Write", "mcp__server__tool"]` |
+| `model` | Optional | Override model: `sonnet`, `opus` |
+| `argument-hint` | Optional | CLI argument hint: `<video-file-path>` |
+| `metadata.version` | Recommended | SemVer: `1.0.0` |
+| `metadata.author` | Recommended | Author name |
+| `metadata.mcp-server` | If applicable | MCP server name referenced by skill |
+
+**Description formula:**
+
+```
+[What it does] + [When to use — include trigger phrases] + [Key capabilities / scope]
+```
+
+```yaml
+# GOOD — specific, actionable, with triggers
+description: >
+  AI short-drama script adaptation pipeline (novel-to-script).
+  Use when user says "adapt novel", "novel-to-script", or provides
+  source text for drama conversion. Three-phase: design extraction,
+  episode writing, structural parsing. Outputs script.json.
+
+# BAD — vague, no triggers
+description: Helps with script writing.
+
+# BAD — too technical, no user phrases
+description: Implements the NTSV2 pipeline with 3-phase extraction.
+```
+
+### 4. SKILL.md Body Structure
+
+Follow this section order. Scale each section to its complexity — a few lines if straightforward, a paragraph if nuanced.
+
+```markdown
+---
+name: your-skill-name
+description: ...
+---
+
+# {Skill Name}
+
+{One-line purpose statement.}
+
+## Prerequisites
+
+- Required env vars: `API_KEY`, `SECRET`
+- External tools: `ffmpeg`, `python3`
+- MCP servers: `mcp-server-name`
+
+## Resources
+
+| File | Purpose | Load Strategy |
+|------|---------|--------------|
+| `references/api.md` | Full API specification | on-demand |
+| `references/phase1-guide.md` | Phase 1 workflow | on-demand (enter Phase 1) |
+| `resources/writing-rules.md` | Writing conventions | once (load at start) |
+| `scripts/auth.py` | Token management | on-demand |
+
+## Workflow
+
+### Step 0: Initialize
+{What to check / set up before starting}
+
+### Step 1: {Phase Name}
+{Clear instructions with expected inputs and outputs}
+
+### Step N: {Final Phase}
+{Completion criteria}
+
+## Key Rules
+
+1. CRITICAL: {Non-negotiable constraint}
+2. MUST: {Required behavior}
+3. NEVER: {Forbidden action}
+
+## Error Handling
+
+### {Error Type}
+- **Cause**: {Why it happens}
+- **Solution**: {How to fix}
+
+## Context Recovery
+
+After session restart, check workspace state to determine resume point.
+```
+
+### 5. Size Budget
+
+| Component | Target | Hard Limit |
+|-----------|--------|------------|
+| SKILL.md total | < 500 lines | 800 lines |
+| SKILL.md word count | < 3,000 words | 5,000 words |
+| Single reference file | < 8,000 words | 15,000 words |
+| If reference > 15K words | Split into multiple files | — |
+
+**Rationale**: oversized SKILL.md degrades Claude's instruction-following quality. Move detail to L3.
+
+### 6. Writing Instructions Well
+
+**Be specific and actionable:**
+
+```markdown
+# GOOD
+Run `python ${CLAUDE_SKILL_DIR}/scripts/auth.py` to obtain a token.
+If it returns "token_expired", run `python ${CLAUDE_SKILL_DIR}/scripts/login.py`.
+
+# BAD
+Make sure authentication works before proceeding.
+```
+
+**Mark hard constraints clearly** — use `CRITICAL:`, `MUST`, `NEVER`:
+
+```markdown
+## Key Rules
+1. CRITICAL: Model list API is called **once** per session — cache the result
+2. User MUST explicitly choose the model; NEVER assume a default
+3. NEVER expose raw API error responses to user
+```
+
+**Reference bundled resources explicitly:**
+
+```markdown
+Before writing queries, consult `references/api-patterns.md` for:
+- Rate limiting guidance
+- Pagination patterns
+- Error codes and handling
+```
+
+**Avoid ambiguous language:**
+
+```markdown
+# BAD
+Validate the data before proceeding.
+
+# GOOD
+CRITICAL: Before calling create_project, verify:
+- Project name is non-empty
+- Episode count is between 1 and 100
+- Source text exists at {workspace}/source.txt
+```
+
+### 7. Workspace & Path Conventions
+
+For skills that operate on project workspaces:
+
+```markdown
+## Workspace Structure
+
+All paths relative to `{workspace}/` (injected at runtime):
+
+{workspace}/
+├── draft/              # Working files (input to each phase)
+│   ├── design.json
+│   ├── catalog.json
+│   └── episodes/ep*.md
+└── output/             # Final deliverables
+    └── script.json
+```
+
+- Always use `{workspace}/` placeholder — **never** hardcode absolute paths
+- Script paths use `${CLAUDE_SKILL_DIR}/scripts/`
+- Token/auth files go to `~/.config/{service}/` — not inside workspace
+
+**Context recovery** (required for multi-phase skills):
+
+```markdown
+## Context Recovery
+
+After `/clear` or session restart, check workspace state:
+1. `{workspace}/draft/design.json` exists → Phase 1 complete
+2. `{workspace}/draft/episodes/ep*.md` exists → Phase 2 complete
+3. `{workspace}/output/script.json` exists → Phase 3 complete
+Resume from the next incomplete phase.
+```
+
+### 8. Script Conventions
+
+```python
+# Portable path reference
+import sys, os
+sys.path.insert(0, os.path.join(os.environ.get('CLAUDE_SKILL_DIR', '.'), 'scripts'))
+```
+
+- File names: `snake_case.py`
+- Long-running tasks: use `run_in_background: true` for polling scripts
+- Auth pattern: token managed by `scripts/auth.py`, persisted in `~/.config/`, auto-refresh on 401
+- All scripts must handle errors gracefully and output actionable messages
+
+### 9. MCP Integration
+
+When a skill orchestrates MCP tools:
+
+```markdown
+## MCP Tools Used
+
+| Tool | Purpose | Phase |
+|------|---------|-------|
+| `mcp__script__parse_script` | Parse episodes into script.json | Phase 3 |
+```
+
+- Tool names are **case-sensitive** — verify against MCP server docs
+- Document expected input/output for each tool call
+- Include error handling for connection refused / timeout
+- MCP tools can be auto-inferred from `allowed-tools` patterns (`mcp__<server>__<tool>`)
+
+### 10. Language Rules
+
+| Context | Language |
+|---------|----------|
+| YAML frontmatter (`name`) | English |
+| YAML frontmatter (`description`) | English (with Chinese trigger phrases if applicable) |
+| SKILL.md body text | Chinese (Simplified) |
+| Code, commands, identifiers | English |
+| Reference doc body text | Chinese (Simplified) |
+| File names | English |
+
+### 11. Quality Checklist
+
+Before merging a new or modified skill:
+
+- [ ] **Frontmatter**: has `name` + `description`; `name` matches folder name
+- [ ] **Description**: includes user trigger phrases, under 1024 chars, no XML
+- [ ] **Size**: SKILL.md under 800 lines; detail moved to references/
+- [ ] **Workflow**: numbered steps with clear inputs/outputs per step
+- [ ] **Key Rules**: hard constraints marked with CRITICAL/MUST/NEVER
+- [ ] **Resources table**: all files in references/, resources/, scripts/ listed with load strategy
+- [ ] **No hardcoded paths**: uses `{workspace}/` or `${CLAUDE_SKILL_DIR}`
+- [ ] **Error handling**: common failure modes documented with cause/solution
+- [ ] **Scripts**: `snake_case.py`, handle errors, output actionable messages
+- [ ] **Tested**: manually verified skill triggers on expected user queries
+
+---
+
+## Part II — Architecture Overview
+
+### Data Pipeline (DAG)
+
+```
+Novel / Idea
     │
-    ├─► script-writer (原创 SWS / 改编 NTSV2)
-    │       产出: s7-scripts.md (需转换)
+    ├─► script-writer (SWS original / NTSV2 adaptation)
+    │       output: s7-scripts.md (needs conversion)
     │
-    ├─► script-adapt (3 阶段直转)
-    │       产出: script.json + catalog.json + design.json
+    ├─► script-adapt (3-phase direct adaptation)
+    │       output: script.json + catalog.json + design.json
     │
     └───────────────┬──────────────────────────┐
                     ▼                          ▼
              image-create/edit          kling-video-prompt
-             (角色/场景/道具              (剧本 → 镜头提示词)
-              资产图生成)                      │
+             (character/scene/prop       (script → shot prompts)
+              asset generation)                │
                     │                   ep{XX}_shots.json
                     │                          │
                     └──────────┬───────────────┘
                                ▼
                           video-create
-                          (资产上传 + 视频生成)
+                          (asset upload + video generation)
                                │
                                ▼
                           video-review
-                          (六级评审 + 自动重生成)
+                          (6-tier review + auto-regeneration)
                                │
                     ┌──────────┴──────────┐
                     ▼                     ▼
-               合格 → 继续          不合格 → 优化提示词
-                    │                → video-create 重生成
+               Pass → continue       Fail → optimize prompt
+                    │                → video-create regen
                     ▼
                music-matcher
-               (视频分析 → 向量匹配 → 配乐合成)
+               (video analysis → vector match → compose)
                     │
                     ▼
-               最终视频交付
+               Final video delivery
 ```
 
-辅助链路：
-- `music-finder` → `music-matcher`（音乐风格查询服务）
-- `browser-agent`（独立工具，无管线依赖）
-- `skill-creator`（元 skill，用于创建新 skill）
+Auxiliary:
+- `music-finder` → `music-matcher` (music genre query service)
+- `skill-creator` (meta skill for creating new skills)
 
----
+### Core Data Contracts
 
-## 核心数据合约
+Pipeline stages communicate via files. These contracts are **non-breaking**:
 
-管线各阶段通过文件进行数据传递，以下是不可破坏的核心合约：
-
-| 合约文件 | 上游 Skill | 下游 Skill | 格式 |
-|----------|-----------|-----------|------|
+| Contract File | Upstream | Downstream | Format |
+|--------------|----------|------------|--------|
 | `script.json` | script-adapt (Phase 3) | kling-video-prompt | JSON (episodes > scenes > actions) |
-| `catalog.json` | script-adapt (Phase 1) | 全管线（角色/地点 ID 映射） | JSON (actors + locations) |
-| `design.json` | script-adapt (Phase 1) | 全管线（世界观 + 视觉风格） | JSON |
-| `s7-scripts.md` | script-writer (S7) | kling-video-prompt（需转换） | Markdown + SWS/NTSV2 标记 |
-| `ep{XX}_shots.json` | kling-video-prompt | video-create, video-review | JSON (segments 数组) |
-| `*_optimized.json` | video-review | video-create（重生成） | JSON (优化后提示词) |
+| `catalog.json` | script-adapt (Phase 1) | Pipeline-wide (actor/location ID map) | JSON |
+| `design.json` | script-adapt (Phase 1) | Pipeline-wide (worldview + visual style) | JSON |
+| `ep{XX}_shots.json` | kling-video-prompt | video-create, video-review | JSON (segments array) |
 
-### 项目工作区目录约定
+### Project Workspace Layout
 
 ```
 project-workspace/
-├── 01-script/output/         # 剧本产物
+├── 01-script/output/         # Script deliverables
 │   ├── script.json
 │   ├── design.json
 │   ├── catalog.json
 │   └── episodes/ep*.md
-├── 02-资产/output/            # 图片资产
+├── 02-assets/output/         # Image assets
 │   ├── characters/
 │   ├── scenes/
 │   └── props/
-└── 03-视频素材/               # 视频 + 评审
+└── 03-video/                 # Video + review
     ├── workspace/input  → symlink → 01-script/output/
-    ├── workspace/assets → symlink → 02-资产/output/
+    ├── workspace/assets → symlink → 02-assets/output/
     └── output/ep{XX}/ep{XX}_shots.json
 ```
 
----
+### Inter-Skill Communication
 
-## Skill 模块详情
+Skills **do not** communicate directly. Coordination mechanisms:
 
-### 剧本创作层
+1. **File contracts** — upstream writes to agreed path, downstream reads from it
+2. **Symlink bridging** — `03-video/workspace/` symlinks to upstream outputs
+3. **User orchestration** — user invokes skills in pipeline order
+4. **Shared auth** — image-create/image-edit/video-create share `~/.animeworkbench_auth.json`
 
-#### script-writer — 微短剧剧本写作流水线
+### Shared Resources
 
-九阶段（S1→S9）流水线，支持两种模式：
+Files duplicated across skills that must stay in sync:
 
-| 模式 | 输入 | 目标集数 | 工作区 |
-|------|------|---------|--------|
-| 原创（SWS） | 用户创意灵感 | 用户指定 | `sws-workspace/` |
-| 改编扩写（NTSV2） | 短篇小说（≤1万字） | 50-60 集 | `ntsv2-workspace/` |
-
-**特色**：改编模式支持六维度扩写（主线细化/支线补写/角色深化/世界观补足/情感扩写/冲突升级）。
-
-**文件规模**：11 references + 9 resources + 12 assets（含共享领域知识、写作规则、协议规范等）。
-
-#### script-adapt — 小说直转剧本流水线
-
-三阶段（Phase 1→3）精简流水线，适合体量充足的小说直接改编：
-
-| 阶段 | 输入 | 产物 |
-|------|------|------|
-| Phase 1 分析设计 | source.txt | design.json + catalog.json |
-| Phase 2 写作 | design.json + catalog.json | ep\*.md |
-| Phase 3 结构解析 | ep\*.md + catalog.json | script.json |
-
-**特色**：`allowed-tools` 限制为 Read/Write + MCP 工具，指定 `model: sonnet`。references 预加载到 prompt 中，无运行时文件读取。
-
-### 资产生成层
-
-#### image-create — 图片生成
-
-通过 anime-material-workbench API 生成角色、场景、道具等图片资产。
-
-**工作流**：认证 → 模型选择 → 参数配置 → 提交任务 → 后台轮询 → 返回结果。
-
-**Base URL**：`https://animeworkbench-pre.lingjingai.cn`
-
-#### image-edit — 图片编辑
-
-通过 anime-material-workbench API 编辑图片，支持风格迁移等操作。
-
-**工作流**：与 image-create 相同，额外支持本地图片上传至腾讯云 COS。
-
-**Base URL**：`https://animeworkbench-pre.lingjingai.cn`
-
-### 视频生产层
-
-#### kling-video-prompt — 可灵视频提示词生成
-
-将 `script.json` 转化为视频生成平台可用的结构化提示词 JSON。
-
-**核心规则**：
-- 每个 action → 一个 L 单位（segment），时长 3-15s
-- Segment 含 12 个字段（严格顺序），Shot 含 5 个字段
-- 英文/中文双语提示词，含人物一致性前缀 + 风格提示词
-- 支持智能段落合并、时长超限拆分
-
-**产物**：`ep{XX}_shots.json`
-
-#### video-create — 视频生成
-
-通过 anime-material-workbench API 生成视频，支持图生视频、文生视频。
-
-**工作流**：认证 → 模型选择 → 参数配置 → 上传素材（COS）→ 提交任务 → 后台轮询。
-
-**Base URL**：`https://animeworkbench.lingjingai.cn`
-
-#### video-review — 视频评审
-
-基于提示词符合度 + 五维度的结构化视频评审。
-
-**六级判定规则**（按级别 0→5 依次触发）：
-
-| 级别 | 规则 | 阈值 |
-|------|------|------|
-| 0 | 提示词符合度过低 | < 0.2 |
-| 1 | 人物一致性不足 | < 7 |
-| 2 | 场景一致性不足 | < 7 |
-| 3 | 任意维度严重不达标 | < 5 |
-| 4 | 任意维度未达标 | < 7 |
-| 5 | 总分不足 | < 40 |
-
-**闭环**：不合格 → 时间段分析 → 提示词优化 → video-create 重生成 → 再评审。
-
-### 音频层
-
-#### music-matcher — 智能视频配乐
-
-基于向量语义匹配的视频配乐工具。
-
-**管线**：Gemini 视频分析 → DashScope 向量化 → 余弦相似度匹配 → FFmpeg 合成。
-
-**依赖**：`.env`（GEMINI_API_KEY + DASHSCOPE_API_KEY + MUSIC_LIBRARY_CSV）、ffmpeg。
-
-#### music-finder — 音乐风格查询
-
-基于 RateYourMusic 的 5947 个音乐风格数据库，支持精确查询、语义推荐、层级探索。
-
-**数据结构**：49 主分类 → 737 子分类 → 5161 孙分类，渐进式加载。
-
-**硬性约束**：禁止凭记忆回答，必须从 references/ 文件读取数据。
-
-### 独立工具
-
-#### browser-agent — 浏览器自动化
-
-基于 agent-browser CLI 的浏览器自动化工具。
-
-**核心模式**：Navigate → Snapshot（获取 @ref）→ Interact → Re-snapshot。
-
-**能力**：表单填写、身份认证、数据抓取、截图、PDF 导出、多会话并行、iOS 模拟器支持。
-
-**限制**：`allowed-tools: Bash(npx agent-browser:*)`
-
-#### skill-creator — Skill 创建指南
-
-元 skill，指导创建新的 skill。提供六步创建流程：理解需求 → 规划内容 → 初始化 → 编辑 → 打包 → 迭代。
-
----
-
-## Skill 间通信方式
-
-Skill 之间**不直接通信**，而是通过以下机制协作：
-
-1. **文件合约**：上游 skill 将产物写入约定路径，下游 skill 从该路径读取（见核心数据合约表）
-2. **Symlink 桥接**：`03-视频素材/workspace/` 通过 symlink 指向 `01-script/output/` 和 `02-资产/output/`
-3. **用户编排**：用户按管线顺序逐个调用 skill，或由 AgentOS orchestrator 自动编排
-4. **共享认证**：image-create/image-edit/video-create 共享 `~/.animeworkbench_auth.json` 认证状态
-
-### 共享资源
-
-script-writer 内部的 resources/ 包含共享领域知识（writing-rules.md、shared-domain.md 等），这些文件在原创模式和改编模式间共享。script-adapt 的 writing-rules.md 为独立副本。
-
-修改共享资源时需注意同步：
-
-| 文件 | 存在于 |
-|------|--------|
+| File | Exists In |
+|------|-----------|
 | `writing-rules.md` | script-writer/resources/, script-adapt/references/ |
 | `shared-domain.md` | script-writer/resources/, script-adapt/references/ |
 | `style-options.md` | script-writer/resources/, script-adapt/references/ |
 
 ---
 
-## 开发规范
+## Part III — Skill Index
 
-- SKILL.md 行数上限 **500 行**，详细内容移入 references/
-- 脚本路径使用 `${CLAUDE_SKILL_DIR}` 变量，禁止硬编码绝对路径
-- Frontmatter 工具限制使用 `allowed-tools`（非 `tools`）
-- 禁止在 skill 中放置 README.md（本文件是 skills/ 目录级文档，非 skill 内部文件）、CHANGELOG.md、INSTALLATION_GUIDE.md 等非标准文件
-- 每个 skill 保持自包含，不依赖其他 skill 目录下的文件
+### Script Layer
+
+| Skill | Phases | Input | Output |
+|-------|--------|-------|--------|
+| `script-writer` | 9 (S1-S9) | User idea or novel | `s7-scripts.md` |
+| `script-adapt` | 3 (P1-P3) | source.txt | `script.json` + `catalog.json` + `design.json` |
+
+### Asset Layer
+
+| Skill | Type | API Base |
+|-------|------|----------|
+| `image-create` | Image generation | `animeworkbench-pre.lingjingai.cn` |
+| `image-edit` | Image editing | `animeworkbench-pre.lingjingai.cn` |
+
+### Video Layer
+
+| Skill | Type | Key Feature |
+|-------|------|-------------|
+| `kling-video-prompt` | Prompt generation | script.json → bilingual shot prompts |
+| `video-create` | Video generation | `animeworkbench.lingjingai.cn` |
+| `video-review` | Quality review | 6-tier rule system + auto-regen loop |
+
+### Audio Layer
+
+| Skill | Type | Key Feature |
+|-------|------|-------------|
+| `music-matcher` | Auto scoring | Gemini analysis → vector match → FFmpeg compose |
+| `music-finder` | Genre database | 5,947 genres from RateYourMusic |
+
+### Meta
+
+| Skill | Purpose |
+|-------|---------|
+| `skill-creator` | Guide for creating new skills |
