@@ -12,6 +12,14 @@ const env = loadDotEnv();
 const HAS_E2B = !!(env.E2B_API_KEY ?? process.env.E2B_API_KEY);
 const HAS_LLM = !!(env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY);
 
+const AGENTS = [
+  "screenwriter",
+  "art-director",
+  "video-producer",
+  "post-production",
+  "skill-creator",
+] as const;
+
 // ---------- Shared instance ----------
 
 const h = new E2BTestHarness(env);
@@ -32,14 +40,7 @@ describe.skipIf(!HAS_E2B)("E2B Integration", () => {
 
   describe("Protocol", () => {
     it("ready event has all 5 agents", () => {
-      const expected = [
-        "screenwriter",
-        "art-director",
-        "video-producer",
-        "post-production",
-        "skill-creator",
-      ];
-      for (const name of expected) {
+      for (const name of AGENTS) {
         expect(readyEvent.skills).toContain(name);
       }
     });
@@ -99,14 +100,7 @@ describe.skipIf(!HAS_E2B)("E2B Integration", () => {
     });
 
     it("enter/exit cycle all 5 agents", async () => {
-      const agents = [
-        "screenwriter",
-        "art-director",
-        "video-producer",
-        "post-production",
-        "skill-creator",
-      ];
-      for (const agent of agents) {
+      for (const agent of AGENTS) {
         h.resetCursor();
         await h.send({ cmd: "enter_agent", agent });
         const entered = await h.waitForEvent("agent_entered");
@@ -125,13 +119,10 @@ describe.skipIf(!HAS_E2B)("E2B Integration", () => {
       await h.send({ cmd: "status" });
       await h.send({ cmd: "status" });
 
-      // Wait a bit for all responses
-      await new Promise((r) => setTimeout(r, 2_000));
-
-      const statusEvents = h
-        .eventsSince()
-        .filter((e) => e.type === "status");
-      expect(statusEvents.length).toBeGreaterThanOrEqual(3);
+      // Event-driven: wait for 3 status events sequentially
+      await h.waitForEvent("status");
+      await h.waitForEvent("status");
+      await h.waitForEvent("status");
     });
   });
 
@@ -177,13 +168,8 @@ describe.skipIf(!HAS_E2B)("E2B Integration", () => {
 
     it("text events appear before result", async () => {
       const result = await h.chatAndWaitResult("Reply one word: hello");
-      // collectText uses events since the resetCursor() inside chatAndWaitResult
-      // We need to check events collected during the chat
-      const allEvts = h.allEvents;
-      const textEvents = allEvts.filter(
-        (e) => e.type === "text" && e.request_id === result._request_id,
-      );
-      expect(textEvents.length).toBeGreaterThan(0);
+      const text = h.collectAllText(result._request_id);
+      expect(text.length).toBeGreaterThan(0);
     });
 
     it("session persistence across messages", async () => {
@@ -200,12 +186,7 @@ describe.skipIf(!HAS_E2B)("E2B Integration", () => {
       expect(r2.session_id).toBeTruthy();
 
       // Conversation context persists — agent remembers ALPHA
-      const text = h.allEvents
-        .filter(
-          (e) => e.type === "text" && e.request_id === r2._request_id,
-        )
-        .map((e) => (e as any).text)
-        .join("");
+      const text = h.collectAllText(r2._request_id);
       expect(text.toUpperCase()).toContain("ALPHA");
     });
 
@@ -235,9 +216,9 @@ describe.skipIf(!HAS_E2B)("E2B Integration", () => {
       expect(result.is_error).toBe(false);
       expect(result.agent).toBe("screenwriter");
 
+      // All correlated text events should carry agent field
       const textEvents = h.allEvents.filter(
-        (e) =>
-          e.type === "text" && e.request_id === result._request_id,
+        (e) => e.type === "text" && e.request_id === result._request_id,
       );
       for (const evt of textEvents) {
         expect(evt.agent).toBe("screenwriter");
@@ -290,15 +271,8 @@ describe.skipIf(!HAS_E2B)("E2B Integration", () => {
       );
       expect(result.is_error).toBe(false);
       expect(result.agent).toBe("screenwriter");
-      const text = h.allEvents
-        .filter(
-          (e) => e.type === "text" && e.request_id === result._request_id,
-        )
-        .map((e) => (e as any).text)
-        .join("");
-      // Agent should respond non-empty; ideally with domain keywords
+      const text = h.collectAllText(result._request_id);
       expect(text.length).toBeGreaterThan(0);
-      // Soft domain check — agent description mentions 剧本/编剧
       const hasDomainHint = /剧本|编剧|script|screenwriter|story|写作|创作/.test(text);
       if (!hasDomainHint) {
         console.warn(`[visibility] screenwriter response lacked domain keywords: ${text.slice(0, 120)}`);
@@ -312,12 +286,7 @@ describe.skipIf(!HAS_E2B)("E2B Integration", () => {
       );
       expect(result.is_error).toBe(false);
       expect(result.agent).toBe("art-director");
-      const text = h.allEvents
-        .filter(
-          (e) => e.type === "text" && e.request_id === result._request_id,
-        )
-        .map((e) => (e as any).text)
-        .join("");
+      const text = h.collectAllText(result._request_id);
       expect(text.length).toBeGreaterThan(0);
       const hasDomainHint = /美术|视觉|图片|设计|art|visual|design|image/.test(text);
       if (!hasDomainHint) {

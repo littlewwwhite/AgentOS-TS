@@ -23,7 +23,7 @@ export interface AgentDefinitionConfig {
 }
 
 // Shared empty array — prevents platform skills from leaking into sub-agents
-const NO_SKILLS: string[] = Object.freeze([]) as string[];
+const NO_SKILLS: string[] = Object.freeze([] as string[]) as string[];
 
 function resolveModelAlias(raw: string | undefined): AgentModelAlias | undefined {
   if (!raw) return undefined;

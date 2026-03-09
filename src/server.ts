@@ -1,33 +1,16 @@
-// input: SandboxClient (E2B bridge), Hono framework, Bun WebSocket
+// input: SandboxClient (E2B bridge), Hono framework, Bun WebSocket, env.ts
 // output: HTTP API + WebSocket event stream for frontend consumption
 // pos: API bridge — connects React frontend to E2B sandbox backend
 
-import { readFileSync } from "node:fs";
 import { Hono } from "hono";
 import { upgradeWebSocket, websocket } from "hono/bun";
 import type { WSContext } from "hono/ws";
 import type { Sandbox } from "e2b";
 import { SandboxClient } from "./e2b-client.js";
+import { loadDotEnv } from "./env.js";
 import { parseCommand, type SandboxEvent } from "./protocol.js";
 
-// ---------- .env loader (bypass Claude Code env hijacking) ----------
-
-function readEnvFile(path: string): Record<string, string> {
-  try {
-    const vars: Record<string, string> = {};
-    for (const line of readFileSync(path, "utf-8").split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq > 0) vars[trimmed.slice(0, eq)] = trimmed.slice(eq + 1);
-    }
-    return vars;
-  } catch {
-    return {};
-  }
-}
-
-const dotEnv = readEnvFile(".env");
+const dotEnv = loadDotEnv();
 
 // ---------- WebSocket broadcast ----------
 

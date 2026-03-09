@@ -2,14 +2,15 @@
 // output: E2BTestHarness class for vitest-based E2B integration tests
 // pos: Test infrastructure — wraps SandboxClient with typed event queries and cursor management
 
-import fs from "node:fs";
-import path from "node:path";
 import { SandboxClient } from "../../src/e2b-client.js";
+import { loadDotEnv, type DotEnv } from "../../src/env.js";
 import type {
   SandboxCommand,
   SandboxEvent,
   ReadyEvent,
 } from "../../src/protocol.js";
+
+export { loadDotEnv, type DotEnv };
 
 // ---------- Type-safe event extraction ----------
 
@@ -17,35 +18,6 @@ type EventOfType<T extends SandboxEvent["type"]> = Extract<
   SandboxEvent,
   { type: T }
 >;
-
-// ---------- .env loader ----------
-
-export interface DotEnv {
-  E2B_API_KEY?: string;
-  ANTHROPIC_API_KEY?: string;
-  ANTHROPIC_BASE_URL?: string;
-  [key: string]: string | undefined;
-}
-
-/**
- * Parse .env file from project root.
- * Prefers .env values over process.env — critical because Claude Code sets
- * ANTHROPIC_BASE_URL to a local proxy unreachable from inside E2B sandbox.
- */
-export function loadDotEnv(): DotEnv {
-  const result: DotEnv = {};
-  const envPath = path.resolve(process.cwd(), ".env");
-  if (!fs.existsSync(envPath)) return result;
-
-  for (const line of fs.readFileSync(envPath, "utf-8").split("\n")) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq < 0) continue;
-    result[t.slice(0, eq).trim()] = t.slice(eq + 1).trim();
-  }
-  return result;
-}
 
 // ---------- Harness ----------
 
@@ -148,7 +120,7 @@ export class E2BTestHarness {
     return this.events.slice(this.cursor);
   }
 
-  /** Collect all text event chunks since cursor, optionally filtered by request_id */
+  /** Collect text event chunks since cursor, optionally filtered by request_id */
   collectText(requestId?: string): string {
     return this.eventsSince()
       .filter(
@@ -156,6 +128,14 @@ export class E2BTestHarness {
           e.type === "text" &&
           (requestId == null || e.request_id === requestId),
       )
+      .map((e) => (e as Extract<SandboxEvent, { type: "text" }>).text)
+      .join("");
+  }
+
+  /** Collect text from ALL events (ignores cursor), filtered by request_id */
+  collectAllText(requestId: string): string {
+    return this.events
+      .filter((e) => e.type === "text" && e.request_id === requestId)
       .map((e) => (e as Extract<SandboxEvent, { type: "text" }>).text)
       .join("");
   }
