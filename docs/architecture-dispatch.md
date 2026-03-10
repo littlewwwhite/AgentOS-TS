@@ -121,7 +121,7 @@ Orchestrator LLM 收到消息
   │      settingSources = ["project"]
   │      → SDK 读取 .claude/CLAUDE.md (角色 + 知识)
   │      → SDK 读取 .claude/settings.json (权限)
-  │      → SDK 读取 .claude/skills/*.md (领域技能)
+  │      → AgentOS 将项目侧 .claude/skills/*.md 注入 worker prompt
   │      user message  = Agent tool 的 prompt 参数
   │
   ▼ Screenwriter LLM 执行任务
@@ -153,9 +153,9 @@ private buildAgentOptions(name: string): Record<string, unknown> {
 
 关键变化：
 - `cwd` 指向 `agents/<name>/`（旧架构继承 workspace/）
-- `settingSources: ["project"]` 让 SDK 原生读取 `.claude/`（旧架构用 `[]` 隔离）
+- `settingSources: ["project"]` 让 SDK 原生读取 `.claude/CLAUDE.md` 与 `settings.json`（旧架构用 `[]` 隔离）
 - `systemPrompt` 仅追加 workspace 路径（旧架构无 systemPrompt，依赖 `AgentDefinition.prompt`）
-- 不再需要 `loadSkillContents()` → `buildAgents()` 的 prompt 拼接链路
+- 项目侧 `.claude/skills/*.md` 仍通过 `loadSkillContents()` 注入 worker prompt；这不是当前 SDK 的 agent-local skill 自动发现能力
 
 ### 3.3 Dispatch Rules
 
