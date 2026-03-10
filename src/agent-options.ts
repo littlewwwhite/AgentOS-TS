@@ -22,7 +22,9 @@ export async function buildAgentOptions(
     allowedTools: _allowedTools,
     disallowedTools: _disallowedTools,
     permissionMode: _permissionMode,
-    hooks: _hooks,
+    // Hooks are intentionally KEPT (passed through via ...rest).
+    // Sub-agents are the ones executing domain tools — schema validation
+    // and tool logging must apply to their tool calls, not just the orchestrator's.
     ...rest
   } = baseOptions;
   // Strip orchestrator's `switch` server so agents never inherit `switch_to_agent`
@@ -55,5 +57,9 @@ export async function buildAgentOptions(
     permissionMode: spec.permissionMode,
     mcpServers,
     systemPrompt: spec.systemPrompt,
+    // Enable Claude Code's full tool set including skill discovery from .claude/skills/.
+    // Without this, systemPrompt preset loads the prompt text (which mentions the Skill tool)
+    // but the SDK won't scan .claude/skills/ to register project-level skills.
+    tools: { type: "preset", preset: "claude_code" },
   };
 }

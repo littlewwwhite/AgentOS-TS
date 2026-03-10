@@ -110,12 +110,13 @@ describe("buildAgentOptions", () => {
     expect(opts.agent).toBeUndefined();
   });
 
-  it("does not inherit main permission or hook policy", async () => {
+  it("does not inherit main permission policy but keeps hooks", async () => {
     const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
 
     expect(opts.allowedTools).toBeUndefined();
     expect(opts.disallowedTools).toBeUndefined();
     expect(opts.permissionMode).toBe("bypassPermissions");
-    expect(opts.hooks).toBeUndefined();
+    // Hooks are kept — sub-agents need schema validation and tool logging
+    expect(opts.hooks).toBeDefined();
   });
 });
