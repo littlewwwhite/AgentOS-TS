@@ -150,25 +150,59 @@ export class E2BTestHarness {
   /**
    * Reset cursor, send a chat command with auto-generated request_id,
    * and wait for the corresponding result event.
+   *
+   * If the sandbox process restarts mid-query (indicated by a new "ready" event),
+   * the command is automatically re-sent with a fresh request_id since the
+   * original in-flight query was lost.
    */
   async chatAndWaitResult(
     message: string,
     opts?: { target?: string; timeoutMs?: number; requestId?: string },
   ): Promise<EventOfType<"result"> & { _request_id: string }> {
-    const requestId = opts?.requestId ?? `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    this.resetCursor();
-    await this.send({
-      cmd: "chat",
-      message,
-      target: opts?.target,
-      request_id: requestId,
-    });
-    const result = await this.waitForEvent(
-      "result",
-      opts?.timeoutMs ?? 60_000,
-      (e) => e.request_id === requestId,
+    const timeoutMs = opts?.timeoutMs ?? 60_000;
+    const maxRetries = 2;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const requestId = opts?.requestId ?? `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      this.resetCursor();
+      await this.send({
+        cmd: "chat",
+        message,
+        target: opts?.target,
+        request_id: requestId,
+      });
+
+      const t0 = Date.now();
+      while (Date.now() - t0 < timeoutMs) {
+        for (let i = this.cursor; i < this.events.length; i++) {
+          const evt = this.events[i];
+          // Found our result — return it
+          if (evt.type === "result" && evt.request_id === requestId) {
+            this.cursor = i + 1;
+            return Object.assign(evt as EventOfType<"result">, { _request_id: requestId });
+          }
+          // Process restarted — retry the command
+          if (evt.type === "ready" && attempt < maxRetries) {
+            this.cursor = i + 1;
+            // Wait for the new process to settle
+            await new Promise((r) => setTimeout(r, 2_000));
+            break;
+          }
+        }
+        // Check if we broke out of the inner loop for a retry
+        const readyFound = this.eventsSince().some(e => e.type === "ready");
+        if (readyFound && attempt < maxRetries) break;
+        await new Promise((r) => setTimeout(r, 150));
+      }
+
+      // If we got here without breaking for retry, it's a genuine timeout
+      if (attempt === maxRetries) break;
+    }
+
+    throw new Error(
+      `Timeout (${timeoutMs}ms) waiting for event: result` +
+        `\n  Events since cursor: ${JSON.stringify(this.eventsSince().map((e) => e.type))}`,
     );
-    return Object.assign(result, { _request_id: requestId });
   }
 
   // ---------- File system pass-through ----------
@@ -181,6 +215,25 @@ export class E2BTestHarness {
   async readFile(filePath: string): Promise<string> {
     if (!this.client) throw new Error("Harness not started");
     return this.client.readFile(filePath);
+  }
+
+  /** Write a file into the running sandbox */
+  async writeFile(filePath: string, content: string): Promise<void> {
+    if (!this.client) throw new Error("Harness not started");
+    await this.client.writeFile(filePath, content);
+  }
+
+  /** Upload a local file into the sandbox */
+  async uploadLocalFile(localPath: string, sandboxPath: string): Promise<void> {
+    const fs = await import("node:fs/promises");
+    const content = await fs.readFile(localPath, "utf-8");
+    await this.writeFile(sandboxPath, content);
+  }
+
+  /** Recursively sync a local directory into the sandbox */
+  async syncDir(localDir: string, sandboxDir: string): Promise<string[]> {
+    if (!this.client) throw new Error("Harness not started");
+    return this.client.syncDir(localDir, sandboxDir);
   }
 
   // ---------- State ----------

@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["tests/e2b/**/*.test.ts"],
-    testTimeout: 120_000,
+    testTimeout: 300_000,
     hookTimeout: 120_000,
     globals: true,
     sequence: { concurrent: false },
