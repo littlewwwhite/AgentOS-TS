@@ -1,12 +1,10 @@
-// input: Session IDs + project paths from orchestrators
+// input: Session IDs + project paths from sandbox orchestrator
 // output: Formatted history messages for UI rendering
 // pos: Shared utility — bridges SDK session API and orchestrator display layer
 
 import { getSessionMessages } from "@anthropic-ai/claude-agent-sdk";
 
 export const HISTORY_LIMIT_SANDBOX = 50;
-export const HISTORY_LIMIT_REPL = 10;
-const REPL_TRUNCATE = 120;
 
 export interface HistoryMessage {
   role: "user" | "assistant";
@@ -51,10 +49,4 @@ export async function fetchHistory(
   } catch {
     return [];
   }
-}
-
-/** Truncate to single line for REPL display. */
-export function truncate(text: string, max = REPL_TRUNCATE): string {
-  const line = text.replace(/\n/g, " ").trim();
-  return line.length > max ? line.slice(0, max - 1) + "\u2026" : line;
 }
