@@ -75,7 +75,7 @@ function stdinLoop(orchestrator: SandboxOrchestrator): Promise<void> {
       switch (cmd.cmd) {
         case "chat": {
           const target = orchestrator.resolveTarget(cmd);
-          orchestrator.chat(cmd.message, target, cmd.request_id);
+          orchestrator.chat(cmd.message, target, cmd.request_id).catch(() => {});
           break;
         }
         case "interrupt":
@@ -94,7 +94,7 @@ function stdinLoop(orchestrator: SandboxOrchestrator): Promise<void> {
           emit({ type: "skills", skills: orchestrator.getSkillMap() });
           break;
         case "enter_agent":
-          orchestrator.enterAgent(cmd.agent);
+          orchestrator.enterAgent(cmd.agent).catch(() => {});
           break;
         case "exit_agent":
           orchestrator.exitAgent();
