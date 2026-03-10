@@ -4,6 +4,7 @@
 
 import path from "node:path";
 import { describeWorkspace } from "./options.js";
+import { buildWorkerSessionSpec, type WorkerManifest } from "./session-specs.js";
 
 export async function buildAgentOptions(
   baseOptions: Record<string, unknown>,
@@ -11,6 +12,7 @@ export async function buildAgentOptions(
   projectPath: string,
   agentName: string,
   extraMcpServers?: Record<string, unknown>,
+  manifest?: WorkerManifest,
 ): Promise<Record<string, unknown>> {
   const {
     systemPrompt: _orchestratorPrompt,
@@ -32,21 +34,25 @@ export async function buildAgentOptions(
 
   // Snapshot workspace state so the agent knows what artifacts exist
   const workspaceDesc = await describeWorkspace(projectPath);
+  const workerManifest = manifest ?? {
+    name: agentName,
+    description: "",
+    skills: [],
+    mcpServers: [],
+  };
+  const spec = await buildWorkerSessionSpec({
+    projectPath,
+    agentsDir,
+    agentName,
+    manifest: workerManifest,
+    workspaceDescription: workspaceDesc,
+  });
 
   return {
     ...rest,
-    cwd: path.resolve(agentsDir, agentName),
-    settingSources: ["project"],
+    cwd: spec.cwd ?? path.resolve(agentsDir, agentName),
+    settingSources: spec.settingSources,
     mcpServers,
-    systemPrompt: {
-      type: "preset",
-      preset: "claude_code",
-      append:
-        `Project workspace: ${projectPath}/\n` +
-        "All file operations must use absolute paths within this workspace.\n\n" +
-        `${workspaceDesc}\n\n` +
-        "When you complete the assigned task, call `return_to_main` with a brief summary.\n" +
-        "Do NOT call return_to_main for greetings, status checks, or incomplete work.",
-    },
+    systemPrompt: spec.systemPrompt,
   };
 }

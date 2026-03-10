@@ -5,8 +5,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { loadAgentManifests } from "./agent-manifest.js";
 import { buildHooks } from "./hooks/index.js";
-import { loadAgentConfigs } from "./loader.js";
+import { buildMainSessionSpec } from "./session-specs.js";
 import { createToolServers } from "./tools/index.js";
 
 export const WORKSPACE_DIRS = ["draft", "draft/episodes", "assets", "production", "output"];
@@ -35,19 +36,7 @@ export async function describeWorkspace(projectPath: string): Promise<string> {
   return lines.join("\n");
 }
 
-export function describeAgentList(
-  agents: Record<string, { description: string; configuredSkills?: string[] }>,
-): string {
-  const entries = Object.entries(agents);
-  if (entries.length === 0) return "";
-  return "## Sub-Agents (dispatch via switch_to_agent tool)\n" +
-    entries.map(([n, d]) => {
-      const skillTag = d.configuredSkills?.length
-        ? ` [skills: ${d.configuredSkills.join(", ")}]`
-        : "";
-      return `- **${n}**: ${d.description}${skillTag}`;
-    }).join("\n");
-}
+export { describeAgentList } from "./session-specs.js";
 
 const MAX_BUDGET_USD = 10.0;
 
@@ -58,7 +47,8 @@ export async function buildOptions(
   resume?: string,
   continueConversation = false,
 ) {
-  const agentConfigs = await loadAgentConfigs(agentsDir);
+  const manifests = await loadAgentManifests(agentsDir);
+  const workspaceDescription = await describeWorkspace(projectPath);
 
   // Internal orchestrator routing map — NOT consumed by the SDK.
   // SDK's AgentDefinition requires `prompt` and is used for its built-in Agent tool,
@@ -67,55 +57,38 @@ export async function buildOptions(
   // enumerate agent names and descriptions.
   // Full agent config (prompt, skills, permissions) lives in agents/<name>/.claude/
   // and is loaded natively by SDK when cwd points to the agent directory.
-  const agents: Record<string, { description: string; configuredSkills?: string[] }> = {};
-  for (const [name, config] of Object.entries(agentConfigs)) {
+  const agents: Record<string, {
+    description: string;
+    configuredSkills?: string[];
+    mcpServers?: string[];
+  }> = {};
+  for (const [name, manifest] of Object.entries(manifests)) {
     agents[name] = {
-      description: config.description,
-      configuredSkills: config.skills,
+      description: manifest.description,
+      configuredSkills: manifest.skills,
+      mcpServers: manifest.mcpServers,
     };
   }
 
+  const spec = await buildMainSessionSpec({
+    projectPath,
+    agents,
+    workspaceDescription,
+  });
+
   return {
     agents,
-    mcpServers: createToolServers(),
-    allowedTools: [
-      "TodoWrite",
-      "Read", "Write", "Bash", "Glob", "Grep",
-    ],
-    hooks: buildHooks(undefined, MAX_BUDGET_USD),
-    systemPrompt: {
-      type: "preset",
-      preset: "claude_code",
-      append:
-        "You are a video production orchestrator.\n" +
-        "Your ONLY job is to understand user intent and dispatch to the right sub-agent.\n" +
-        "Do NOT perform domain work (writing scripts, generating images, etc.) yourself.\n\n" +
-        `Project workspace: ${projectPath}/\n` +
-        `Source materials: ${path.resolve(projectPath, "../data")}/\n` +
-        `${await describeWorkspace(projectPath)}\n\n` +
-        `${describeAgentList(agents)}\n\n` +
-        "## Dispatch Rules (STRICT)\n" +
-        "- Use the `switch_to_agent` tool to delegate domain tasks to specialized agents\n" +
-        "- The agent will work in its own persistent context and return with a summary when done\n" +
-        "- You will receive the agent's summary as a message — use it to continue the conversation\n" +
-        "- If user mentions a skill name, map it to the owning agent via [skills: ...] tags above\n" +
-        "- NEVER read files under skills/ directory or run Python scripts directly\n" +
-        "- NEVER perform domain work yourself — always delegate to the owning sub-agent\n" +
-        "- All content in Chinese (简体中文), structural keys in English\n" +
-        "- Use TodoWrite to show progress on multi-step tasks\n" +
-        "- When user references a source file (e.g. '测0.txt'), copy it from source materials to workspace as source.txt, then dispatch\n\n" +
-        "## Planning Requirement\n" +
-        "Before dispatching any multi-step task:\n" +
-        "1. Use TodoWrite to outline the plan\n" +
-        "2. Dispatch to the sub-agent\n" +
-        "3. Update TodoWrite as steps complete",
-    },
+    mcpServers: createToolServers([]),
+    allowedTools: spec.allowedTools,
+    disallowedTools: spec.disallowedTools,
+    hooks: buildHooks(),
+    systemPrompt: spec.systemPrompt,
     // SDK SdkBeta type still defines this as the only valid beta (enables 1M context
     // window for Sonnet 4/4.5). Not yet graduated to stable as of SDK 0.x.
     betas: ["context-1m-2025-08-07"],
-    settingSources: ["project"],
-    cwd: projectPath,
-    permissionMode: "bypassPermissions",
+    settingSources: spec.settingSources,
+    cwd: spec.cwd,
+    permissionMode: spec.permissionMode,
     includePartialMessages: true,
     maxBudgetUsd: MAX_BUDGET_USD,
     model,

@@ -2,9 +2,10 @@
 // output: Tests for agent options construction logic
 // pos: Unit test — validates agent session configuration
 
-import { describe, it, expect } from "vitest";
-import { buildAgentOptions } from "../src/agent-options.js";
 import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+import { buildAgentOptions } from "../src/agent-options.js";
 
 const BASE_OPTIONS = {
   systemPrompt: {
@@ -33,12 +34,7 @@ const BASE_OPTIONS = {
 
 describe("buildAgentOptions", () => {
   it("strips orchestrator system prompt", async () => {
-    const opts = await buildAgentOptions(
-      BASE_OPTIONS,
-      "/agents",
-      "/workspace",
-      "screenwriter",
-    );
+    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
     const prompt = opts.systemPrompt as { append: string };
     expect(prompt.append).not.toContain("Orchestrator prompt");
     expect(prompt.append).toContain("Project workspace: /workspace/");
@@ -57,12 +53,7 @@ describe("buildAgentOptions", () => {
   });
 
   it("strips master switch server from MCP servers", async () => {
-    const opts = await buildAgentOptions(
-      BASE_OPTIONS,
-      "/agents",
-      "/workspace",
-      "screenwriter",
-    );
+    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
     const mcp = opts.mcpServers as Record<string, unknown>;
     expect(mcp.switch).toBeUndefined();
     expect(mcp.storage).toBeDefined();
@@ -84,77 +75,43 @@ describe("buildAgentOptions", () => {
   });
 
   it("sets cwd to agent directory", async () => {
-    const opts = await buildAgentOptions(
-      BASE_OPTIONS,
-      "/agents",
-      "/workspace",
-      "screenwriter",
-    );
+    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
     expect(opts.cwd).toBe(path.resolve("/agents", "screenwriter"));
   });
 
   it("sets settingSources to project", async () => {
-    const opts = await buildAgentOptions(
-      BASE_OPTIONS,
-      "/agents",
-      "/workspace",
-      "screenwriter",
-    );
+    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
     expect(opts.settingSources).toEqual(["project"]);
   });
 
   it("removes agents routing map from agent options", async () => {
-    const opts = await buildAgentOptions(
-      BASE_OPTIONS,
-      "/agents",
-      "/workspace",
-      "screenwriter",
-    );
+    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
     expect(opts.agents).toBeUndefined();
   });
 
   it("preserves model and other base options", async () => {
-    const opts = await buildAgentOptions(
-      BASE_OPTIONS,
-      "/agents",
-      "/workspace",
-      "screenwriter",
-    );
+    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
     expect(opts.model).toBe("claude-sonnet-4-6");
     expect(opts.maxBudgetUsd).toBe(10.0);
     expect(opts.betas).toEqual(["context-1m-2025-08-07"]);
   });
 
-  it("agent prompt includes return_to_main instruction", async () => {
-    const opts = await buildAgentOptions(
-      BASE_OPTIONS,
-      "/agents",
-      "/workspace",
-      "screenwriter",
-    );
+  it("agent prompt keeps the conversation attached after completion", async () => {
+    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
     const prompt = opts.systemPrompt as { append: string };
-    expect(prompt.append).toContain("return_to_main");
+    expect(prompt.append).toContain("Stay in this agent conversation after finishing the task");
+    expect(prompt.append).not.toContain("return_to_main");
   });
 
   it("strips agent field from options", async () => {
     const withAgent = { ...BASE_OPTIONS, agent: "old-agent" };
-    const opts = await buildAgentOptions(
-      withAgent,
-      "/agents",
-      "/workspace",
-      "art-director",
-    );
+    const opts = await buildAgentOptions(withAgent, "/agents", "/workspace", "art-director");
     // agent field must NOT be passed to SDK — it requires a matching agents map entry
     expect(opts.agent).toBeUndefined();
   });
 
   it("does not inherit main permission or hook policy", async () => {
-    const opts = await buildAgentOptions(
-      BASE_OPTIONS,
-      "/agents",
-      "/workspace",
-      "screenwriter",
-    );
+    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
 
     expect(opts.allowedTools).toBeUndefined();
     expect(opts.disallowedTools).toBeUndefined();

@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock all external dependencies before importing the module under test
-vi.mock("../src/loader.js", () => ({
-  loadAgentConfigs: vi.fn().mockResolvedValue({
+vi.mock("../src/agent-manifest.js", () => ({
+  loadAgentManifests: vi.fn().mockResolvedValue({
     "script-writer": {
       name: "script-writer",
       description: "Writes scripts",
       skills: ["script-writing"],
+      mcpServers: ["storage", "script"],
     },
   }),
 }));
@@ -22,7 +23,10 @@ vi.mock("../src/hooks/index.js", () => ({
   }),
 }));
 
+import { createToolServers } from "../src/tools/index.js";
 import { buildOptions, describeAgentList, describeWorkspace, WORKSPACE_DIRS } from "../src/options.js";
+
+const mockCreateToolServers = createToolServers as ReturnType<typeof vi.fn>;
 
 describe("buildOptions", () => {
   beforeEach(() => {
@@ -38,8 +42,25 @@ describe("buildOptions", () => {
     expect(opts).toHaveProperty("hooks");
     expect(opts).toHaveProperty("systemPrompt");
     expect(opts).toHaveProperty("cwd", "/tmp/test-ws");
-    expect(opts).toHaveProperty("permissionMode", "bypassPermissions");
+    expect(opts).toHaveProperty("permissionMode", "default");
     expect(opts).toHaveProperty("includePartialMessages", true);
+  });
+
+  it("requests MCP tool servers and avoids bypass permissions for the main session", async () => {
+    const toolServers = {
+      storage: { name: "storage" },
+      image: { name: "image" },
+    };
+    mockCreateToolServers.mockReturnValueOnce(toolServers);
+
+    const opts = await buildOptions("/tmp/test-ws", "agents");
+
+    expect(mockCreateToolServers).toHaveBeenCalledWith([]);
+    expect(opts.mcpServers).toBe(toolServers);
+    expect(opts.permissionMode).toBe("default");
+    expect(opts.disallowedTools).toEqual(
+      expect.arrayContaining(["Bash", "Write"]),
+    );
   });
 
   it("does NOT include canUseTool (sandbox replaces permissions)", async () => {
@@ -49,8 +70,9 @@ describe("buildOptions", () => {
 
   it("uses buildHooks for hook configuration", async () => {
     const { buildHooks } = await import("../src/hooks/index.js");
-    await buildOptions("/tmp/test-ws", "agents");
-    expect(buildHooks).toHaveBeenCalled();
+    const opts = await buildOptions("/tmp/test-ws", "agents");
+    expect(buildHooks).toHaveBeenCalledWith();
+    expect(opts.maxBudgetUsd).toBe(10.0);
   });
 
   it("includes agent list in systemPrompt from loadAgentConfigs", async () => {
