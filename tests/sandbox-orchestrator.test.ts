@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ---------- Mocks ----------
 
@@ -6,6 +6,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
   createSdkMcpServer: vi.fn(() => ({ type: "mock-mcp-server" })),
   tool: vi.fn((_name: string, _desc: string, _schema: unknown, handler: unknown) => ({ handler })),
+  getSessionMessages: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../src/protocol.js", () => ({
@@ -14,17 +15,21 @@ vi.mock("../src/protocol.js", () => ({
 
 vi.mock("../src/options.js", () => ({
   buildOptions: vi.fn(),
+  describeWorkspace: vi.fn(async () => "## Workspace\n  (empty)"),
 }));
 
 // ---------- Imports (after mocks) ----------
 
+import fs from "node:fs";
 import { AsyncQueue, SandboxOrchestrator } from "../src/sandbox-orchestrator.js";
 import type { OrchestratorConfig } from "../src/sandbox-orchestrator.js";
 import { emit } from "../src/protocol.js";
 import { buildOptions } from "../src/options.js";
+import { getSessionMessages } from "@anthropic-ai/claude-agent-sdk";
 import type { ChatCommand, SandboxEvent } from "../src/protocol.js";
 
 const mockEmit = emit as ReturnType<typeof vi.fn>;
+const mockGetSessionMessages = getSessionMessages as ReturnType<typeof vi.fn>;
 const mockBuildOptions = buildOptions as ReturnType<typeof vi.fn>;
 
 const BASE_CONFIG: OrchestratorConfig = {
@@ -146,7 +151,7 @@ describe("SandboxOrchestrator", () => {
       await orch.init();
       mockEmit.mockClear();
 
-      orch.enterAgent("script-writer");
+      await orch.enterAgent("script-writer");
 
       expect(orch.activeAgent).toBe("script-writer");
       const events = emitted("agent_entered");
@@ -163,7 +168,7 @@ describe("SandboxOrchestrator", () => {
       await orch.init();
       mockEmit.mockClear();
 
-      orch.enterAgent("nonexistent");
+      await orch.enterAgent("nonexistent");
 
       expect(orch.activeAgent).toBeNull();
       const errors = emitted("error");
@@ -179,7 +184,7 @@ describe("SandboxOrchestrator", () => {
       mockEmit.mockClear();
 
       // No session_id yet — should be undefined
-      orch.enterAgent("script-writer");
+      await orch.enterAgent("script-writer");
       const events = emitted("agent_entered");
       expect(events[0]).not.toHaveProperty("session_id");
     });
@@ -193,7 +198,7 @@ describe("SandboxOrchestrator", () => {
       const orch = new SandboxOrchestrator(BASE_CONFIG);
       await orch.init();
 
-      orch.enterAgent("script-writer");
+      await orch.enterAgent("script-writer");
       mockEmit.mockClear();
 
       orch.exitAgent();
@@ -257,7 +262,7 @@ describe("SandboxOrchestrator", () => {
       const orch = new SandboxOrchestrator(BASE_CONFIG);
       await orch.init();
 
-      orch.enterAgent("script-writer");
+      await orch.enterAgent("script-writer");
 
       const cmd: ChatCommand = { cmd: "chat", message: "hi" };
       expect(orch.resolveTarget(cmd)).toBe("script-writer");
@@ -282,7 +287,7 @@ describe("SandboxOrchestrator", () => {
       await orch.init();
 
       // chat to main — message should be queued (not error)
-      orch.chat("hello", null, "r1");
+      await orch.chat("hello", null, "r1");
 
       // No error emitted (beyond the ready event)
       mockEmit.mockClear();
@@ -296,7 +301,7 @@ describe("SandboxOrchestrator", () => {
       await orch.init();
       mockEmit.mockClear();
 
-      orch.chat("hello", "script-writer", "r2");
+      await orch.chat("hello", "script-writer", "r2");
 
       // No error emitted
       expect(emitted("error")).toHaveLength(0);
@@ -308,7 +313,7 @@ describe("SandboxOrchestrator", () => {
       await orch.init();
       mockEmit.mockClear();
 
-      orch.chat("hello", "nonexistent", "r3");
+      await orch.chat("hello", "nonexistent", "r3");
 
       const errors = emitted("error");
       expect(errors).toHaveLength(1);
@@ -407,6 +412,64 @@ describe("SandboxOrchestrator", () => {
       // The agent session should exist and be queryable
       const status = orch.getStatus("writer");
       expect(status.busy).toBe(false);
+    });
+  });
+
+  // -- session history restore --
+
+  describe("session history restore", () => {
+    const SESSIONS_FILE = "/tmp/test/.sessions.json";
+
+    afterEach(() => {
+      try { fs.unlinkSync(SESSIONS_FILE); } catch { /* noop */ }
+    });
+
+    it("emits history events before ready when sessions exist", async () => {
+      mockOptionsWithAgents({});
+      // Write a .sessions.json with a main session ID
+      fs.mkdirSync("/tmp/test", { recursive: true });
+      fs.writeFileSync(SESSIONS_FILE, JSON.stringify({ main: "sess-abc" }));
+
+      mockGetSessionMessages.mockResolvedValue([
+        { type: "user", uuid: "u1", session_id: "sess-abc", message: "hello", parent_tool_use_id: null },
+        { type: "assistant", uuid: "u2", session_id: "sess-abc", message: { content: "hi" }, parent_tool_use_id: null },
+      ]);
+
+      const orch = new SandboxOrchestrator(BASE_CONFIG);
+      await orch.init();
+
+      const allEvents = mockEmit.mock.calls.map((c: unknown[]) => c[0] as SandboxEvent);
+      const historyEvents = allEvents.filter((e: SandboxEvent) => e.type === "history");
+      const readyEvents = allEvents.filter((e: SandboxEvent) => e.type === "ready");
+
+      expect(historyEvents).toHaveLength(1);
+      expect(readyEvents).toHaveLength(1);
+
+      // History must come before ready
+      const historyIdx = allEvents.indexOf(historyEvents[0]);
+      const readyIdx = allEvents.indexOf(readyEvents[0]);
+      expect(historyIdx).toBeLessThan(readyIdx);
+
+      // Verify history content
+      const hist = historyEvents[0] as { messages: Array<{ role: string; content: string }> };
+      expect(hist.messages).toHaveLength(2);
+      expect(hist.messages[0]).toEqual({ role: "user", content: "hello" });
+    });
+
+    it("proceeds silently when getSessionMessages fails", async () => {
+      mockOptionsWithAgents({});
+      fs.mkdirSync("/tmp/test", { recursive: true });
+      fs.writeFileSync(SESSIONS_FILE, JSON.stringify({ main: "sess-fail" }));
+
+      mockGetSessionMessages.mockRejectedValue(new Error("session not found"));
+
+      const orch = new SandboxOrchestrator(BASE_CONFIG);
+      await orch.init();
+
+      const readyEvents = emitted("ready");
+      expect(readyEvents).toHaveLength(1);
+      // No history event emitted
+      expect(emitted("history")).toHaveLength(0);
     });
   });
 });

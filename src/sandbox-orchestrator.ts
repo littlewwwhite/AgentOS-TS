@@ -11,6 +11,7 @@ import { buildAgentOptions } from "./agent-options.js";
 import { buildOptions } from "./options.js";
 import { emit } from "./protocol.js";
 import type { ChatCommand } from "./protocol.js";
+import { fetchHistory, HISTORY_LIMIT_SANDBOX } from "./session-history.js";
 import {
   createSwitchSignal,
   createDispatchServers,
@@ -76,6 +77,7 @@ export class SandboxOrchestrator {
 
   // Signal-driven agent switching
   private signal: SwitchSignal = createSwitchSignal();
+  private pendingSessionIds = new Map<string, string>();
   private masterSwitchServer: unknown = null;
   private agentSwitchServer: unknown = null;
   private sessionsFile: string;
@@ -117,11 +119,11 @@ export class SandboxOrchestrator {
     }
 
     // Restore persisted session IDs
+    this.mainSession = this.createSession("main", this.baseOptions);
     this.loadSessions();
 
-    this.mainSession = this.createSession("main", this.baseOptions);
-
-    // Agent sessions are created lazily on first use via getOrCreateAgent()
+    // Emit history for resumed sessions, then signal ready
+    await this.emitSessionHistory();
 
     emit({ type: "ready", skills: Object.keys(this.agentDefinitions) });
   }
@@ -135,7 +137,7 @@ export class SandboxOrchestrator {
   // -- Lazy agent session management --
 
   /** Create agent session on first use and start its worker */
-  private getOrCreateAgent(name: string): AgentSession | null {
+  private async getOrCreateAgent(name: string): Promise<AgentSession | null> {
     if (!this.agentDefinitions[name]) return null;
 
     let session = this.agents.get(name);
@@ -143,9 +145,18 @@ export class SandboxOrchestrator {
       const extraMcp = this.agentSwitchServer
         ? { switch: this.agentSwitchServer }
         : undefined;
-      session = this.createSession(name, buildAgentOptions(
+      const opts = await buildAgentOptions(
         this.baseOptions, this.config.agentsDir, this.config.projectPath, name, extraMcp,
-      ));
+      );
+      session = this.createSession(name, opts);
+      // Apply persisted session ID if available
+      const pendingId = this.pendingSessionIds.get(name);
+      if (pendingId) {
+        session.sessionId = pendingId;
+        session.options.resume = pendingId;
+        session.options.continueConversation = false;
+        this.pendingSessionIds.delete(name);
+      }
       this.agents.set(name, session);
       // Start worker in background — fire and forget
       this.runWorker(session).catch((err) => {
@@ -160,8 +171,8 @@ export class SandboxOrchestrator {
 
   // -- Agent context switching --
 
-  enterAgent(name: string): void {
-    const session = this.getOrCreateAgent(name);
+  async enterAgent(name: string): Promise<void> {
+    const session = await this.getOrCreateAgent(name);
     if (!session) {
       emit({
         type: "error",
@@ -204,9 +215,9 @@ export class SandboxOrchestrator {
 
   // -- Commands --
 
-  chat(message: string, target?: string | null, requestId?: string): void {
+  async chat(message: string, target?: string | null, requestId?: string): Promise<void> {
     const session = target
-      ? this.getOrCreateAgent(target)
+      ? await this.getOrCreateAgent(target)
       : this.mainSession;
     if (!session) {
       emit({ type: "error", message: "No session available", request_id: requestId });
@@ -377,7 +388,7 @@ export class SandboxOrchestrator {
       const req = this.signal.switchRequest;
       this.signal.switchRequest = null;
 
-      const agentSession = this.getOrCreateAgent(req.agent);
+      const agentSession = await this.getOrCreateAgent(req.agent);
       if (agentSession) {
         this._activeAgent = req.agent;
         emit({ type: "agent_entered", agent: req.agent });
@@ -416,16 +427,11 @@ export class SandboxOrchestrator {
         this.mainSession.options.resume = data.main;
         this.mainSession.options.continueConversation = false;
       }
-      // Agent sessions are lazy — IDs are stored for later use
+      // Store agent session IDs for lazy application — sessions are created
+      // on first use via getOrCreateAgent(), which will pick up these IDs.
       for (const [name, sessionId] of Object.entries(data)) {
         if (name !== "main" && sessionId) {
-          // Pre-create agent session so it picks up the session ID
-          const session = this.getOrCreateAgent(name);
-          if (session) {
-            session.sessionId = sessionId;
-            session.options.resume = sessionId;
-            session.options.continueConversation = false;
-          }
+          this.pendingSessionIds.set(name, sessionId);
         }
       }
     } catch {
@@ -443,6 +449,24 @@ export class SandboxOrchestrator {
       fs.writeFileSync(this.sessionsFile, JSON.stringify(data, null, 2));
     } catch {
       // Non-critical — session restore is best-effort
+    }
+  }
+
+  private async emitSessionHistory(): Promise<void> {
+    if (this.mainSession?.sessionId) {
+      const messages = await fetchHistory(
+        this.mainSession.sessionId,
+        this.config.projectPath,
+        HISTORY_LIMIT_SANDBOX,
+      );
+      if (messages.length > 0) emit({ type: "history", messages });
+    }
+    for (const [name, session] of this.agents) {
+      if (session.sessionId) {
+        const dir = path.resolve(this.config.agentsDir, name);
+        const messages = await fetchHistory(session.sessionId, dir, HISTORY_LIMIT_SANDBOX);
+        if (messages.length > 0) emit({ type: "history", agent: name, messages });
+      }
     }
   }
 }

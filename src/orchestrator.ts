@@ -12,6 +12,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { buildAgentOptions } from "./agent-options.js";
 import { buildOptions } from "./options.js";
 import { matchEnterAgent } from "./protocol.js";
+import { fetchHistory, truncate, HISTORY_LIMIT_REPL } from "./session-history.js";
 import {
   createSwitchSignal,
   createDispatchServers,
@@ -437,6 +438,19 @@ export async function repl(config: {
   }
   console.log(chalk.dim("  Ctrl+C · interrupt    Ctrl+C x 2 · exit    /enter <agent> · direct mode\n"));
 
+  // Display recent history when resuming
+  if (isResuming && resume) {
+    const history = await fetchHistory(resume, projectPath, HISTORY_LIMIT_REPL);
+    if (history.length > 0) {
+      console.log(chalk.dim("  \u2500\u2500 Recent history \u2500\u2500"));
+      for (const msg of history) {
+        const prefix = msg.role === "user" ? chalk.cyan("  \u276f ") : chalk.dim("  \u23bf ");
+        console.log(prefix + chalk.dim(truncate(msg.content)));
+      }
+      console.log(chalk.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"));
+    }
+  }
+
   // Initial prompt for new sessions with source material
   if (!isResuming && inspiration && projectName) {
     const sf = sessionFilePath(projectPath);
@@ -524,7 +538,16 @@ export async function repl(config: {
           const hasSavedSession = agentSessions.has(name);
           console.log();
           console.log(`  ${chalk.cyan("⏺")} ${chalk.bgCyan.black(` ${name} `)} ${chalk.dim(short)}`);
-          if (hasSavedSession) console.log(`    ${chalk.dim("⎿")}  ${chalk.yellow("resuming previous session")}`);
+          if (hasSavedSession) {
+            console.log(`    ${chalk.dim("\u23bf")}  ${chalk.yellow("resuming previous session")}`);
+            const agentHistory = await fetchHistory(
+              agentSessions.get(name)!, path.resolve(agentsDir, name), HISTORY_LIMIT_REPL,
+            );
+            for (const msg of agentHistory) {
+              const prefix = msg.role === "user" ? chalk.cyan("    \u276f ") : chalk.dim("    \u23bf ");
+              console.log(prefix + chalk.dim(truncate(msg.content)));
+            }
+          }
           console.log(`    ${chalk.dim("⎿")}  ${chalk.dim("/exit to return to orchestrator")}`);
         }
         continue;
@@ -558,7 +581,16 @@ export async function repl(config: {
       const hasSavedSession = agentSessions.has(nlAgent);
       console.log();
       console.log(`  ${chalk.cyan("⏺")} ${chalk.bgCyan.black(` ${nlAgent} `)} ${chalk.dim(short)}`);
-      if (hasSavedSession) console.log(`    ${chalk.dim("⎿")}  ${chalk.yellow("resuming previous session")}`);
+      if (hasSavedSession) {
+        console.log(`    ${chalk.dim("\u23bf")}  ${chalk.yellow("resuming previous session")}`);
+        const agentHistory = await fetchHistory(
+          agentSessions.get(nlAgent)!, path.resolve(agentsDir, nlAgent), HISTORY_LIMIT_REPL,
+        );
+        for (const msg of agentHistory) {
+          const prefix = msg.role === "user" ? chalk.cyan("    \u276f ") : chalk.dim("    \u23bf ");
+          console.log(prefix + chalk.dim(truncate(msg.content)));
+        }
+      }
       console.log(`    ${chalk.dim("⎿")}  ${chalk.dim("/exit to return to orchestrator")}`);
       continue;
     }
@@ -573,7 +605,7 @@ export async function repl(config: {
       // Agent uses its own .claude/ directory — SDK loads CLAUDE.md + settings.json + skills natively
       const extraMcp = returnServer ? { switch: returnServer } : undefined;
       effectiveOptions = {
-        ...buildAgentOptions(options, agentsDir, projectPath, activeAgent, extraMcp),
+        ...await buildAgentOptions(options, agentsDir, projectPath, activeAgent, extraMcp),
         resume: agentSessions.get(activeAgent),
         continueConversation: false,
       };
@@ -599,7 +631,7 @@ export async function repl(config: {
       const agentSf = sessionFilePath(projectPath, agent);
       const extraMcp = returnServer ? { switch: returnServer } : undefined;
       const agentOpts: Record<string, unknown> = {
-        ...buildAgentOptions(options, agentsDir, projectPath, agent, extraMcp),
+        ...await buildAgentOptions(options, agentsDir, projectPath, agent, extraMcp),
         resume: agentSessions.get(agent),
         continueConversation: false,
       };

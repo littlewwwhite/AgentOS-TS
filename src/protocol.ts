@@ -67,7 +67,7 @@ export type AgentExitedEvent = EventBase & {
   type: "agent_exited";
   agent: string;  // required
 };
-/** @planned — will be emitted by session restore logic */
+/** Emitted during session restore to replay conversation history */
 export type HistoryEvent = EventBase & {
   type: "history";
   messages: Array<{
