@@ -11,7 +11,6 @@ import {
 
 async function createTemplateFixture(rootDir: string): Promise<void> {
   await fs.mkdir(path.join(rootDir, "src"), { recursive: true });
-  await fs.mkdir(path.join(rootDir, "skills", "script-writer"), { recursive: true });
   await fs.mkdir(path.join(rootDir, "agents", "screenwriter", ".claude", "skills"), {
     recursive: true,
   });
@@ -23,10 +22,6 @@ async function createTemplateFixture(rootDir: string): Promise<void> {
   );
   await fs.writeFile(path.join(rootDir, "tsconfig.json"), JSON.stringify({}));
   await fs.writeFile(path.join(rootDir, "src", "sandbox.ts"), "export const version = 'v1';\n");
-  await fs.writeFile(
-    path.join(rootDir, "skills", "script-writer", "SKILL.md"),
-    "# Script Writer\n",
-  );
   await fs.writeFile(
     path.join(rootDir, "agents", "screenwriter", ".claude", "skills", "style.md"),
     "# Style\n",

@@ -4,8 +4,7 @@
       "Read",
       "Write",
       "Glob",
-      "Grep",
-      "Skill"
+      "Grep"
     ],
     "deny": [
       "Bash(*)",

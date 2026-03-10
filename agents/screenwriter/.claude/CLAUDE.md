@@ -11,5 +11,5 @@ Respond in Chinese (简体中文), use English for structural keys and code.
 - **script-adapt**: 小说直转剧本流水线：将小说或原创概念通过三阶段（分析设计 → 写作 → 结构解析）转化为结构化 AI 漫剧剧本。当用户提到小说转剧本、简单改编、3阶段剧本、Phase 1/2/3 时使用。
 
 ## Skill Usage
-Use the `Skill` tool to load the corresponding skill when starting a domain task.
-Skill instructions contain reference file paths — use `Read` to load them as directed.
+Domain skills are provided from `.claude/skills/` in this agent workspace.
+When a skill mentions reference file paths, use `Read` to load only the files needed for the current task.

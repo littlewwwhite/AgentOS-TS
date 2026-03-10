@@ -2,7 +2,6 @@
   "permissions": {
     "allow": [
       "Read",
-      "Skill",
       "Write(draft/**)",
       "Write(output/**)",
       "mcp__storage__write_json",

@@ -2,7 +2,6 @@
   "permissions": {
     "allow": [
       "Read",
-      "Skill",
       "Bash(ls *)",
       "Bash(ffmpeg *)",
       "Write(audio/**)",
