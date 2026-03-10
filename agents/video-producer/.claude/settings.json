@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Read",
+      "Skill",
       "Bash(ls *)",
       "Bash(ffprobe *)",
       "Write(production/**)",
@@ -14,8 +15,7 @@
       "Write(../*)",
       "Write(draft/**)",
       "Write(assets/**)",
-      "Agent(*)",
-      "Skill(*)"
+      "Agent(*)"
     ]
   }
 }

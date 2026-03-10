@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Read",
+      "Skill",
       "Bash(ls *)",
       "Bash(python3 *)",
       "Write(assets/**)",
@@ -17,8 +18,7 @@
       "Write(../*)",
       "Write(production/**)",
       "Write(output/script.json)",
-      "Agent(*)",
-      "Skill(*)"
+      "Agent(*)"
     ]
   }
 }

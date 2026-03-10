@@ -4,12 +4,12 @@
       "Read",
       "Write",
       "Glob",
-      "Grep"
+      "Grep",
+      "Skill"
     ],
     "deny": [
       "Bash(*)",
-      "Agent(*)",
-      "Skill(*)"
+      "Agent(*)"
     ]
   }
 }
