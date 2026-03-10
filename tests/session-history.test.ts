@@ -9,7 +9,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 // ---------- Imports ----------
 
 import { getSessionMessages } from "@anthropic-ai/claude-agent-sdk";
-import { extractText, fetchHistory, truncate } from "../src/session-history.js";
+import { extractText, fetchHistory } from "../src/session-history.js";
 
 const mockGetSessionMessages = getSessionMessages as ReturnType<typeof vi.fn>;
 
