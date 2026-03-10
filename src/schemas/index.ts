@@ -33,6 +33,9 @@ export type { ProductionPlan, RenderJob, Shot } from "./production.js";
 export { TimelineSchema } from "./timeline.js";
 export type { Timeline, TimelineClip } from "./timeline.js";
 
+export { SourceStructureSchema } from "./source-structure.js";
+export type { SourceSegment, SourceStructure } from "./source-structure.js";
+
 // --- Schema registry: workspace-relative path → Zod schema ---
 
 import { DesignSchema } from "./design.js";
@@ -40,9 +43,11 @@ import { CatalogSchema } from "./catalog.js";
 import { ScriptSchema } from "./script.js";
 import { AssetManifestSchema } from "./assets.js";
 import { ProductionPlanSchema } from "./production.js";
+import { SourceStructureSchema } from "./source-structure.js";
 import { TimelineSchema } from "./timeline.js";
 
 export const schemaRegistry: Record<string, z.ZodType> = {
+  "draft/source-structure.json": SourceStructureSchema,
   "design.json": DesignSchema,
   "catalog.json": CatalogSchema,
   "script.json": ScriptSchema,

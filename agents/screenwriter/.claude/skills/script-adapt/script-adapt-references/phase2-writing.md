@@ -19,6 +19,7 @@
 ## 输入与输出
 
 **输入：**
+- `source-structure.json`：原文分段与边界检测结果
 - `design.json`：世界观、人物关系、视觉风格、分集大纲
 - `catalog.json`：资产清单（角色、地点、道具）
 
@@ -35,7 +36,21 @@
 
 **定位**：此文件是 Phase 2 批次写作的核心参照物，同时作为**跨阶段结构产物**供下游使用——Phase 3 结构解析依赖它校验剧本的线索闭环与角色一致性，其他 agent（如 asset_gen、post_prod）可引用其中的角色状态链和道具链。
 
-### connectivity.md 包含以下五张表：
+### connectivity.md 包含以下六张表：
+
+#### 0. Character Identity Cards（角色身份卡）
+
+| Character | Core Motivation | Language Signature | Relationship Baseline | Drift Guard |
+|-----------|-----------------|--------------------|-----------------------|------------|
+| 角色名 | 核心动机 | 语言签名 | 关键关系基线 | 禁止漂移点 |
+
+锁定角色的恒定身份锚点：
+- core motivation
+- personality baseline
+- language signature
+- relationship baseline
+- prohibited drift points
+- allowed evolution checkpoints
 
 #### 1. Character State Transitions（角色状态转变表）
 
@@ -79,8 +94,8 @@
 
 ### 生成流程
 
-1. 读取 design.json 全部分集大纲
-2. 逐表分析并填充
+1. 读取 source-structure.json + design.json 全部分集大纲
+2. 先填充 Character Identity Cards，再逐表分析并填充其余五张表
 3. 写入 `draft/connectivity.md`
 4. 完成后开始批次写作
 
@@ -120,11 +135,11 @@ Phase 2 写作使用标准中文微短剧场记格式，完整规范见 `## Refe
 
 **工作流程：**
 ```
-0. 读取 design.json + catalog.json
+0. 读取 source-structure.json + design.json + catalog.json
 1. 🔴 生成 draft/connectivity.md（连贯性地图）
 2. 🔴 分析所有角色的外观变化，建立角色状态变体表
 3. 按批次写作（每批 3-4 集，总集数 ≤ 6 时一次写完）
-4. 每批次开始前：读取 connectivity.md + 上一批次摘要
+4. 每批次开始前：读取 source-structure.json + connectivity.md + 上一批次摘要
 5. 每集写完写入 episodes/ep{NN}.md，场次编号与 design.json 严格对应
 6. 每批次完成后：输出批次摘要（角色状态变更、活跃线索、下一批次衔接要点）
 7. 全部批次完成后执行检查
@@ -132,12 +147,18 @@ Phase 2 写作使用标准中文微短剧场记格式，完整规范见 `## Refe
 
 **批次写作规则：**
 - **批次大小**：每批 3-4 集（总集数 ≤ 6 时一次写完全部）
-- **每批次开始前**：读取 connectivity.md 对应集范围的信息 + 上一批次摘要（首批除外）
+- **每批次开始前**：读取 source-structure.json 中本批次相关的 source segments + connectivity.md 对应集范围的信息 + 上一批次摘要（首批除外）
+- **每批次准备时必须先确认**：
+  - 本批次对应哪些 source segments
+  - 哪些 source segments 只被部分消费，需留给后续批次
+  - 哪些角色状态与线索义务已经锁定，不得漂移
+  - 哪些 cliffhanger-hook 对必须兑现
 - **每批次完成后**：输出批次摘要，包含：
+  - 消费的 source segments / 未消费完的 source segments
   - 角色状态变更：哪些角色发生了什么变化
   - 活跃线索状态：哪些线索被推进/新开/回收
-  - 下一批次衔接：最后一集的悬念钩子 + 待继续的线索
-- **上下文恢复**：/clear 后读取 connectivity.md + 扫描 draft/episodes/ 已完成集数，从断点批次继续
+  - 下一批次衔接：最后一集的悬念钩子 + 待继续的线索 + 未完成的原文义务
+- **上下文恢复**：/clear 后读取 source-structure.json + connectivity.md + 扫描 draft/episodes/ 已完成集数，从断点批次继续
 
 **质量检查清单：**
 - [ ] 每个场次包含人物行和至少一个 `▲` 动作行
@@ -147,6 +168,16 @@ Phase 2 写作使用标准中文微短剧场记格式，完整规范见 `## Refe
 - [ ] 🔴 非 default 视觉状态的角色已在对应场次人物行中标注 `【状态】`
 - [ ] 🔴 同一角色在不同场次的状态标注前后一致（状态名称统一）
 - [ ] 单集场次数与 design.json 一致
+- [ ] `ep*.md` 中未插入任何供 parser 之外消费的 metadata block 或额外标记
+
+## Parser 兼容硬约束
+
+以下格式不得改变，否则 Phase 3 parser 将失效：
+
+- 集标记保持 `第{N}集`
+- 场次头保持 `{ep}-{scene} 时间 内/外 地点`
+- 人物行、状态标注、动作行、对白行、OS 行语法保持现有格式
+- 所有 source-structure / batch metadata 只能出现在 `source-structure.json`、`connectivity.md`、批次摘要中，**不得写入 `episodes/ep*.md`**
 
 ---
 
