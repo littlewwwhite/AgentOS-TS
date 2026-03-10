@@ -10,5 +10,4 @@ Respond in Chinese (简体中文), use English for structural keys and code.
 - **music-matcher**: 基于向量语义匹配的智能视频配乐工具。输入视频文件，自动完成 Gemini 视频分析、向量匹配选曲、FFmpeg 合成输出。
 
 ## Skill Usage
-Domain skills are provided from `.claude/skills/` in this agent workspace.
-When a skill mentions reference file paths, use `Read` to load only the files needed for the current task.
+Skills are discovered by the SDK from `.claude/skills/` at session start. When a skill references extra files, use `Read` to load only the paths it names.

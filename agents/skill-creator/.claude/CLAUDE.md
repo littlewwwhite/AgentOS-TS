@@ -10,5 +10,4 @@ Respond in Chinese (简体中文), use English for structural keys and code.
 - **skill-creator**: Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude's capabilities with specialized knowledge, workflows, or tool integrations.
 
 ## Skill Usage
-Domain skills are provided from `.claude/skills/` in this agent workspace.
-When a skill mentions reference file paths, use `Read` to load only the files needed for the current task.
+Skills are discovered by the SDK from `.claude/skills/` at session start. When a skill references extra files, use `Read` to load only the paths it names.

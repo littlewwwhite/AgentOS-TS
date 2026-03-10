@@ -11,5 +11,4 @@ Respond in Chinese (简体中文), use English for structural keys and code.
 - **video-review**: AI 视频内容评审工具，基于提示词符合度+五维度进行结构化审核，自动识别不合格视频并触发重新生成。
 
 ## Skill Usage
-Domain skills are provided from `.claude/skills/` in this agent workspace.
-When a skill mentions reference file paths, use `Read` to load only the files needed for the current task.
+Skills are discovered by the SDK from `.claude/skills/` at session start. When a skill references extra files, use `Read` to load only the paths it names.

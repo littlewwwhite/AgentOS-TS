@@ -13,5 +13,4 @@ Respond in Chinese (简体中文), use English for structural keys and code.
 - **kling-video-prompt**: 可灵视频提示词生成规范 - 基于剧本 JSON 结构的视频生成提示词格式化工具。当用户提到"可灵"、"kling"、"视频提示词"、"剧本格式"、"JSON 规范"时使用此 skill。
 
 ## Skill Usage
-Domain skills are provided from `.claude/skills/` in this agent workspace.
-When a skill mentions reference file paths, use `Read` to load only the files needed for the current task.
+Skills are discovered by the SDK from `.claude/skills/` at session start. When a skill references extra files, use `Read` to load only the paths it names.
