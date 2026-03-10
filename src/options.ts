@@ -7,7 +7,7 @@ import path from "node:path";
 
 import { buildHooks } from "./hooks/index.js";
 import { loadAgentConfigs } from "./loader.js";
-import { toolServers } from "./tools/index.js";
+import { createToolServers } from "./tools/index.js";
 
 export const WORKSPACE_DIRS = ["draft", "draft/episodes", "assets", "production", "output"];
 
@@ -77,7 +77,7 @@ export async function buildOptions(
 
   return {
     agents,
-    mcpServers: toolServers,
+    mcpServers: createToolServers(),
     allowedTools: [
       "TodoWrite",
       "Read", "Write", "Bash", "Glob", "Grep",

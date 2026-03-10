@@ -12,7 +12,7 @@ vi.mock("../src/loader.js", () => ({
 }));
 
 vi.mock("../src/tools/index.js", () => ({
-  toolServers: {},
+  createToolServers: vi.fn(() => ({})),
 }));
 
 vi.mock("../src/hooks/index.js", () => ({

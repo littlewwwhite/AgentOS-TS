@@ -18,6 +18,10 @@ vi.mock("../src/options.js", () => ({
   describeWorkspace: vi.fn(async () => "## Workspace\n  (empty)"),
 }));
 
+vi.mock("../src/tools/index.js", () => ({
+  createToolServers: vi.fn(() => ({})),
+}));
+
 // ---------- Imports (after mocks) ----------
 
 import fs from "node:fs";
