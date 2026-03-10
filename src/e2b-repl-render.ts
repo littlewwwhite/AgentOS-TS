@@ -59,22 +59,6 @@ function formatToolLabel(name: string, input?: Record<string, unknown>): string 
   return name;
 }
 
-function summarizeToolLog(detail?: Record<string, unknown>): string {
-  if (!detail) return "tool event";
-  if (typeof detail.summary === "string") {
-    return detail.summary;
-  }
-  const status = typeof detail.status === "string" ? detail.status : null;
-  const elapsed =
-    typeof detail.elapsed_time_seconds === "number"
-      ? ` (${detail.elapsed_time_seconds.toFixed(1)}s)`
-      : "";
-  if (status) {
-    return `${status}${elapsed}`;
-  }
-  return JSON.stringify(detail).slice(0, 120);
-}
-
 function flushActiveStream(state: ReplState): { state: ReplState; output: string[] } {
   if (!state.activeStream) {
     return { state, output: [] };
@@ -132,8 +116,8 @@ export function renderSandboxEvent(
     }
 
     case "thinking": {
-      const label = `[${event.agent ?? "main"} thinking] `;
-      return appendStreamChunk(state, label, event.text, "thinking", palette);
+      const label = `${palette.dim(`[${event.agent ?? "main"} thinking]\n`)}`;
+      return appendStreamChunk(state, label, palette.dim(event.text), "thinking", palette);
     }
 
     case "tool_use": {
@@ -147,14 +131,10 @@ export function renderSandboxEvent(
       };
     }
 
-    case "tool_log": {
-      const flushed = flushActiveStream(state);
-      const summary = summarizeToolLog(event.detail);
-      return {
-        state: flushed.state,
-        output: [...flushed.output, `${palette.dim(`    \u23bf ${summary}`)}\n`],
-      };
-    }
+    case "tool_log":
+      // Suppressed in CLI — tool_use events already provide tool feedback.
+      // tool_log events are consumed by the web frontend for detailed activity feed.
+      return { state, output: [] };
 
     case "result": {
       const flushed = flushActiveStream({

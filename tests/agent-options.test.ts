@@ -115,7 +115,7 @@ describe("buildAgentOptions", () => {
 
     expect(opts.allowedTools).toBeUndefined();
     expect(opts.disallowedTools).toBeUndefined();
-    expect(opts.permissionMode).toBeUndefined();
+    expect(opts.permissionMode).toBe("bypassPermissions");
     expect(opts.hooks).toBeUndefined();
   });
 });

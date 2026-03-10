@@ -52,6 +52,7 @@ export async function buildAgentOptions(
     ...rest,
     cwd: spec.cwd ?? path.resolve(agentsDir, agentName),
     settingSources: spec.settingSources,
+    permissionMode: spec.permissionMode,
     mcpServers,
     systemPrompt: spec.systemPrompt,
   };

@@ -51,7 +51,7 @@ describe("buildWorkerSessionSpec", () => {
     expect(spec.settingSources).toEqual(["project"]);
     expect(spec.allowedTools).toBeUndefined();
     expect(spec.disallowedTools).toBeUndefined();
-    expect(spec.permissionMode).toBeUndefined();
+    expect(spec.permissionMode).toBe("bypassPermissions");
     expect(spec.hooks).toBeUndefined();
     expect(spec.mcpServerNames).toEqual(["storage", "script"]);
     expect(spec.systemPrompt).toMatchObject({

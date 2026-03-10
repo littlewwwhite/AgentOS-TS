@@ -490,7 +490,7 @@ describe("SandboxOrchestrator", () => {
       ).freshMcpServers(false, ["storage", "script"]);
 
       expect(mockCreateToolServers).toHaveBeenCalledWith(["storage", "script"]);
-      expect(servers.switch).toBeUndefined();
+      expect(servers.switch).toBeDefined();
     });
   });
 

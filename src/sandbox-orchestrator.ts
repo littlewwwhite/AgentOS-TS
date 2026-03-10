@@ -264,9 +264,9 @@ export class SandboxOrchestrator {
   private freshMcpServers(isMain: boolean, names: ToolServerName[] = []): Record<string, unknown> {
     const agentNames = Object.keys(this.agentDefinitions);
     const servers: Record<string, unknown> = { ...createToolServers(names) };
-    if (isMain && agentNames.length > 0) {
-      const { masterServer } = createDispatchServers(this.signal, agentNames);
-      servers.switch = masterServer;
+    if (agentNames.length > 0) {
+      const { masterServer, fullServer } = createDispatchServers(this.signal, agentNames);
+      servers.switch = isMain ? masterServer : fullServer;
     }
     return servers;
   }
@@ -533,8 +533,8 @@ export class SandboxOrchestrator {
 
     // -- Signal-driven agent switching --
 
-    // Master → Agent: main LLM called switch_to_agent
-    if (session.name === "main" && this.signal.switchRequest) {
+    // Any session called switch_to_agent
+    if (this.signal.switchRequest) {
       const req = this.signal.switchRequest;
       this.signal.switchRequest = null;
 
@@ -545,7 +545,7 @@ export class SandboxOrchestrator {
           type: "agent_entered",
           agent: req.agent,
           reason: "delegation",
-          parent_agent: "main",
+          parent_agent: session.name,
           request_id: requestId,
         });
         if (req.task) {

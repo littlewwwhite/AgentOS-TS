@@ -22,7 +22,7 @@ describe("renderSandboxEvent", () => {
       plainPalette,
     );
 
-    expect(rendered.output.join("")).toContain("[screenwriter thinking] ");
+    expect(rendered.output.join("")).toContain("[screenwriter thinking]\n");
     expect(rendered.output.join("")).toContain("Need to inspect the uploaded novel first.");
   });
 
@@ -62,7 +62,7 @@ describe("renderSandboxEvent", () => {
     );
 
     expect(afterToolUse.output.join("")).toContain("Read(");
-    expect(afterPreLog.output.join("")).toContain("running");
-    expect(afterPostLog.output.join("")).toContain("Read 1 file");
+    expect(afterPreLog.output).toEqual([]);
+    expect(afterPostLog.output).toEqual([]);
   });
 });

@@ -103,6 +103,7 @@ export async function buildWorkerSessionSpec(
   return {
     cwd: path.resolve(input.agentsDir, input.agentName),
     settingSources: ["project"],
+    permissionMode: "bypassPermissions",
     mcpServerNames: [...input.manifest.mcpServers],
     systemPrompt: {
       type: "preset",
