@@ -72,6 +72,7 @@ function emitted<T extends SandboxEvent["type"]>(type: T) {
 function createMockQuery(messages: Array<Record<string, unknown>>) {
   return {
     close: vi.fn(),
+    abort: vi.fn(),
     async *[Symbol.asyncIterator]() {
       for (const message of messages) {
         yield message;

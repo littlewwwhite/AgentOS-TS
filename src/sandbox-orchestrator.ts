@@ -373,6 +373,15 @@ export class SandboxOrchestrator {
 
     try {
       for await (const msg of q as AsyncIterable<SDKMessage>) {
+        // Abort immediately when a switch/return tool fires mid-stream.
+        // Without this, the LLM continues generating text after the tool
+        // returns, producing output that looks like a successful switch
+        // but is actually the same session hallucinating the other agent.
+        if (this.signal.switchRequest || this.signal.returnRequest) {
+          (q as unknown as { abort?: () => void }).abort?.();
+          break;
+        }
+
         if (msg.type === "stream_event") {
           const ev = msg.event as Record<string, unknown>;
           const isNested = !!(msg as { parent_tool_use_id?: string | null }).parent_tool_use_id;
