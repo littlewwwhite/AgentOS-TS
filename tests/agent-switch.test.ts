@@ -69,31 +69,31 @@ describe("createReturnToMain", () => {
 });
 
 describe("createDispatchServers", () => {
-  it("creates both master and agent servers", () => {
+  it("creates both master and full servers", () => {
     const signal = createSwitchSignal();
-    const { masterServer, agentServer } = createDispatchServers(signal, [
+    const { masterServer, fullServer } = createDispatchServers(signal, [
       "screenwriter",
       "art-director",
     ]);
     expect(masterServer).toBeDefined();
-    expect(agentServer).toBeDefined();
+    expect(fullServer).toBeDefined();
   });
 
-  it("master and agent servers are distinct objects", () => {
+  it("master and full servers are distinct objects", () => {
     const signal = createSwitchSignal();
-    const { masterServer, agentServer } = createDispatchServers(signal, [
+    const { masterServer, fullServer } = createDispatchServers(signal, [
       "screenwriter",
     ]);
-    expect(masterServer).not.toBe(agentServer);
+    expect(masterServer).not.toBe(fullServer);
   });
 
   it("works with single agent", () => {
     const signal = createSwitchSignal();
-    const { masterServer, agentServer } = createDispatchServers(signal, [
+    const { masterServer, fullServer } = createDispatchServers(signal, [
       "screenwriter",
     ]);
     expect(masterServer).toBeDefined();
-    expect(agentServer).toBeDefined();
+    expect(fullServer).toBeDefined();
   });
 
   it("shared signal allows bidirectional communication", () => {

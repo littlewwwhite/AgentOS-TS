@@ -50,7 +50,6 @@ export function createReturnToMain(signal: SwitchSignal) {
 
 /** Create MCP servers for signal-driven dispatch.
  *  - masterServer: switch_to_agent only (for main orchestrator)
- *  - agentServer: return_to_main only (legacy, unused)
  *  - fullServer: both tools (for agents that can switch + return)
  */
 export function createDispatchServers(signal: SwitchSignal, agentNames: string[]) {
@@ -60,10 +59,6 @@ export function createDispatchServers(signal: SwitchSignal, agentNames: string[]
     masterServer: createSdkMcpServer({
       name: "switch",
       tools: [switchTool],
-    }),
-    agentServer: createSdkMcpServer({
-      name: "switch",
-      tools: [returnTool],
     }),
     fullServer: createSdkMcpServer({
       name: "switch",
