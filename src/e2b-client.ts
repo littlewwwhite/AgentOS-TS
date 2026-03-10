@@ -26,6 +26,8 @@ export interface SandboxClientOptions {
   heartbeatMs?: number;
   /** Max consecutive reconnect attempts (default: 3). Set 0 to disable auto-reconnect. */
   maxReconnects?: number;
+  /** Called after sandbox is recreated during reconnection. Use to re-sync files. */
+  onSandboxRecreated?: (client: SandboxClient) => Promise<void>;
 }
 
 interface CommandHandle {
@@ -43,6 +45,7 @@ export class SandboxClient {
   private eventCb: ((event: SandboxEvent) => void) | null;
   private stderrCb: ((data: string) => void) | null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatFailCount = 0;
   private reconnecting = false;
   private reconnectCount = 0;
   private destroyed = false;
@@ -341,7 +344,12 @@ export class SandboxClient {
     try {
       // If sandbox itself is gone, recreate it
       if (this._sandbox) {
-        const alive = await this._sandbox.isRunning().catch(() => false);
+        let alive = await this._sandbox.isRunning().catch(() => false);
+        if (!alive) {
+          // Network glitch? Wait and retry once before declaring dead
+          await new Promise((r) => setTimeout(r, 2000));
+          alive = await this._sandbox.isRunning().catch(() => false);
+        }
         if (!alive) {
           this.stderrCb?.(`[reconnect] Sandbox expired — creating new sandbox`);
           await this._sandbox.kill().catch(() => {});
@@ -352,6 +360,7 @@ export class SandboxClient {
               timeoutMs: this.opts.timeoutMs ?? 600_000,
             },
           );
+          await this.opts.onSandboxRecreated?.(this);
         }
       }
       await this.startProcess();
@@ -383,7 +392,16 @@ export class SandboxClient {
       if (!this._sandbox || this.reconnecting) return;
       // Extend sandbox lifetime so E2B platform doesn't reclaim it
       const timeout = this.opts.timeoutMs ?? 600_000;
-      this._sandbox.setTimeout(timeout).catch(() => {});
+      this._sandbox.setTimeout(timeout)
+        .then(() => { this.heartbeatFailCount = 0; })
+        .catch((err: unknown) => {
+          this.heartbeatFailCount++;
+          const msg = err instanceof Error ? err.message : String(err);
+          this.stderrCb?.(`[heartbeat] setTimeout failed (${this.heartbeatFailCount}x): ${msg}`);
+          if (this.heartbeatFailCount >= 3) {
+            this.eventCb?.({ type: "status", state: "disconnected" } as SandboxEvent);
+          }
+        });
       // Also ping the agent process
       if (this.handle) {
         this.sendCommand({ cmd: "status" }).catch(() => {});

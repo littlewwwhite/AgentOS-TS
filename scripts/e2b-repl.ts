@@ -219,7 +219,7 @@ async function main() {
   const client = new SandboxClient({
     templateId: "agentos-sandbox",
     apiKey: E2B_KEY,
-    timeoutMs: 300_000,
+    timeoutMs: 900_000,
     envs: {
       ANTHROPIC_API_KEY: dotEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
       ANTHROPIC_BASE_URL: dotEnv.ANTHROPIC_BASE_URL ?? process.env.ANTHROPIC_BASE_URL ?? "",
@@ -228,6 +228,15 @@ async function main() {
     onStderr: (data) => {
       const trimmed = data.trim();
       if (trimmed) process.stderr.write(`${dim(`  [stderr] ${trimmed}`)}\n`);
+    },
+    onSandboxRecreated: async (c) => {
+      if (fs.existsSync(LOCAL_WORKSPACE)) {
+        process.stderr.write(dim("  [reconnect] Re-syncing workspace → new sandbox...\n"));
+        const synced = await c.syncDir(LOCAL_WORKSPACE, SANDBOX_WORKSPACE);
+        if (synced.length > 0) {
+          process.stderr.write(dim(`  [reconnect] ✓ Restored ${synced.length} files\n`));
+        }
+      }
     },
   });
 
