@@ -568,6 +568,15 @@ async function main() {
     while (replState.busy) {
       await new Promise((r) => setTimeout(r, 100));
     }
+
+    // Auto-sync workspace after each task so files survive sandbox expiration
+    client.pullDir(SANDBOX_WORKSPACE, LOCAL_WORKSPACE)
+      .then((pulled) => {
+        if (pulled.length > 0) {
+          spinner.guardedWrite(dim(`  ✓ auto-synced ${pulled.length} files\n`));
+        }
+      })
+      .catch(() => {});
   }
 
   await syncAndDisconnect();
