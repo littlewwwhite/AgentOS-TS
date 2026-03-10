@@ -49,7 +49,7 @@ const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 
 const SLASH_COMMANDS = [
   "/enter", "/exit", "/agents", "/skills", "/status",
-  "/ls", "/cat", "/upload", "/download", "/sync", "/help",
+  "/ls", "/cat", "/upload", "/download", "/sync", "/destroy", "/help",
 ];
 
 const EXIT_RE = /^(?:退出|返回|exit|back|go\s+back)$/i;
@@ -173,7 +173,14 @@ async function main() {
   // -- Start or reconnect --
   if (connectSandboxId) {
     console.log(dim(`  Connecting to sandbox ${connectSandboxId}...`));
-    await client.connect(connectSandboxId);
+    try {
+      await client.connect(connectSandboxId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(yellow(`  ⚠ Could not reconnect: ${msg}`));
+      console.log(dim("  Creating new sandbox..."));
+      await client.start();
+    }
   } else {
     console.log(dim("  Creating sandbox..."));
     await client.start();
@@ -206,7 +213,7 @@ async function main() {
     }
   }
 
-  console.log(dim("  Ctrl+C · interrupt    Ctrl+C x 2 · exit    /enter <agent> · direct mode\n"));
+  console.log(dim("  Ctrl+C · interrupt    Ctrl+C x 2 · disconnect (sandbox stays alive)    /destroy · kill sandbox\n"));
 
   // ---------- REPL ----------
 
@@ -225,8 +232,8 @@ async function main() {
       );
     });
 
-  // -- Graceful exit with workspace sync --
-  const syncAndDestroy = async () => {
+  // -- Graceful exit: sync workspace, disconnect (sandbox stays alive for reconnect) --
+  const syncAndDisconnect = async () => {
     console.log(dim("\n  Syncing workspace ← sandbox..."));
     try {
       const pulled = await client.pullDir(SANDBOX_WORKSPACE, LOCAL_WORKSPACE);
@@ -238,9 +245,10 @@ async function main() {
     } catch (err) {
       console.log(red(`  ✗ Sync failed: ${err instanceof Error ? err.message : String(err)}`));
     }
-    console.log(dim("  Destroying sandbox..."));
-    await client.destroy();
-    console.log(dim("  Goodbye."));
+    const id = client.sandboxId;
+    await client.disconnect();
+    console.log(dim(`  Disconnected. Sandbox ${id} is still alive.`));
+    console.log(dim(`  Reconnect: bun scripts/e2b-repl.ts --sandbox ${id}`));
   };
 
   let ctrlC = 0;
@@ -252,7 +260,7 @@ async function main() {
       return;
     }
     if (++ctrlC >= 2) {
-      syncAndDestroy().then(() => process.exit(0)).catch(() => process.exit(1));
+      syncAndDisconnect().then(() => process.exit(0)).catch(() => process.exit(1));
       return;
     }
     console.log(dim("\n  Press Ctrl+C again to exit, or keep typing."));
@@ -412,6 +420,19 @@ async function main() {
         continue;
       }
 
+      if (cmd === "/destroy") {
+        console.log(dim("  Syncing workspace ← sandbox..."));
+        try {
+          const pulled = await client.pullDir(SANDBOX_WORKSPACE, LOCAL_WORKSPACE);
+          if (pulled.length > 0) console.log(green(`  ✓ Saved ${pulled.length} files`));
+        } catch { /* best-effort */ }
+        console.log(dim("  Destroying sandbox..."));
+        await client.destroy();
+        console.log(dim("  Sandbox destroyed. Goodbye."));
+        rl.close();
+        process.exit(0);
+      }
+
       if (cmd === "/help" || cmd === "/") {
         if (activeAgent) {
           console.log(dim(`  Current agent: `) + cyan(bold(activeAgent)));
@@ -430,6 +451,7 @@ async function main() {
         console.log(`    ${cyan("/upload <l> [r]")} ${dim("upload local file/dir to sandbox")}`);
         console.log(`    ${cyan("/download <r> [l]")} ${dim("download sandbox file to local")}`);
         console.log(`    ${cyan("/sync")}           ${dim("pull sandbox workspace to local")}`);
+        console.log(`    ${cyan("/destroy")}        ${dim("sync + permanently kill sandbox")}`);
         console.log(`    ${cyan("/help")}           ${dim("show this help")}`);
         continue;
       }
@@ -463,7 +485,7 @@ async function main() {
     }
   }
 
-  await syncAndDestroy();
+  await syncAndDisconnect();
   rl.close();
 }
 
