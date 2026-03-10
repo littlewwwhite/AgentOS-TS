@@ -11,13 +11,13 @@ import { buildAgentOptions } from "./agent-options.js";
 import { buildOptions } from "./options.js";
 import { emit } from "./protocol.js";
 import type { ChatCommand } from "./protocol.js";
-import { fetchHistory, HISTORY_LIMIT_SANDBOX } from "./session-history.js";
-import { createToolServers } from "./tools/index.js";
+import { HISTORY_LIMIT_SANDBOX, fetchHistory } from "./session-history.js";
 import {
-  createSwitchSignal,
-  createDispatchServers,
   type SwitchSignal,
+  createDispatchServers,
+  createSwitchSignal,
 } from "./tools/agent-switch.js";
+import { type ToolServerName, createToolServers } from "./tools/index.js";
 
 // ---------- AsyncQueue ----------
 
@@ -51,8 +51,10 @@ interface AgentSession {
   name: string;
   queue: AsyncQueue<{ prompt: string; requestId?: string }>;
   sessionId: string | null;
+  historyLoaded: boolean;
   busy: boolean;
   activeQuery: Query | null;
+  mcpServerNames: ToolServerName[];
   options: Record<string, unknown>;
 }
 
@@ -70,7 +72,14 @@ export class SandboxOrchestrator {
   private config: OrchestratorConfig;
   private mainSession: AgentSession | null = null;
   private agents = new Map<string, AgentSession>();
-  private agentDefinitions: Record<string, { description: string }> = {};
+  private agentDefinitions: Record<
+    string,
+    {
+      description: string;
+      mcpServers?: ToolServerName[];
+      configuredSkills?: string[];
+    }
+  > = {};
   private _activeAgent: string | null = null;
   private baseOptions: Record<string, unknown> = {};
   /** Mutex — SDK shares global MCP Protocol, so only one query() at a time */
@@ -101,11 +110,11 @@ export class SandboxOrchestrator {
 
     this.agentDefinitions = (this.baseOptions.agents ?? {}) as Record<
       string,
-      { description: string }
+      { description: string; mcpServers?: ToolServerName[]; configuredSkills?: string[] }
     >;
 
     // Restore persisted session IDs
-    this.mainSession = this.createSession("main", this.baseOptions);
+    this.mainSession = this.createSession("main", this.baseOptions, []);
     this.loadSessions();
 
     // Emit history for resumed sessions, then signal ready
@@ -130,9 +139,19 @@ export class SandboxOrchestrator {
     if (!session) {
       // mcpServers will be refreshed per-query in processQuery()
       const opts = await buildAgentOptions(
-        this.baseOptions, this.config.agentsDir, this.config.projectPath, name,
+        this.baseOptions,
+        this.config.agentsDir,
+        this.config.projectPath,
+        name,
+        undefined,
+        {
+          name,
+          description: this.agentDefinitions[name].description,
+          skills: [...(this.agentDefinitions[name].configuredSkills ?? [])],
+          mcpServers: [...(this.agentDefinitions[name].mcpServers ?? [])],
+        },
       );
-      session = this.createSession(name, opts);
+      session = this.createSession(name, opts, this.agentDefinitions[name].mcpServers ?? []);
       // Apply persisted session ID if available
       const pendingId = this.pendingSessionIds.get(name);
       if (pendingId) {
@@ -142,6 +161,7 @@ export class SandboxOrchestrator {
         this.pendingSessionIds.delete(name);
       }
       this.agents.set(name, session);
+      await this.emitHistoryForSession(session);
       // Start worker in background — fire and forget
       this.runWorker(session).catch((err) => {
         emit({
@@ -168,6 +188,7 @@ export class SandboxOrchestrator {
     emit({
       type: "agent_entered",
       agent: name,
+      reason: "manual",
       ...(session.sessionId ? { session_id: session.sessionId } : {}),
     });
   }
@@ -179,7 +200,7 @@ export class SandboxOrchestrator {
     }
     const exited = this._activeAgent;
     this._activeAgent = null;
-    emit({ type: "agent_exited", agent: exited });
+    emit({ type: "agent_exited", agent: exited, reason: "manual" });
   }
 
   // -- Routing --
@@ -200,9 +221,7 @@ export class SandboxOrchestrator {
   // -- Commands --
 
   async chat(message: string, target?: string | null, requestId?: string): Promise<void> {
-    const session = target
-      ? await this.getOrCreateAgent(target)
-      : this.mainSession;
+    const session = target ? await this.getOrCreateAgent(target) : this.mainSession;
     if (!session) {
       emit({ type: "error", message: "No session available", request_id: requestId });
       return;
@@ -242,12 +261,12 @@ export class SandboxOrchestrator {
   // -- Internal --
 
   /** Fresh MCP servers for each query() — SDK instances are single-use. */
-  private freshMcpServers(isMain: boolean): Record<string, unknown> {
+  private freshMcpServers(isMain: boolean, names: ToolServerName[] = []): Record<string, unknown> {
     const agentNames = Object.keys(this.agentDefinitions);
-    const servers: Record<string, unknown> = { ...createToolServers() };
-    if (agentNames.length > 0) {
-      const { masterServer, agentServer } = createDispatchServers(this.signal, agentNames);
-      servers.switch = isMain ? masterServer : agentServer;
+    const servers: Record<string, unknown> = { ...createToolServers(names) };
+    if (isMain && agentNames.length > 0) {
+      const { masterServer } = createDispatchServers(this.signal, agentNames);
+      servers.switch = masterServer;
     }
     return servers;
   }
@@ -255,13 +274,16 @@ export class SandboxOrchestrator {
   private createSession(
     name: string,
     options: Record<string, unknown>,
+    mcpServerNames: ToolServerName[],
   ): AgentSession {
     return {
       name,
       queue: new AsyncQueue(),
       sessionId: null,
+      historyLoaded: false,
       busy: false,
       activeQuery: null,
+      mcpServerNames: [...mcpServerNames],
       options: { ...options },
     };
   }
@@ -301,14 +323,19 @@ export class SandboxOrchestrator {
     }
 
     // Serialize SDK queries — shared MCP Protocol cannot handle concurrent connections
-    let release: () => void;
-    const next = new Promise<void>((r) => { release = r; });
+    let release!: () => void;
+    const next = new Promise<void>((r) => {
+      release = r;
+    });
     const prev = this.queryLock;
     this.queryLock = next;
     await prev;
 
     // SDK MCP server instances are single-use per query() — create fresh ones
-    session.options.mcpServers = this.freshMcpServers(session.name === "main");
+    session.options.mcpServers = this.freshMcpServers(
+      session.name === "main",
+      session.mcpServerNames,
+    );
 
     const t0 = Date.now();
     const agentField = session.name === "main" ? undefined : session.name;
@@ -320,7 +347,13 @@ export class SandboxOrchestrator {
         includePartialMessages: true,
         stderr: (data: string) => {
           const trimmed = data.trim();
-          if (trimmed) emit({ type: "error", message: `[sdk-stderr] ${trimmed}`, agent: agentField, request_id: requestId });
+          if (trimmed)
+            emit({
+              type: "error",
+              message: `[sdk-stderr] ${trimmed}`,
+              agent: agentField,
+              request_id: requestId,
+            });
         },
       },
     });
@@ -328,6 +361,15 @@ export class SandboxOrchestrator {
 
     // Track tool blocks across stream events (mirrors local CLI's toolBlocks map)
     const toolBlocks = new Map<number, { name: string; id: string; input: string }>();
+    let pendingResult: {
+      type: "result";
+      cost: number;
+      duration_ms: number;
+      session_id: string;
+      is_error: boolean;
+      agent?: string;
+      request_id?: string;
+    } | null = null;
 
     try {
       for await (const msg of q as AsyncIterable<SDKMessage>) {
@@ -336,15 +378,26 @@ export class SandboxOrchestrator {
           const isNested = !!(msg as { parent_tool_use_id?: string | null }).parent_tool_use_id;
 
           if (ev.type === "content_block_start") {
-            const block = ev.content_block as { type?: string; name?: string; id?: string } | undefined;
+            const block = ev.content_block as
+              | { type?: string; name?: string; id?: string }
+              | undefined;
             if (block?.type === "tool_use" && block.name) {
               const idx = ev.index as number;
               toolBlocks.set(idx, { name: block.name, id: block.id ?? "", input: "" });
             }
           } else if (ev.type === "content_block_delta") {
-            const delta = ev.delta as { type?: string; text?: string; partial_json?: string } | undefined;
+            const delta = ev.delta as
+              | { type?: string; text?: string; thinking?: string; partial_json?: string }
+              | undefined;
             if (delta?.type === "text_delta" && delta.text) {
               emit({ type: "text", text: delta.text, agent: agentField, request_id: requestId });
+            } else if (delta?.type === "thinking_delta" && delta.thinking) {
+              emit({
+                type: "thinking",
+                text: delta.thinking,
+                agent: agentField,
+                request_id: requestId,
+              });
             } else if (delta?.type === "input_json_delta" && delta.partial_json) {
               const idx = ev.index as number;
               const tool = toolBlocks.get(idx);
@@ -355,7 +408,11 @@ export class SandboxOrchestrator {
             const tool = toolBlocks.get(idx);
             if (tool) {
               let input: Record<string, unknown> | undefined;
-              try { input = JSON.parse(tool.input); } catch { /* incomplete */ }
+              try {
+                input = JSON.parse(tool.input);
+              } catch {
+                /* incomplete */
+              }
               emit({
                 type: "tool_use",
                 tool: tool.name,
@@ -369,11 +426,22 @@ export class SandboxOrchestrator {
             }
           }
         } else if (msg.type === "tool_progress") {
-          const tp = msg as unknown as { tool_name?: string; tool_use_id?: string };
+          const tp = msg as unknown as {
+            tool_name?: string;
+            tool_use_id?: string;
+            elapsed_time_seconds?: number;
+            task_id?: string;
+          };
           emit({
-            type: "tool_use",
+            type: "tool_log",
             tool: tp.tool_name ?? "unknown",
-            id: tp.tool_use_id ?? "",
+            phase: "pre",
+            detail: {
+              status: "running",
+              tool_use_id: tp.tool_use_id ?? "",
+              elapsed_time_seconds: tp.elapsed_time_seconds,
+              task_id: tp.task_id,
+            },
             agent: agentField,
             request_id: requestId,
           });
@@ -403,7 +471,7 @@ export class SandboxOrchestrator {
             session.options.resume = r.session_id;
             session.options.continueConversation = false;
           }
-          emit({
+          pendingResult = {
             type: "result",
             cost: r.total_cost_usd ?? 0,
             duration_ms: r.duration_ms ?? Date.now() - t0,
@@ -411,11 +479,16 @@ export class SandboxOrchestrator {
             is_error: r.is_error ?? false,
             agent: agentField,
             request_id: requestId,
-          });
+          };
         } else if (msg.type === "assistant") {
           const m = msg as unknown as { error?: { message?: string } };
           if (m.error?.message) {
-            emit({ type: "error", message: m.error.message, agent: agentField, request_id: requestId });
+            emit({
+              type: "error",
+              message: m.error.message,
+              agent: agentField,
+              request_id: requestId,
+            });
           }
         } else {
           const t = (msg as Record<string, unknown>).type;
@@ -452,7 +525,7 @@ export class SandboxOrchestrator {
       }
     } finally {
       session.activeQuery = null;
-      release!();
+      release?.();
     }
 
     // Persist session IDs after each query
@@ -468,11 +541,18 @@ export class SandboxOrchestrator {
       const agentSession = await this.getOrCreateAgent(req.agent);
       if (agentSession) {
         this._activeAgent = req.agent;
-        emit({ type: "agent_entered", agent: req.agent });
+        emit({
+          type: "agent_entered",
+          agent: req.agent,
+          reason: "delegation",
+          parent_agent: "main",
+          request_id: requestId,
+        });
         if (req.task) {
           agentSession.queue.push({ prompt: req.task, requestId });
         }
       }
+      return;
     }
 
     // Agent → Master: agent LLM called return_to_main
@@ -482,7 +562,13 @@ export class SandboxOrchestrator {
 
       const returned = session.name;
       this._activeAgent = null;
-      emit({ type: "agent_exited", agent: returned });
+      emit({
+        type: "agent_exited",
+        agent: returned,
+        reason: "return",
+        parent_agent: "main",
+        request_id: requestId,
+      });
 
       if (this.mainSession && req.summary) {
         this.mainSession.queue.push({
@@ -490,6 +576,11 @@ export class SandboxOrchestrator {
           requestId,
         });
       }
+      return;
+    }
+
+    if (pendingResult) {
+      emit(pendingResult);
     }
   }
 
@@ -497,7 +588,10 @@ export class SandboxOrchestrator {
 
   private loadSessions(): void {
     try {
-      const data = JSON.parse(fs.readFileSync(this.sessionsFile, "utf-8")) as Record<string, string>;
+      const data = JSON.parse(fs.readFileSync(this.sessionsFile, "utf-8")) as Record<
+        string,
+        string
+      >;
       // Session IDs will be applied when sessions are created
       if (data.main && this.mainSession) {
         this.mainSession.sessionId = data.main;
@@ -530,20 +624,29 @@ export class SandboxOrchestrator {
   }
 
   private async emitSessionHistory(): Promise<void> {
-    if (this.mainSession?.sessionId) {
-      const messages = await fetchHistory(
-        this.mainSession.sessionId,
-        this.config.projectPath,
-        HISTORY_LIMIT_SANDBOX,
-      );
-      if (messages.length > 0) emit({ type: "history", messages });
+    if (this.mainSession) await this.emitHistoryForSession(this.mainSession);
+    for (const session of this.agents.values()) {
+      await this.emitHistoryForSession(session);
     }
-    for (const [name, session] of this.agents) {
-      if (session.sessionId) {
-        const dir = path.resolve(this.config.agentsDir, name);
-        const messages = await fetchHistory(session.sessionId, dir, HISTORY_LIMIT_SANDBOX);
-        if (messages.length > 0) emit({ type: "history", agent: name, messages });
-      }
+  }
+
+  private async emitHistoryForSession(session: AgentSession): Promise<void> {
+    if (!session.sessionId || session.historyLoaded) return;
+
+    const dir =
+      session.name === "main"
+        ? this.config.projectPath
+        : path.resolve(this.config.agentsDir, session.name);
+    const messages = await fetchHistory(session.sessionId, dir, HISTORY_LIMIT_SANDBOX);
+
+    session.historyLoaded = true;
+    if (messages.length === 0) return;
+
+    if (session.name === "main") {
+      emit({ type: "history", messages });
+      return;
     }
+
+    emit({ type: "history", agent: session.name, messages });
   }
 }

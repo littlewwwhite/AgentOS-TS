@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------- Mocks ----------
 
@@ -25,21 +25,26 @@ vi.mock("../src/tools/index.js", () => ({
 // ---------- Imports (after mocks) ----------
 
 import fs from "node:fs";
+import path from "node:path";
+import { getSessionMessages, query } from "@anthropic-ai/claude-agent-sdk";
+import { buildOptions } from "../src/options.js";
+import { emit } from "../src/protocol.js";
+import type { ChatCommand, SandboxEvent } from "../src/protocol.js";
 import { AsyncQueue, SandboxOrchestrator } from "../src/sandbox-orchestrator.js";
 import type { OrchestratorConfig } from "../src/sandbox-orchestrator.js";
-import { emit } from "../src/protocol.js";
-import { buildOptions } from "../src/options.js";
-import { getSessionMessages } from "@anthropic-ai/claude-agent-sdk";
-import type { ChatCommand, SandboxEvent } from "../src/protocol.js";
+import { createToolServers } from "../src/tools/index.js";
 
 const mockEmit = emit as ReturnType<typeof vi.fn>;
 const mockGetSessionMessages = getSessionMessages as ReturnType<typeof vi.fn>;
+const mockQuery = query as ReturnType<typeof vi.fn>;
 const mockBuildOptions = buildOptions as ReturnType<typeof vi.fn>;
+const mockCreateToolServers = createToolServers as ReturnType<typeof vi.fn>;
 
 const BASE_CONFIG: OrchestratorConfig = {
   projectPath: "/tmp/test",
   agentsDir: "agents",
 };
+const DEFAULT_SESSIONS_FILE = "/tmp/test/.sessions.json";
 
 function mockOptionsWithAgents(
   agents: Record<string, { description: string }> = {
@@ -62,6 +67,30 @@ function emitted<T extends SandboxEvent["type"]>(type: T) {
   return mockEmit.mock.calls
     .map((c: unknown[]) => c[0] as SandboxEvent)
     .filter((e: SandboxEvent) => e.type === type);
+}
+
+function createMockQuery(messages: Array<Record<string, unknown>>) {
+  return {
+    close: vi.fn(),
+    async *[Symbol.asyncIterator]() {
+      for (const message of messages) {
+        yield message;
+      }
+    },
+  };
+}
+
+async function waitFor(assertion: () => void, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      assertion();
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  assertion();
 }
 
 // ---------- AsyncQueue ----------
@@ -103,6 +132,12 @@ describe("AsyncQueue", () => {
 describe("SandboxOrchestrator", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockQuery.mockReset();
+    try {
+      fs.unlinkSync(DEFAULT_SESSIONS_FILE);
+    } catch {
+      /* noop */
+    }
   });
 
   // -- init --
@@ -129,11 +164,7 @@ describe("SandboxOrchestrator", () => {
       });
       await orch.init();
 
-      expect(mockBuildOptions).toHaveBeenCalledWith(
-        "/tmp/test",
-        "agents",
-        "opus",
-      );
+      expect(mockBuildOptions).toHaveBeenCalledWith("/tmp/test", "agents", "opus");
     });
 
     it("handles zero agents gracefully", async () => {
@@ -419,13 +450,61 @@ describe("SandboxOrchestrator", () => {
     });
   });
 
+  describe("mcp server scoping", () => {
+    it("creates dispatch-only servers for main sessions", async () => {
+      mockOptionsWithAgents({
+        "script-writer": {
+          description: "Writes scripts",
+          mcpServers: ["storage", "script"],
+        } as { description: string },
+      });
+      const orch = new SandboxOrchestrator(BASE_CONFIG);
+      await orch.init();
+      mockCreateToolServers.mockClear();
+
+      const servers = (
+        orch as unknown as {
+          freshMcpServers(isMain: boolean, names?: string[]): Record<string, unknown>;
+        }
+      ).freshMcpServers(true, []);
+
+      expect(mockCreateToolServers).toHaveBeenCalledWith([]);
+      expect(servers.switch).toBeDefined();
+    });
+
+    it("creates only manifest-approved servers for worker sessions", async () => {
+      mockOptionsWithAgents({
+        "script-writer": {
+          description: "Writes scripts",
+          mcpServers: ["storage", "script"],
+        } as { description: string },
+      });
+      const orch = new SandboxOrchestrator(BASE_CONFIG);
+      await orch.init();
+      mockCreateToolServers.mockClear();
+
+      const servers = (
+        orch as unknown as {
+          freshMcpServers(isMain: boolean, names?: string[]): Record<string, unknown>;
+        }
+      ).freshMcpServers(false, ["storage", "script"]);
+
+      expect(mockCreateToolServers).toHaveBeenCalledWith(["storage", "script"]);
+      expect(servers.switch).toBeUndefined();
+    });
+  });
+
   // -- session history restore --
 
   describe("session history restore", () => {
     const SESSIONS_FILE = "/tmp/test/.sessions.json";
 
     afterEach(() => {
-      try { fs.unlinkSync(SESSIONS_FILE); } catch { /* noop */ }
+      try {
+        fs.unlinkSync(SESSIONS_FILE);
+      } catch {
+        /* noop */
+      }
     });
 
     it("emits history events before ready when sessions exist", async () => {
@@ -435,8 +514,20 @@ describe("SandboxOrchestrator", () => {
       fs.writeFileSync(SESSIONS_FILE, JSON.stringify({ main: "sess-abc" }));
 
       mockGetSessionMessages.mockResolvedValue([
-        { type: "user", uuid: "u1", session_id: "sess-abc", message: "hello", parent_tool_use_id: null },
-        { type: "assistant", uuid: "u2", session_id: "sess-abc", message: { content: "hi" }, parent_tool_use_id: null },
+        {
+          type: "user",
+          uuid: "u1",
+          session_id: "sess-abc",
+          message: "hello",
+          parent_tool_use_id: null,
+        },
+        {
+          type: "assistant",
+          uuid: "u2",
+          session_id: "sess-abc",
+          message: { content: "hi" },
+          parent_tool_use_id: null,
+        },
       ]);
 
       const orch = new SandboxOrchestrator(BASE_CONFIG);
@@ -474,6 +565,283 @@ describe("SandboxOrchestrator", () => {
       expect(readyEvents).toHaveLength(1);
       // No history event emitted
       expect(emitted("history")).toHaveLength(0);
+    });
+
+    it("loads lazy agent history from the resumed session context", async () => {
+      mockOptionsWithAgents({
+        "script-writer": { description: "Writes scripts" },
+      });
+      fs.mkdirSync("/tmp/test", { recursive: true });
+      fs.writeFileSync(SESSIONS_FILE, JSON.stringify({ "script-writer": "sess-agent" }));
+
+      mockGetSessionMessages.mockResolvedValue([
+        {
+          type: "user",
+          uuid: "u1",
+          session_id: "sess-agent",
+          message: "write episode 1",
+          parent_tool_use_id: null,
+        },
+        {
+          type: "assistant",
+          uuid: "u2",
+          session_id: "sess-agent",
+          message: { content: "draft ready" },
+          parent_tool_use_id: null,
+        },
+      ]);
+
+      const orch = new SandboxOrchestrator(BASE_CONFIG);
+      await orch.init();
+      mockEmit.mockClear();
+
+      await orch.enterAgent("script-writer");
+
+      expect(mockGetSessionMessages).toHaveBeenCalledWith("sess-agent", {
+        dir: path.resolve("agents", "script-writer"),
+        limit: 50,
+      });
+
+      const allEvents = mockEmit.mock.calls.map((call: unknown[]) => call[0] as SandboxEvent);
+      const historyEvents = allEvents.filter((event) => event.type === "history");
+      const enteredEvents = allEvents.filter((event) => event.type === "agent_entered");
+
+      expect(historyEvents).toHaveLength(1);
+      expect(enteredEvents).toHaveLength(1);
+      const [historyEvent] = historyEvents;
+      const [enteredEvent] = enteredEvents;
+      expect(historyEvent).toBeDefined();
+      expect(enteredEvent).toBeDefined();
+      if (!historyEvent || !enteredEvent) {
+        throw new Error("Expected history and entered events");
+      }
+      expect(allEvents.indexOf(historyEvent)).toBeLessThan(allEvents.indexOf(enteredEvent));
+      expect(historyEvents[0]).toEqual({
+        type: "history",
+        agent: "script-writer",
+        messages: [
+          { role: "user", content: "write episode 1" },
+          { role: "assistant", content: "draft ready" },
+        ],
+      });
+      expect(enteredEvents[0]).toMatchObject({
+        type: "agent_entered",
+        agent: "script-writer",
+        session_id: "sess-agent",
+      });
+    });
+  });
+
+  describe("delegated execution visibility", () => {
+    it("keeps the conversation attached to the delegated agent after execution", async () => {
+      mockOptionsWithAgents({
+        "script-writer": { description: "Writes scripts" },
+      });
+
+      const orch = new SandboxOrchestrator(BASE_CONFIG);
+      await orch.init();
+      mockEmit.mockClear();
+
+      mockQuery.mockImplementation(({ prompt }: { prompt: string }) => {
+        if (prompt === "把测3.txt转为剧本") {
+          (
+            orch as unknown as {
+              signal: { switchRequest: { agent: string; task: string } | null };
+            }
+          ).signal.switchRequest = {
+            agent: "script-writer",
+            task: "Write the script from 测3.txt",
+          };
+          return createMockQuery([
+            {
+              type: "stream_event",
+              event: {
+                type: "content_block_delta",
+                delta: { type: "text_delta", text: "Delegating..." },
+              },
+            },
+            {
+              type: "result",
+              total_cost_usd: 0.1,
+              duration_ms: 5,
+              session_id: "sess-main",
+            },
+          ]);
+        }
+
+        if (prompt === "Write the script from 测3.txt") {
+          return createMockQuery([
+            {
+              type: "stream_event",
+              event: {
+                type: "content_block_delta",
+                delta: { type: "text_delta", text: "Writing episode beats..." },
+              },
+            },
+            {
+              type: "result",
+              total_cost_usd: 0.2,
+              duration_ms: 7,
+              session_id: "sess-agent",
+            },
+          ]);
+        }
+
+        throw new Error(`Unexpected prompt: ${prompt}`);
+      });
+
+      void orch.startWorkers();
+      await orch.chat("把测3.txt转为剧本", null, "r-delegate");
+
+      await waitFor(() => {
+        const results = emitted("result").filter((event) => event.request_id === "r-delegate");
+        expect(results).toHaveLength(1);
+      });
+
+      const allEvents = mockEmit.mock.calls.map((call: unknown[]) => call[0] as SandboxEvent);
+      const delegateEnter = allEvents.find(
+        (event) => event.type === "agent_entered" && event.agent === "script-writer",
+      ) as Extract<SandboxEvent, { type: "agent_entered" }> | undefined;
+      const childText = allEvents.find(
+        (event) =>
+          event.type === "text" &&
+          event.agent === "script-writer" &&
+          event.request_id === "r-delegate" &&
+          (event as Extract<SandboxEvent, { type: "text" }>).text.includes("Writing episode beats"),
+      );
+      const exitEvents = emitted("agent_exited").filter(
+        (event) => event.request_id === "r-delegate",
+      );
+      const finalResult = emitted("result").find((event) => event.request_id === "r-delegate");
+
+      expect(delegateEnter).toMatchObject({
+        type: "agent_entered",
+        agent: "script-writer",
+        reason: "delegation",
+        parent_agent: "main",
+      });
+      expect(childText).toBeDefined();
+      expect(exitEvents).toHaveLength(0);
+      expect(finalResult).toMatchObject({
+        type: "result",
+        request_id: "r-delegate",
+        agent: "script-writer",
+        session_id: "sess-agent",
+      });
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+      expect(orch.activeAgent).toBe("script-writer");
+    });
+
+    it("emits thinking and detailed tool lifecycle events from the SDK stream", async () => {
+      mockOptionsWithAgents();
+
+      const orch = new SandboxOrchestrator(BASE_CONFIG);
+      await orch.init();
+      mockEmit.mockClear();
+
+      mockQuery.mockImplementation(() =>
+        createMockQuery([
+          {
+            type: "stream_event",
+            event: {
+              type: "content_block_delta",
+              delta: { type: "thinking_delta", thinking: "Need to inspect 测3.txt first." },
+            },
+          },
+          {
+            type: "stream_event",
+            event: {
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "tool_use", name: "Read", id: "tool-read-1" },
+            },
+          },
+          {
+            type: "stream_event",
+            event: {
+              type: "content_block_delta",
+              index: 0,
+              delta: { type: "input_json_delta", partial_json: '{"file_path":"测3.txt"}' },
+            },
+          },
+          {
+            type: "stream_event",
+            event: {
+              type: "content_block_stop",
+              index: 0,
+            },
+          },
+          {
+            type: "tool_progress",
+            tool_name: "Read",
+            tool_use_id: "tool-read-1",
+            parent_tool_use_id: null,
+            elapsed_time_seconds: 0.5,
+          },
+          {
+            type: "tool_use_summary",
+            summary: "Read 1 file",
+            preceding_tool_use_ids: ["tool-read-1"],
+          },
+          {
+            type: "result",
+            total_cost_usd: 0.05,
+            duration_ms: 40,
+            session_id: "sess-main",
+          },
+        ]),
+      );
+
+      void orch.startWorkers();
+      await orch.chat("读取测3.txt", null, "r-observe");
+
+      await waitFor(() => {
+        const results = emitted("result").filter((event) => event.request_id === "r-observe");
+        expect(results).toHaveLength(1);
+      });
+
+      const thinkingEvents = emitted("thinking").filter(
+        (event) => event.request_id === "r-observe",
+      );
+      const toolUseEvents = emitted("tool_use").filter((event) => event.request_id === "r-observe");
+      const toolLogEvents = emitted("tool_log").filter((event) => event.request_id === "r-observe");
+
+      expect(thinkingEvents).toEqual([
+        {
+          type: "thinking",
+          text: "Need to inspect 测3.txt first.",
+          request_id: "r-observe",
+        },
+      ]);
+      expect(toolUseEvents).toEqual([
+        {
+          type: "tool_use",
+          tool: "Read",
+          id: "tool-read-1",
+          input: { file_path: "测3.txt" },
+          request_id: "r-observe",
+        },
+      ]);
+      expect(toolLogEvents).toEqual([
+        {
+          type: "tool_log",
+          tool: "Read",
+          phase: "pre",
+          detail: {
+            tool_use_id: "tool-read-1",
+            elapsed_time_seconds: 0.5,
+            status: "running",
+          },
+          request_id: "r-observe",
+        },
+        {
+          type: "tool_log",
+          tool: "summary",
+          phase: "post",
+          detail: { summary: "Read 1 file" },
+          request_id: "r-observe",
+        },
+      ]);
     });
   });
 });
