@@ -4,6 +4,8 @@ description: "小说直转剧本流水线：将小说或原创概念通过三阶
 allowed-tools:
   - Read
   - Write
+  - mcp__source__prepare_source_project
+  - mcp__source__detect_source_structure
   - mcp__storage__write_json
   - mcp__storage__read_json
   - mcp__storage__list_assets
@@ -55,6 +57,7 @@ Use `Read` to load the files listed for each phase when entering it.
 {小说名}/                             <- 项目文件夹 = 小说名
 ├── source.txt                        <- 原文副本
 ├── draft/                            <- 中间产物（LLM 写入）
+│   ├── source-structure.json         <- Phase 1 前置（原文分段与边界检测）
 │   ├── design.json                   <- Phase 1（世界观 + 分集大纲 + 视觉风格）
 │   ├── catalog.json                  <- Phase 1（资产清单）
 │   ├── connectivity.md               <- Phase 2（跨集连贯性地图，下游 Phase 3 及其他 agent 共用）
@@ -74,12 +77,13 @@ Use `Read` to load the files listed for each phase when entering it.
 
 当用户清理上下文（`/clear`）后继续时，按以下顺序检查工作区文件以恢复流水线状态：
 
-1. 检查 `draft/design.json` + `draft/catalog.json` → 存在则 Phase 1 完成
-2. 检查 `draft/connectivity.md` → 存在则连贯性地图已生成
-3. 检查 `draft/episodes/` 目录（至少一个 ep*.md）→ 存在则 Phase 2 进行中/完成
-4. 检查 `output/script.json` → 存在则 Phase 3 完成（NTS 完成）
+1. 检查 `draft/source-structure.json` → 存在则原文结构检测已完成
+2. 检查 `draft/design.json` + `draft/catalog.json` → 存在则 Phase 1 完成
+3. 检查 `draft/connectivity.md` → 存在则连贯性地图已生成
+4. 检查 `draft/episodes/` 目录（至少一个 ep*.md）→ 存在则 Phase 2 进行中/完成
+5. 检查 `output/script.json` → 存在则 Phase 3 完成（NTS 完成）
 
-根据恢复结果，提示用户进入下一阶段。Phase 2 恢复时额外读取 connectivity.md + 扫描已完成集数，从断点继续。
+根据恢复结果，提示用户进入下一阶段。Phase 2 恢复时额外读取 source-structure.json + connectivity.md + 扫描已完成集数，从断点继续。
 
 ---
 
@@ -87,8 +91,8 @@ Use `Read` to load the files listed for each phase when entering it.
 
 | 阶段 | 输入 | 输出 | 工作区文件 |
 |------|------|------|-----------|
-| Phase 1 分析设计 | source.txt | design.json + catalog.json | draft/*.json |
-| Phase 2 写作 | draft/design.json + draft/catalog.json | connectivity.md + ep\*.md | draft/connectivity.md + draft/episodes/\*.md |
+| Phase 1 分析设计 | source.txt | source-structure.json + design.json + catalog.json | draft/source-structure.json + draft/*.json |
+| Phase 2 写作 | draft/source-structure.json + draft/design.json + draft/catalog.json | connectivity.md + ep\*.md | draft/connectivity.md + draft/episodes/\*.md |
 | Phase 3 结构解析 | draft/episodes/ep\*.md + draft/catalog.json + draft/connectivity.md | script.json | output/script.json |
 
 ### 依赖矩阵
@@ -96,7 +100,7 @@ Use `Read` to load the files listed for each phase when entering it.
 | 目标阶段 | 前置文件 |
 |---------|---------|
 | Phase 1 | source.txt |
-| Phase 2 | draft/design.json + draft/catalog.json |
+| Phase 2 | draft/source-structure.json + draft/design.json + draft/catalog.json |
 | Phase 3 | draft/episodes/（至少 1 个 ep\*.md） + draft/connectivity.md |
 
 ---
@@ -109,8 +113,9 @@ Use `Read` to load the files listed for each phase when entering it.
 
 1. 以小说文件名（去掉扩展名）创建工作区文件夹
 2. 将原文保存至工作区的 `source.txt`
-3. 展示流水线架构概览
-4. Read Phase 1 的 reference 文件，开始分析设计
+3. 调用 `mcp__source__detect_source_structure` 生成 `draft/source-structure.json`
+4. 展示流水线架构概览
+5. Read Phase 1 的 reference 文件，开始分析设计
 
 ### 阶段流转
 
@@ -151,3 +156,13 @@ Use `Read` to load the files listed for each phase when entering it.
 7. **"从第 N 集开始"**（Phase 2 期间）：传递给 Phase 2 执行分段写作
 8. **"确认" / "调整 {参数}"**（Phase 1 检查点期间）：处理 CP1/CP2 用户反馈，确认则继续，调整则重新生成对应内容
 
+---
+
+## Parser Compatibility
+
+以下约束为硬性约束，不得破坏：
+
+- `draft/source-structure.json` 仅作为 Phase 1/2 的中间规划输入，**不参与** Phase 3 解析
+- `draft/episodes/ep*.md` 必须继续使用现有场记格式，不得添加额外 metadata block
+- `output/script.json` 的 schema 不变
+- `mcp__script__parse_script` 的调用方式与 Phase 3 行为不变

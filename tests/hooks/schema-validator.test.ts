@@ -89,4 +89,69 @@ describe("schemaValidator", () => {
     });
     expect(result.hookSpecificOutput?.permissionDecision).toBeUndefined();
   });
+
+  it("validates draft/source-structure.json against SourceStructureSchema", async () => {
+    const validData = {
+      version: 1,
+      strategy: "explicit_markers",
+      source_mode: "authoritative_segments",
+      quality: {
+        coverage_ratio: 1,
+        continuity_ok: true,
+        min_segment_length: 120,
+        total_segments: 2,
+      },
+      segments: [
+        {
+          segment_id: "seg_001",
+          parent_segment_id: null,
+          title: "第1章 初见",
+          content: "林雪第一次见到沈砚。",
+          source_episode: 1,
+          split_part: 1,
+          split_parts: 1,
+          char_count: 120,
+        },
+      ],
+    };
+
+    const result = await schemaValidator({
+      hook_event_name: "PreToolUse",
+      session_id: "sess-1",
+      cwd: "/workspace",
+      tool_name: "mcp__storage__write_json",
+      tool_input: {
+        path: "workspace/draft/source-structure.json",
+        data: JSON.stringify(validData),
+      },
+      tool_use_id: "tool-6",
+      transcript_path: "/tmp/transcript.jsonl",
+    });
+
+    expect(result.hookSpecificOutput?.permissionDecision).toBeUndefined();
+  });
+
+  it("denies invalid draft/source-structure.json", async () => {
+    const invalidData = {
+      version: 1,
+      strategy: "explicit_markers",
+      segments: [{ segment_id: 123 }],
+    };
+
+    const result = await schemaValidator({
+      hook_event_name: "PreToolUse",
+      session_id: "sess-1",
+      cwd: "/workspace",
+      tool_name: "mcp__storage__write_json",
+      tool_input: {
+        path: "workspace/draft/source-structure.json",
+        data: JSON.stringify(invalidData),
+      },
+      tool_use_id: "tool-7",
+      transcript_path: "/tmp/transcript.jsonl",
+    });
+
+    expect(result.hookSpecificOutput?.permissionDecision).toBe("deny");
+    expect(result.hookSpecificOutput?.permissionDecisionReason).toContain("Schema validation failed");
+  });
 });

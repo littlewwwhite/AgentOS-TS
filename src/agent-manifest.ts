@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { loadAgentConfigs } from "./loader.js";
-import type { ToolServerName } from "./tools/index.js";
+import { isToolServerName, type ToolServerName } from "./tools/index.js";
 
 export interface AgentManifest {
   name: string;
@@ -44,7 +44,7 @@ export async function loadAgentManifests(
       name,
       description: config.description,
       skills: diskSkills,
-      mcpServers: [...(config.mcpServers ?? [])],
+      mcpServers: (config.mcpServers ?? []).filter(isToolServerName),
     };
   }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createToolServers } from "../src/tools/index.js";
 
-const EXPECTED_SERVER_NAMES = ["audio", "image", "script", "storage", "video"];
+const EXPECTED_SERVER_NAMES = ["audio", "image", "script", "source", "storage", "video"];
 
 describe("createToolServers", () => {
   it("creates a fresh tool server registry for each call", () => {
@@ -24,8 +24,8 @@ describe("createToolServers", () => {
   });
 
   it("creates only the requested sdk-backed servers", () => {
-    const servers = createToolServers(["storage", "script"]);
-    expect(Object.keys(servers).sort()).toEqual(["script", "storage"]);
+    const servers = createToolServers(["source", "storage", "script"]);
+    expect(Object.keys(servers).sort()).toEqual(["script", "source", "storage"]);
   });
 
   it("ignores the switch sentinel because dispatch servers are attached elsewhere", () => {
