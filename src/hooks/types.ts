@@ -1,23 +1,14 @@
 // input: Claude Agent SDK hook event signatures
-// output: Typed hook function interfaces
-// pos: Contracts — shared types for all hook modules
+// output: Thin SDK-native type re-exports for local hook modules
+// pos: Contracts — avoids drifting from the upstream SDK hook shape
 
-export interface HookInput {
-  tool_name: string;
-  tool_input?: Record<string, unknown>;
-  tool_response?: unknown;
-}
+import type {
+  HookJSONOutput,
+  PostToolUseHookInput,
+  PreToolUseHookInput,
+} from "@anthropic-ai/claude-agent-sdk";
 
-export interface PreToolUseResult {
-  permissionDecision?: "allow" | "deny";
-  reason?: string;
-  additionalContext?: string;
-}
-
-export interface PostToolUseResult {
-  additionalContext?: string;
-  updatedMCPToolOutput?: unknown;
-}
-
-export type PreToolUseHook = (input: HookInput) => Promise<PreToolUseResult>;
-export type PostToolUseHook = (input: HookInput) => Promise<PostToolUseResult>;
+export type PreToolUseResult = HookJSONOutput;
+export type PostToolUseResult = HookJSONOutput;
+export type PreToolUseHook = (input: PreToolUseHookInput) => Promise<HookJSONOutput>;
+export type PostToolUseHook = (input: PostToolUseHookInput) => Promise<HookJSONOutput>;

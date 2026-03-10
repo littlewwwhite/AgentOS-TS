@@ -3,43 +3,60 @@
 // pos: Observability — replaces console.log logger with protocol-based emit
 
 import { emit } from "../protocol.js";
-import type { HookInput, PreToolUseResult, PostToolUseResult } from "./types.js";
+import type {
+  PostToolUseHookInput,
+  PreToolUseHookInput,
+} from "@anthropic-ai/claude-agent-sdk";
+import type { PostToolUseResult, PreToolUseResult } from "./types.js";
 
 export interface ToolLogger {
-  preToolUse: (input: HookInput) => Promise<PreToolUseResult>;
-  postToolUse: (input: HookInput) => Promise<PostToolUseResult>;
+  preToolUse: (input: PreToolUseHookInput) => Promise<PreToolUseResult>;
+  postToolUse: (input: PostToolUseHookInput) => Promise<PostToolUseResult>;
 }
 
-export function createToolLogger(agentName?: string): ToolLogger {
-  const base = agentName ? { agent: agentName } : {};
+function buildDetail(
+  input: Pick<PreToolUseHookInput | PostToolUseHookInput, "cwd" | "session_id" | "tool_use_id" | "transcript_path" | "tool_input">,
+): Record<string, unknown> {
+  const detail: Record<string, unknown> = {
+    session_id: input.session_id,
+    cwd: input.cwd,
+    tool_use_id: input.tool_use_id,
+    transcript_path: input.transcript_path,
+  };
 
+  const toolInput =
+    typeof input.tool_input === "object" && input.tool_input !== null
+      ? (input.tool_input as Record<string, unknown>)
+      : {};
+
+  if (typeof toolInput.file_path === "string") detail.path = toolInput.file_path;
+  if (typeof toolInput.command === "string") detail.command = toolInput.command.slice(0, 120);
+  if (typeof toolInput.pattern === "string") detail.pattern = toolInput.pattern;
+  if (typeof toolInput.path === "string") detail.path = toolInput.path;
+
+  return detail;
+}
+
+export function createToolLogger(): ToolLogger {
   return {
     preToolUse: async (input) => {
-      const { tool_name, tool_input = {} } = input;
-      const detail: Record<string, unknown> = {};
-
-      if (tool_input.file_path) detail.path = tool_input.file_path;
-      if (tool_input.command) detail.command = (tool_input.command as string).slice(0, 120);
-      if (tool_input.pattern) detail.pattern = tool_input.pattern;
-      if (tool_input.path) detail.path = tool_input.path;
-
       emit({
+        ...(input.agent_type ? { agent: input.agent_type } : {}),
         type: "tool_log",
-        tool: tool_name,
+        tool: input.tool_name,
         phase: "pre",
-        detail: Object.keys(detail).length > 0 ? detail : undefined,
-        ...base,
+        detail: buildDetail(input),
       });
       return {};
     },
 
     postToolUse: async (input) => {
-      const { tool_name } = input;
       emit({
+        ...(input.agent_type ? { agent: input.agent_type } : {}),
         type: "tool_log",
-        tool: tool_name,
+        tool: input.tool_name,
         phase: "post",
-        ...base,
+        detail: buildDetail(input),
       });
       return {};
     },

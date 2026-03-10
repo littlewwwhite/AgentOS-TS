@@ -8,7 +8,11 @@ import type { PreToolUseHook } from "./types.js";
 export const schemaValidator: PreToolUseHook = async (input) => {
   if (input.tool_name !== "mcp__storage__write_json") return {};
 
-  const filePath: string = (input.tool_input?.path as string) ?? "";
+  const toolInput =
+    typeof input.tool_input === "object" && input.tool_input !== null
+      ? (input.tool_input as Record<string, unknown>)
+      : {};
+  const filePath = typeof toolInput.path === "string" ? toolInput.path : "";
 
   // Find matching schema by path suffix
   let matchedSchema: (typeof schemaRegistry)[string] | undefined;
@@ -21,7 +25,7 @@ export const schemaValidator: PreToolUseHook = async (input) => {
 
   if (!matchedSchema) return {};
 
-  const rawData = input.tool_input?.data;
+  const rawData = toolInput.data;
   const data = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
 
   const result = matchedSchema.safeParse(data);
@@ -31,8 +35,11 @@ export const schemaValidator: PreToolUseHook = async (input) => {
       .map((i) => `${i.path.join(".")}: ${i.message}`)
       .join("; ");
     return {
-      permissionDecision: "deny",
-      reason: `Schema validation failed for ${filePath}: ${issues}`,
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: `Schema validation failed for ${filePath}: ${issues}`,
+      },
     };
   }
 

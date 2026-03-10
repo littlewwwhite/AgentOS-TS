@@ -4,18 +4,28 @@ import { schemaValidator } from "../../src/hooks/schema-validator.js";
 describe("schemaValidator", () => {
   it("passes through non-write tools", async () => {
     const result = await schemaValidator({
+      hook_event_name: "PreToolUse",
+      session_id: "sess-1",
+      cwd: "/workspace",
       tool_name: "mcp__storage__read_json",
       tool_input: { path: "design.json" },
+      tool_use_id: "tool-1",
+      transcript_path: "/tmp/transcript.jsonl",
     });
-    expect(result.permissionDecision).toBeUndefined();
+    expect(result.hookSpecificOutput?.permissionDecision).toBeUndefined();
   });
 
   it("passes through write_json for unknown paths", async () => {
     const result = await schemaValidator({
+      hook_event_name: "PreToolUse",
+      session_id: "sess-1",
+      cwd: "/workspace",
       tool_name: "mcp__storage__write_json",
       tool_input: { path: "random/file.json", data: "{}" },
+      tool_use_id: "tool-2",
+      transcript_path: "/tmp/transcript.jsonl",
     });
-    expect(result.permissionDecision).toBeUndefined();
+    expect(result.hookSpecificOutput?.permissionDecision).toBeUndefined();
   });
 
   it("validates design.json against DesignSchema", async () => {
@@ -34,20 +44,30 @@ describe("schemaValidator", () => {
       }],
     };
     const result = await schemaValidator({
+      hook_event_name: "PreToolUse",
+      session_id: "sess-1",
+      cwd: "/workspace",
       tool_name: "mcp__storage__write_json",
       tool_input: { path: "workspace/design.json", data: JSON.stringify(validData) },
+      tool_use_id: "tool-3",
+      transcript_path: "/tmp/transcript.jsonl",
     });
-    expect(result.permissionDecision).toBeUndefined();
+    expect(result.hookSpecificOutput?.permissionDecision).toBeUndefined();
   });
 
   it("denies invalid design.json", async () => {
     const invalidData = { title: 123 }; // title should be string
     const result = await schemaValidator({
+      hook_event_name: "PreToolUse",
+      session_id: "sess-1",
+      cwd: "/workspace",
       tool_name: "mcp__storage__write_json",
       tool_input: { path: "workspace/design.json", data: JSON.stringify(invalidData) },
+      tool_use_id: "tool-4",
+      transcript_path: "/tmp/transcript.jsonl",
     });
-    expect(result.permissionDecision).toBe("deny");
-    expect(result.reason).toContain("Schema validation failed");
+    expect(result.hookSpecificOutput?.permissionDecision).toBe("deny");
+    expect(result.hookSpecificOutput?.permissionDecisionReason).toContain("Schema validation failed");
   });
 
   it("handles data as object (not string)", async () => {
@@ -59,9 +79,14 @@ describe("schemaValidator", () => {
       episodes: [],
     };
     const result = await schemaValidator({
+      hook_event_name: "PreToolUse",
+      session_id: "sess-1",
+      cwd: "/workspace",
       tool_name: "mcp__storage__write_json",
       tool_input: { path: "project/design.json", data: validData },
+      tool_use_id: "tool-5",
+      transcript_path: "/tmp/transcript.jsonl",
     });
-    expect(result.permissionDecision).toBeUndefined();
+    expect(result.hookSpecificOutput?.permissionDecision).toBeUndefined();
   });
 });
