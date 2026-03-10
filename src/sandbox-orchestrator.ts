@@ -116,7 +116,11 @@ export class SandboxOrchestrator {
     delete (this.baseOptions as Record<string, unknown>).agents;
 
     // Restore persisted session IDs
-    this.mainSession = this.createSession("main", this.baseOptions, []);
+    this.mainSession = this.createSession(
+      "main",
+      this.baseOptions,
+      Object.keys((this.baseOptions.mcpServers ?? {})) as ToolServerName[],
+    );
     this.loadSessions();
 
     // Emit history for resumed sessions, then signal ready

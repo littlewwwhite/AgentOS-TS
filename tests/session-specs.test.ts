@@ -17,12 +17,16 @@ describe("buildMainSessionSpec", () => {
 
     expect(spec.cwd).toBe("/workspace");
     expect(spec.settingSources).toEqual(["project"]);
-    expect(spec.allowedTools).toEqual(["TodoWrite", "mcp__switch__switch_to_agent"]);
+    expect(spec.allowedTools).toEqual([
+      "TodoWrite",
+      "mcp__source__prepare_source_project",
+      "mcp__switch__switch_to_agent",
+    ]);
     expect(spec.disallowedTools).toEqual(
       expect.arrayContaining(["Bash", "Write", "Edit", "NotebookEdit"]),
     );
     expect(spec.permissionMode).toBe("dontAsk");
-    expect(spec.mcpServerNames).toEqual(["switch"]);
+    expect(spec.mcpServerNames).toEqual(["source", "switch"]);
     expect(spec.systemPrompt.append).toContain("conversation focus stays with that sub-agent");
     expect(spec.systemPrompt.append).toContain(
       "Delegate immediately when the request clearly belongs to a single sub-agent",
@@ -30,10 +34,34 @@ describe("buildMainSessionSpec", () => {
     expect(spec.systemPrompt.append).toContain(
       "The main agent must not ask domain-specific follow-up questions",
     );
+    expect(spec.systemPrompt.append).toContain("Uploaded source files live under /workspace/data/ by default");
+    expect(spec.systemPrompt.append).toContain("Use the `prepare_source_project` tool");
+    expect(spec.systemPrompt.append).not.toContain("copy it from source materials to workspace as source.txt");
   });
 });
 
 describe("buildWorkerSessionSpec", () => {
+  it("relies on SDK native skill discovery via settingSources, not prompt injection", async () => {
+    const spec = await buildWorkerSessionSpec({
+      projectPath: "/workspace",
+      agentsDir: "agents",
+      agentName: "screenwriter",
+      manifest: {
+        name: "screenwriter",
+        description: "Writes scripts",
+        skills: ["script-adapt"],
+        mcpServers: ["storage", "script"],
+      },
+    });
+
+    // Skills are discovered natively by SDK from cwd/.claude/skills/ via settingSources
+    expect(spec.settingSources).toEqual(["project"]);
+    // System prompt should NOT contain injected skill content — SDK handles discovery
+    expect(spec.systemPrompt.append).not.toContain("## Injected Project Skills");
+    // Auto-execution instructions should be present
+    expect(spec.systemPrompt.append).toContain("execute it to completion");
+  });
+
   it("builds a worker session spec without inheriting main restrictions", async () => {
     const spec = await buildWorkerSessionSpec({
       projectPath: "/workspace",

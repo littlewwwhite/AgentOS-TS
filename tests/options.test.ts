@@ -56,7 +56,7 @@ describe("buildOptions", () => {
 
     const opts = await buildOptions("/tmp/test-ws", "agents");
 
-    expect(mockCreateToolServers).toHaveBeenCalledWith([]);
+    expect(mockCreateToolServers).toHaveBeenCalledWith(["source", "switch"]);
     expect(opts.mcpServers).toBe(toolServers);
     expect(opts.permissionMode).toBe("dontAsk");
     expect(opts.disallowedTools).toEqual(
@@ -81,6 +81,7 @@ describe("buildOptions", () => {
     const prompt = opts.systemPrompt as { append: string };
     expect(prompt.append).toContain("Sub-Agents");
     expect(prompt.append).toContain("script-writer");
+    expect(prompt.append).toContain("Source materials: /tmp/test-ws/data/");
   });
 
   it("passes through model, resume, continue", async () => {

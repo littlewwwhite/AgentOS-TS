@@ -9,6 +9,7 @@ import { loadAgentManifests } from "./agent-manifest.js";
 import { buildHooks } from "./hooks/index.js";
 import { buildMainSessionSpec } from "./session-specs.js";
 import { createToolServers } from "./tools/index.js";
+import type { ToolServerName } from "./tools/index.js";
 
 export const WORKSPACE_DIRS = ["draft", "draft/episodes", "assets", "production", "output"];
 
@@ -27,11 +28,11 @@ export async function describeWorkspace(projectPath: string): Promise<string> {
   } catch {
     lines.push("  (empty)");
   }
-  // List shared source materials
+  // List uploaded source materials
   try {
-    const dataDir = path.resolve(projectPath, "../data");
+    const dataDir = path.join(projectPath, "data");
     const sources = (await fs.readdir(dataDir)).filter((f) => !f.startsWith(".")).sort();
-    if (sources.length > 0) lines.push(`  ../data/: ${sources.join(", ")}`);
+    if (sources.length > 0) lines.push(`  data/: ${sources.join(", ")}`);
   } catch { /* no data dir */ }
   return lines.join("\n");
 }
@@ -55,12 +56,13 @@ export async function buildOptions(
   // which we don't enable (not in allowedTools). We use our own switch_to_agent MCP
   // tool instead. sandbox-orchestrator.ts reads this from the returned options to
   // enumerate agent names and descriptions.
-  // Full agent config (prompt, skills, permissions) lives in agents/<name>/.claude/
-  // and is loaded natively by SDK when cwd points to the agent directory.
+  // Agent role prompt and permissions live in agents/<name>/.claude/ and are loaded
+  // by SDK when cwd points to the agent directory. Project-local skill markdown is
+  // discovered here for routing metadata and injected into worker prompts separately.
   const agents: Record<string, {
     description: string;
     configuredSkills?: string[];
-    mcpServers?: string[];
+    mcpServers?: ToolServerName[];
   }> = {};
   for (const [name, manifest] of Object.entries(manifests)) {
     agents[name] = {
@@ -78,7 +80,7 @@ export async function buildOptions(
 
   return {
     agents,
-    mcpServers: createToolServers([]),
+    mcpServers: createToolServers(spec.mcpServerNames),
     allowedTools: spec.allowedTools,
     disallowedTools: spec.disallowedTools,
     hooks: buildHooks(),
