@@ -17,6 +17,7 @@ import {
 import { parseE2BReplCliArgs, shouldRestoreWorkspaceOnStart } from "../src/e2b-repl-cli.js";
 import { renderSandboxEvent } from "../src/e2b-repl-render.js";
 import { applyReplEvent, createInitialReplState } from "../src/e2b-repl-state.js";
+import { TerminalSpinner } from "../src/repl-spinner.js";
 import { loadDotEnv } from "../src/env.js";
 import type { SandboxEvent } from "../src/protocol.js";
 import { matchEnterAgent } from "../src/protocol.js";
@@ -74,6 +75,7 @@ const LOCAL_WORKSPACE = localWorkspaceOverride
 
 let agentNames: string[] = [];
 let replState = createInitialReplState();
+const spinner = new TerminalSpinner(process.stdout, dim);
 
 // ---------- Event handler ----------
 
@@ -83,10 +85,13 @@ function handleEvent(event: SandboxEvent): void {
     cyan,
     yellow,
     red,
+    bold,
+    magenta: (s: string) => `\x1b[35m${s}\x1b[0m`,
+    green,
   });
   replState = rendered.state;
   for (const chunk of rendered.output) {
-    process.stdout.write(chunk);
+    spinner.guardedWrite(chunk);
   }
 
   switch (event.type) {
@@ -105,17 +110,26 @@ function handleEvent(event: SandboxEvent): void {
       const next = applyReplEvent(replState, event);
       replState = next.state;
       for (const line of next.logs) {
-        console.log(cyan(line));
+        spinner.guardedWrite(cyan(line) + "\n");
       }
       break;
     }
 
     case "text":
     case "thinking":
+      spinner.stop();
+      break;
+
     case "tool_use":
-    case "tool_log":
+      spinner.start(`⏻ ${event.tool}`);
+      break;
+
     case "result":
     case "error":
+      spinner.stop();
+      break;
+
+    case "tool_log":
     case "status":
     case "system":
     case "history":
@@ -293,6 +307,7 @@ async function main() {
 
   let ctrlC = 0;
   process.on("SIGINT", () => {
+    spinner.stop();
     if (replState.busy) {
       client.interrupt().catch(() => {});
       console.log(dim("\n  Interrupting..."));
@@ -521,6 +536,7 @@ async function main() {
 
     // Chat
     replState = { ...replState, busy: true };
+    spinner.start("Thinking...");
     await client.chat(input);
 
     // Wait for result before showing next prompt
