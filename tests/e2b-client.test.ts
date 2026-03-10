@@ -54,6 +54,22 @@ describe("SandboxClient", () => {
     expect(events).toEqual([{ type: "text", text: "ok" }]);
   });
 
+  it("accepts onSandboxRecreated option without error", () => {
+    const recreatedCb = async () => {};
+    const client = new SandboxClient({
+      templateId: "test-template",
+      onSandboxRecreated: recreatedCb,
+    });
+    // Should construct without throwing — callback is stored for reconnect use
+    expect(client.sandboxId).toBeNull();
+  });
+
+  it("tracks heartbeatFailCount field initialized to zero", () => {
+    const client = new SandboxClient({ templateId: "test-template" });
+    // Access private field to verify initialization
+    expect((client as any).heartbeatFailCount).toBe(0);
+  });
+
   it("handles multiple events in single chunk", () => {
     const events: unknown[] = [];
     const client = new SandboxClient({
