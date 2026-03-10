@@ -165,7 +165,15 @@ async function sendAndStream(
   sessionFile: string,
 ): Promise<string | undefined> {
   const t0 = Date.now();
-  const rootPath = typeof options.cwd === "string" ? options.cwd : undefined;
+  // Capture subprocess stderr for diagnostics
+  const effectiveOptions: Record<string, unknown> & { stderr: (data: string) => void } = {
+    ...options,
+    stderr: (data: string) => {
+      const trimmed = data.trim();
+      if (trimmed) console.error(chalk.yellow(`  [stderr] ${trimmed}`));
+    },
+  };
+  const rootPath = typeof effectiveOptions["cwd"] === "string" ? effectiveOptions["cwd"] : undefined;
   let lastWasText = false;
   let lastDisplayedToolName: string | null = null;
   const toolBlocks = new Map<number, { name: string; input: string }>();
@@ -192,8 +200,9 @@ async function sendAndStream(
     pendingGroup = null;
   }
 
-  for await (const msg of query({ prompt, options }) as AsyncIterable<SDKMessage>) {
-    switch (msg.type) {
+  try {
+    for await (const msg of query({ prompt, options: effectiveOptions }) as AsyncIterable<SDKMessage>) {
+      switch (msg.type) {
       case "stream_event": {
         const ev = msg.event as Record<string, unknown>;
         const isNested = !!(msg as { parent_tool_use_id?: string | null }).parent_tool_use_id;
@@ -323,6 +332,9 @@ async function sendAndStream(
         break;
       }
     }
+    }
+  } catch (err) {
+    console.error(chalk.red(`  ✗ query failed: ${err instanceof Error ? err.message : String(err)}`));
   }
   return resultSessionId;
 }
