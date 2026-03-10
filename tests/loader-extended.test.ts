@@ -28,10 +28,26 @@ describe("loadAgentConfigs extended", () => {
     expect(agents["skill-creator"]).toBeDefined();
   });
 
-  it("screenwriter has script-adapt and script-writer skills", async () => {
+  it("screenwriter declares scoped mcp servers in yaml", async () => {
     const agents = await loadAgentConfigs(path.resolve("agents"));
-    expect(agents.screenwriter.skills).toContain("script-adapt");
-    expect(agents.screenwriter.skills).toContain("script-writer");
+    expect(agents.screenwriter.mcpServers).toEqual(["storage", "script"]);
+  });
+
+  it("supports optional mcp server metadata in yaml", async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "loader-test-"));
+    await fs.writeFile(
+      path.join(tmpDir, "with-mcp.yaml"),
+      [
+        "name: with-mcp",
+        'description: "Has scoped servers"',
+        "mcpServers:",
+        "  - storage",
+        "  - image",
+      ].join("\n"),
+    );
+
+    const agents = await loadAgentConfigs(tmpDir);
+    expect(agents["with-mcp"].mcpServers).toEqual(["storage", "image"]);
   });
 
   it("returns empty for non-existent directory", async () => {

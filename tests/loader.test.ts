@@ -18,8 +18,9 @@ describe("loadAgentConfigs", () => {
       [
         "name: test-agent",
         'description: "A test agent"',
-        "skills:",
-        "  - test-skill",
+        "mcpServers:",
+        "  - storage",
+        "  - script",
       ].join("\n"),
       "utf-8",
     );
@@ -28,7 +29,7 @@ describe("loadAgentConfigs", () => {
 
     expect(configs["test-agent"]).toBeDefined();
     expect(configs["test-agent"].description).toBe("A test agent");
-    expect(configs["test-agent"].skills).toEqual(["test-skill"]);
+    expect(configs["test-agent"].mcpServers).toEqual(["storage", "script"]);
 
     await fs.rm(tmpDir, { recursive: true });
   });

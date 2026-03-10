@@ -11,7 +11,7 @@ import yaml from "yaml";
 export interface AgentConfig {
   name: string;
   description: string;
-  skills?: string[];
+  mcpServers?: string[];
 }
 
 export async function loadAgentConfigs(agentsDir: string): Promise<Record<string, AgentConfig>> {
@@ -35,7 +35,7 @@ export async function loadAgentConfigs(agentsDir: string): Promise<Record<string
     agents[name] = {
       name,
       description: (config.description as string) ?? "",
-      skills: (config.skills as string[]) ?? undefined,
+      mcpServers: (config.mcpServers as string[]) ?? undefined,
     };
   }
 
