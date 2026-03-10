@@ -74,17 +74,17 @@ GEMINI_API_KEY="..." python3 -X utf8 \
   "style": "Dark fantasy aesthetic with cold blue-purple tones...",
   "actors": [
     {
-      "id": "act_001",
-      "name": "白行风",
+      "actor_id": "act_001",
+      "actor_name": "白行风",
       "states": [
-        {"id": "st_001", "name": "傻子"},
-        {"id": "st_002", "name": "重伤"},
-        {"id": "st_003", "name": "全盛"}
+        {"state_id": "st_001", "state_name": "傻子"},
+        {"state_id": "st_002", "state_name": "重伤"},
+        {"state_id": "st_003", "state_name": "全盛"}
       ]
     }
   ],
   "locations": [
-    {"id": "loc_001", "name": "万剑宗大殿"}
+    {"location_id": "loc_001", "location_name": "万剑宗大殿"}
   ],
   "episodes": [...]
 }

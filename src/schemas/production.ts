@@ -12,7 +12,7 @@ export const ShotSchema = z.object({
   description: z.string(),
   actor_ids: z.array(z.string()),
   asset_refs: z.array(z.string()),
-  action_sequences: z.array(z.number().int()).default([]),
+  action_indexes: z.array(z.number().int()).default([]), // 0-based indexes into scene.actions[]
   camera: z.string().nullish(),
   duration: z.number().nullish(),
 });

@@ -9,7 +9,7 @@ import { tool } from "@anthropic-ai/claude-agent-sdk";
 
 // ---------- Regex patterns ----------
 
-// Scene header: "1-1 日 内 觉醒大厅"
+// Scene header: "1-1 日 内 觉醒大厅" or "1-1 日 内 觉醒大厅【废墟】"
 const SCENE_HEADER_RE =
   /^(\d+)-(\d+)\s+(日|夜|清晨|黄昏|午后|凌晨|夜晚|深夜|黎明|白天|傍晚|中午)\s+(内|外)\s+([^【]+?)(?:【(.+?)】)?\s*$/;
 
@@ -68,6 +68,12 @@ const TIME_MAP: Record<string, string> = {
   傍晚: "dusk",
 };
 
+// Space word → English mapping
+const SPACE_MAP: Record<string, string> = {
+  内: "interior",
+  外: "exterior",
+};
+
 const NON_CHARACTER = new Set(["旁白", "字幕", "系统提示"]);
 
 // ---------- Helpers ----------
@@ -118,6 +124,10 @@ function parsePropLine(raw: string): string[] {
     }
   }
   return props;
+}
+
+function pad3(n: number): string {
+  return String(n).padStart(3, "0");
 }
 
 // ---------- Catalog / Design loaders ----------
@@ -171,7 +181,6 @@ async function loadDesignFields(
 // ---------- Core parser ----------
 
 interface ParsedAction {
-  sequence: number;
   type: string;
   content: string;
   actor_id?: string;
@@ -179,19 +188,17 @@ interface ParsedAction {
 }
 
 interface ParsedScene {
-  id: string;
-  sequence: number;
-  location: string;
-  location_id: string;
-  time_of_day: string;
-  cast: Array<{ actor_id: string; state_id: string | null }>;
-  prop_ids: string[];
+  scene_id: string;
+  environment: { space: string; time: string };
+  locations: Array<{ location_id: string; state_id: string | null }>;
+  actors: Array<{ actor_id: string; state_id: string | null }>;
+  props: Array<{ prop_id: string; state_id: string | null }>;
   actions: ParsedAction[];
-  location_state_id?: string;
 }
 
 interface ParsedEpisode {
-  episode: number;
+  episode_id: string;
+  episode_num: number; // internal — for scene ID prefix
   title: string | null;
   scenes: ParsedScene[];
 }
@@ -225,25 +232,26 @@ export async function parseEpisodes(
   const catalog = await loadCatalogMappings(projectPath);
   const design = await loadDesignFields(projectPath);
 
-  // Actor state
+  // Actor registry
   const actors: Record<string, string> = { ...catalog.actorIds };
   let actorCounter = Object.keys(catalog.actorIds).length;
 
-  // Location state
+  // Location registry
   const locations: Record<string, string> = { ...catalog.locIds };
   let locCounter = Object.keys(catalog.locIds).length;
 
-  // Prop state
+  // Prop registry
   const props: Record<string, string> = { ...catalog.propIds };
   let propCounter = Object.keys(catalog.propIds).length;
 
+  // Location state tracking (per location)
   const locStateNames: Record<string, string[]> = {};
   const sceneLocStates: Record<number, [string, string] | null> = {};
 
   function registerLocation(name: string): string {
     if (locations[name]) return locations[name];
     locCounter++;
-    const lid = `loc_${String(locCounter).padStart(3, "0")}`;
+    const lid = `loc_${pad3(locCounter)}`;
     locations[name] = lid;
     return lid;
   }
@@ -252,7 +260,7 @@ export async function parseEpisodes(
     if (!name || isGroup(name) || NON_CHARACTER.has(name)) return null;
     if (actors[name]) return actors[name];
     actorCounter++;
-    const aid = `act_${String(actorCounter).padStart(3, "0")}`;
+    const aid = `act_${pad3(actorCounter)}`;
     actors[name] = aid;
     return aid;
   }
@@ -262,27 +270,27 @@ export async function parseEpisodes(
     if (!propName) return null;
     if (props[propName]) return props[propName];
     propCounter++;
-    const pid = `prp_${String(propCounter).padStart(3, "0")}`;
+    const pid = `prp_${pad3(propCounter)}`;
     props[propName] = pid;
     return pid;
   }
 
-  // Track per-scene state annotations and cast
+  // Track per-scene state annotations and actor list
   const sceneActorStates: Record<number, Array<[string, string]>> = {};
-  const sceneCast: Record<number, Record<string, string | null>> = {};
+  const sceneActorMap: Record<number, Record<string, string | null>> = {};
 
-  function registerSceneCastMember(
+  function registerSceneActor(
     scnNum: number,
     actorId: string,
     stateName: string | null = null,
   ): void {
-    const castMap = (sceneCast[scnNum] ??= {});
-    if (!(actorId in castMap)) {
-      castMap[actorId] = stateName;
+    const actorMap = (sceneActorMap[scnNum] ??= {});
+    if (!(actorId in actorMap)) {
+      actorMap[actorId] = stateName;
       return;
     }
-    if (castMap[actorId] === null && stateName !== null) {
-      castMap[actorId] = stateName;
+    if (actorMap[actorId] === null && stateName !== null) {
+      actorMap[actorId] = stateName;
     }
   }
 
@@ -290,10 +298,13 @@ export async function parseEpisodes(
   const episodes: ParsedEpisode[] = [];
   let currentEpisode: ParsedEpisode | null = null;
   let currentScene: ParsedScene | null = null;
-  let actionCounter = 0;
-  let scnCounter = 0;
-  let epScnCounter = 0;
+  let scnCounter = 0; // global scene counter
+  let epScnCounter = 0; // per-episode scene counter
+  let currentEpNum = 0;
   const sceneGlobalIdx = new Map<ParsedScene, number>();
+
+  // Track scene prop IDs to avoid duplicates (keyed by global scene index)
+  const scenePropIds: Record<number, string[]> = {};
 
   function flushScene(): void {
     if (currentScene && currentEpisode) {
@@ -317,8 +328,7 @@ export async function parseEpisodes(
     actorId?: string,
     emotion?: string,
   ): void {
-    actionCounter++;
-    const action: ParsedAction = { sequence: actionCounter, type: actionType, content };
+    const action: ParsedAction = { type: actionType, content };
     if (actorId) action.actor_id = actorId;
     if (emotion) action.emotion = emotion;
     scene.actions.push(action);
@@ -334,12 +344,13 @@ export async function parseEpisodes(
       let m = EPISODE_HEADER_RE.exec(stripped);
       if (m) {
         flushEpisode();
+        currentEpNum = Number.parseInt(m[1], 10);
         currentEpisode = {
-          episode: Number.parseInt(m[1], 10),
+          episode_id: `ep_${pad3(currentEpNum)}`,
+          episode_num: currentEpNum,
           title: m[2]?.trim() ?? null,
           scenes: [],
         };
-        actionCounter = 0;
         epScnCounter = 0;
         continue;
       }
@@ -353,19 +364,33 @@ export async function parseEpisodes(
         const locName = m[5].trim();
         const locStateName = m[6]?.trim() ?? null;
         const locId = registerLocation(locName);
+        const space = SPACE_MAP[m[4]] ?? m[4];
+        const time = TIME_MAP[m[3]] ?? m[3];
+
+        if (!currentEpisode) {
+          currentEpNum = Number.parseInt(m[1], 10);
+          currentEpisode = {
+            episode_id: `ep_${pad3(currentEpNum)}`,
+            episode_num: currentEpNum,
+            title: null,
+            scenes: [],
+          };
+          epScnCounter = 1;
+        }
+
+        const sceneId = `ep${pad3(currentEpNum)}_scn_${pad3(epScnCounter)}`;
 
         currentScene = {
-          id: `scn_${String(epScnCounter).padStart(3, "0")}`,
-          sequence: Number.parseInt(m[2], 10),
-          location: locName,
-          location_id: locId,
-          time_of_day: TIME_MAP[m[3]] ?? m[3],
-          cast: [],
-          prop_ids: [],
+          scene_id: sceneId,
+          environment: { space, time },
+          locations: [{ location_id: locId, state_id: null }],
+          actors: [],
+          props: [],
           actions: [],
         };
 
         sceneGlobalIdx.set(currentScene, scnCounter);
+        scenePropIds[scnCounter] = [];
 
         if (locStateName) {
           sceneLocStates[scnCounter] = [locId, locStateName];
@@ -378,17 +403,8 @@ export async function parseEpisodes(
         }
 
         sceneActorStates[scnCounter] = [];
-        sceneCast[scnCounter] = {};
+        sceneActorMap[scnCounter] = {};
 
-        if (!currentEpisode) {
-          currentEpisode = {
-            episode: Number.parseInt(m[1], 10),
-            title: null,
-            scenes: [],
-          };
-          actionCounter = 0;
-          epScnCounter = 1; // first scene already counted above
-        }
         continue;
       }
 
@@ -409,9 +425,9 @@ export async function parseEpisodes(
                 }
               }
               sceneActorStates[scnCounter].push([cid, state]);
-              registerSceneCastMember(scnCounter, cid, state);
+              registerSceneActor(scnCounter, cid, state);
             } else {
-              registerSceneCastMember(scnCounter, cid, null);
+              registerSceneActor(scnCounter, cid, null);
             }
           }
         }
@@ -421,10 +437,11 @@ export async function parseEpisodes(
       // 3. Prop line
       m = PROP_LINE_RE.exec(stripped);
       if (m) {
+        const propIds = scenePropIds[scnCounter];
         for (const propName of parsePropLine(m[1])) {
           const pid = registerProp(propName);
-          if (pid && !currentScene.prop_ids.includes(pid)) {
-            currentScene.prop_ids.push(pid);
+          if (pid && !propIds.includes(pid)) {
+            propIds.push(pid);
           }
         }
         continue;
@@ -456,7 +473,7 @@ export async function parseEpisodes(
       if (m) {
         const cleaned = cleanName(m[1]);
         const cid = registerActor(cleaned);
-        if (cid) registerSceneCastMember(scnCounter, cid, null);
+        if (cid) registerSceneActor(scnCounter, cid, null);
         addAction(currentScene, "inner_thought", m[2].trim(), cid ?? undefined);
         continue;
       }
@@ -467,7 +484,7 @@ export async function parseEpisodes(
         const cleaned = cleanName(m[1]);
         if (cleaned.startsWith("【") || NON_CHARACTER.has(cleaned)) continue;
         const cid = registerActor(cleaned);
-        if (cid) registerSceneCastMember(scnCounter, cid, null);
+        if (cid) registerSceneActor(scnCounter, cid, null);
         const emotion = m[2]?.trim() ?? undefined;
         addAction(currentScene, "dialogue", m[3].trim(), cid ?? undefined, emotion);
         continue;
@@ -483,7 +500,7 @@ export async function parseEpisodes(
 
   for (const ep of episodes) {
     for (const scene of ep.scenes) {
-      const scnNum = Number.parseInt(scene.id.split("_")[1], 10);
+      const scnNum = sceneGlobalIdx.get(scene)!;
       for (const [aid, stateName] of sceneActorStates[scnNum] ?? []) {
         if (aid in actorStateNames && !actorStateNames[aid].includes(stateName)) {
           actorStateNames[aid].push(stateName);
@@ -492,7 +509,7 @@ export async function parseEpisodes(
     }
   }
 
-  // Build actors list with state IDs
+  // Build actors list with globally unique state IDs
   let stateCounter = 0;
   const stateIdMap: Record<string, string> = {}; // "aid|stateName" → stateId
 
@@ -502,13 +519,13 @@ export async function parseEpisodes(
 
   for (const [name, aid] of actorEntries) {
     const statesForActor = actorStateNames[aid] ?? [];
-    const entry: Record<string, unknown> = { id: aid, name };
+    const entry: Record<string, unknown> = { actor_id: aid, actor_name: name };
     if (statesForActor.length > 0) {
-      const statesList: Array<{ id: string; name: string }> = [];
+      const statesList: Array<{ state_id: string; state_name: string }> = [];
       for (const stateName of statesForActor) {
         stateCounter++;
-        const stateId = `st_${String(stateCounter).padStart(3, "0")}`;
-        statesList.push({ id: stateId, name: stateName });
+        const stateId = `st_${pad3(stateCounter)}`;
+        statesList.push({ state_id: stateId, state_name: stateName });
         stateIdMap[`${aid}|${stateName}`] = stateId;
       }
       entry.states = statesList;
@@ -516,21 +533,20 @@ export async function parseEpisodes(
     actorsList.push(entry);
   }
 
-  // Resolve scene.cast with concrete state IDs
+  // Resolve scene.actors with concrete state IDs
   for (const ep of episodes) {
     for (const scene of ep.scenes) {
       const scnNum = sceneGlobalIdx.get(scene)!;
-      const castEntries: Array<{ actor_id: string; state_id: string | null }> = [];
-      for (const [aid, stateName] of Object.entries(sceneCast[scnNum] ?? {})) {
+      const actorEntries: Array<{ actor_id: string; state_id: string | null }> = [];
+      for (const [aid, stateName] of Object.entries(sceneActorMap[scnNum] ?? {})) {
         const stateId = stateName ? (stateIdMap[`${aid}|${stateName}`] ?? null) : null;
-        castEntries.push({ actor_id: aid, state_id: stateId });
+        actorEntries.push({ actor_id: aid, state_id: stateId });
       }
-      scene.cast = castEntries;
+      scene.actors = actorEntries;
     }
   }
 
-  // Build locations list with state IDs
-  let locStateCounter = 0;
+  // Build locations list with state IDs (continue global stateCounter)
   const locStateIdMap: Record<string, string> = {};
   const locEntries = Object.entries(locations);
   locEntries.sort((a, b) => a[1].localeCompare(b[1]));
@@ -538,37 +554,50 @@ export async function parseEpisodes(
 
   for (const [name, lid] of locEntries) {
     const stateNamesForLoc = locStateNames[lid] ?? [];
-    const entry: Record<string, unknown> = { id: lid, name };
+    const entry: Record<string, unknown> = { location_id: lid, location_name: name };
     if (stateNamesForLoc.length > 0) {
-      const statesList: Array<{ id: string; name: string }> = [];
+      const statesList: Array<{ state_id: string; state_name: string }> = [];
       for (const stateName of stateNamesForLoc) {
-        locStateCounter++;
-        const locStateId = `lst_${String(locStateCounter).padStart(3, "0")}`;
-        statesList.push({ id: locStateId, name: stateName });
-        locStateIdMap[`${lid}|${stateName}`] = locStateId;
+        stateCounter++;
+        const stateId = `st_${pad3(stateCounter)}`;
+        statesList.push({ state_id: stateId, state_name: stateName });
+        locStateIdMap[`${lid}|${stateName}`] = stateId;
       }
       entry.states = statesList;
     }
     locationsList.push(entry);
   }
 
-  // Build props list
+  // Build props list (no states from parser — props states are for asset stage)
   const propEntries = Object.entries(props);
   propEntries.sort((a, b) => a[1].localeCompare(b[1]));
-  const propsList = propEntries.map(([name, pid]) => ({ id: pid, name }));
+  const propsList = propEntries.map(([name, pid]) => ({ prop_id: pid, prop_name: name }));
 
-  // Resolve location_state_id in scenes
+  // Resolve scene.locations[*].state_id and scene.props
   for (const ep of episodes) {
     for (const scene of ep.scenes) {
       const scnNum = sceneGlobalIdx.get(scene)!;
+
+      // Location state
       const locState = sceneLocStates[scnNum];
       if (locState) {
         const [lid, stateName] = locState;
         const locStateId = locStateIdMap[`${lid}|${stateName}`];
-        if (locStateId) scene.location_state_id = locStateId;
+        if (locStateId && scene.locations.length > 0) {
+          scene.locations[0].state_id = locStateId;
+        }
       }
+
+      // Props (no state from parser)
+      scene.props = (scenePropIds[scnNum] ?? []).map((pid) => ({
+        prop_id: pid,
+        state_id: null,
+      }));
     }
   }
+
+  // Strip internal episode_num before output
+  const outputEpisodes = episodes.map(({ episode_num: _, ...ep }) => ep);
 
   const scriptData = {
     title: design.title,
@@ -577,8 +606,7 @@ export async function parseEpisodes(
     actors: actorsList,
     locations: locationsList,
     props: propsList,
-    episodes,
-    metadata: {},
+    episodes: outputEpisodes,
   };
 
   const outputDir = path.join(projectPath, "output");

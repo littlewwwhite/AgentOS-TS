@@ -2,7 +2,7 @@
 // output: Tests for parser correctness with controlled input
 // pos: Unit test — validates deterministic parser with known expected output
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { parseEpisodes } from "../../src/tools/script-parser.js";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -56,7 +56,6 @@ describe("parseEpisodes", () => {
 
   it("returns error when no ep*.md files exist", async () => {
     const dir = await createProject({});
-    // Remove the empty episodes dir files
     const result = await parseEpisodes(dir);
     expect(result).toHaveProperty("error");
     expect((result.error as string)).toContain("No ep");
@@ -91,15 +90,23 @@ describe("parseEpisodes", () => {
     const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
     expect(script.title).toBe("测试剧");
 
-    const scene = script.episodes[0].scenes[0];
-    expect(scene.location).toBe("客厅");
-    expect(scene.time_of_day).toBe("day");
-    expect(scene.cast.length).toBe(2);
-    expect(scene.prop_ids.length).toBe(1);
+    // Episode structure
+    const ep0 = script.episodes[0];
+    expect(ep0.episode_id).toBe("ep_001");
 
-    // 3 actions: action + 2 dialogues
-    expect(scene.actions.length).toBe(3);
+    // Scene structure
+    const scene = ep0.scenes[0];
+    expect(scene.scene_id).toBe("ep001_scn_001");
+    expect(scene.environment).toEqual({ space: "interior", time: "day" });
+    expect(scene.locations).toHaveLength(1);
+    expect(scene.locations[0].location_id).toBeDefined();
+    expect(scene.actors).toHaveLength(2);
+    expect(scene.props).toHaveLength(1);
+
+    // 3 actions: action + 2 dialogues (no sequence field)
+    expect(scene.actions).toHaveLength(3);
     expect(scene.actions[0].type).toBe("action");
+    expect(scene.actions[0]).not.toHaveProperty("sequence");
     expect(scene.actions[1].type).toBe("dialogue");
     expect(scene.actions[2].type).toBe("dialogue");
     expect(scene.actions[2].emotion).toBe("惊讶");
@@ -131,12 +138,14 @@ describe("parseEpisodes", () => {
     expect(stats.total_actors).toBe(3);
     expect(stats.total_locations).toBe(3);
 
-    // Verify scene IDs reset per episode
+    // Verify scene IDs have episode prefix and reset per episode
     const scriptPath = result.script_path as string;
     const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
-    expect(script.episodes[0].scenes[0].id).toBe("scn_001");
-    expect(script.episodes[0].scenes[1].id).toBe("scn_002");
-    expect(script.episodes[1].scenes[0].id).toBe("scn_001");
+    expect(script.episodes[0].episode_id).toBe("ep_001");
+    expect(script.episodes[0].scenes[0].scene_id).toBe("ep001_scn_001");
+    expect(script.episodes[0].scenes[1].scene_id).toBe("ep001_scn_002");
+    expect(script.episodes[1].episode_id).toBe("ep_002");
+    expect(script.episodes[1].scenes[0].scene_id).toBe("ep002_scn_001");
   });
 
   it("handles time words correctly", async () => {
@@ -160,12 +169,29 @@ describe("parseEpisodes", () => {
     const scriptPath = result.script_path as string;
     const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
     const scenes = script.episodes[0].scenes;
-    expect(scenes[0].time_of_day).toBe("day");
-    expect(scenes[1].time_of_day).toBe("night");
-    expect(scenes[2].time_of_day).toBe("dawn");
-    expect(scenes[3].time_of_day).toBe("dusk");
-    expect(scenes[4].time_of_day).toBe("noon");
-    expect(scenes[5].time_of_day).toBe("night");
+    expect(scenes[0].environment.time).toBe("day");
+    expect(scenes[1].environment.time).toBe("night");
+    expect(scenes[2].environment.time).toBe("dawn");
+    expect(scenes[3].environment.time).toBe("dusk");
+    expect(scenes[4].environment.time).toBe("noon");
+    expect(scenes[5].environment.time).toBe("night");
+  });
+
+  it("handles space (interior/exterior) correctly", async () => {
+    const ep = `第1集
+
+1-1 日 内 客厅
+人物：X
+1-2 日 外 花园
+人物：X
+`;
+    const dir = await createProject({ "ep01.md": ep });
+    const result = await parseEpisodes(dir);
+    const scriptPath = result.script_path as string;
+    const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+    const scenes = script.episodes[0].scenes;
+    expect(scenes[0].environment.space).toBe("interior");
+    expect(scenes[1].environment.space).toBe("exterior");
   });
 
   it("handles actor states", async () => {
@@ -180,12 +206,12 @@ describe("parseEpisodes", () => {
     const scriptPath = result.script_path as string;
     const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
 
-    // Check actors have states
-    const actors = script.actors;
-    const zhangsan = actors.find((a: any) => a.name === "张三");
+    // Check actors have states with unified st_ prefix
+    const zhangsan = script.actors.find((a: any) => a.actor_name === "张三");
     expect(zhangsan).toBeDefined();
     expect(zhangsan.states).toBeDefined();
-    expect(zhangsan.states[0].name).toBe("幼年");
+    expect(zhangsan.states[0].state_name).toBe("幼年");
+    expect(zhangsan.states[0].state_id).toMatch(/^st_/);
   });
 
   it("handles location states", async () => {
@@ -201,12 +227,31 @@ describe("parseEpisodes", () => {
     const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
 
     const loc = script.locations[0];
-    expect(loc.name).toBe("大厅");
+    expect(loc.location_name).toBe("大厅");
     expect(loc.states).toBeDefined();
-    expect(loc.states[0].name).toBe("废墟状态");
+    expect(loc.states[0].state_name).toBe("废墟状态");
+    expect(loc.states[0].state_id).toMatch(/^st_/);
 
+    // Scene location ref should have state_id
     const scene = script.episodes[0].scenes[0];
-    expect(scene.location_state_id).toBeDefined();
+    expect(scene.locations[0].state_id).toMatch(/^st_/);
+  });
+
+  it("state IDs are globally unique across actor and location states", async () => {
+    const ep = `第1集
+
+1-1 日 内 大厅【废墟状态】
+人物：张三【幼年】
+张三：你好
+`;
+    const dir = await createProject({ "ep01.md": ep });
+    const result = await parseEpisodes(dir);
+    const scriptPath = result.script_path as string;
+    const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+
+    const actorStateId = script.actors.find((a: any) => a.actor_name === "张三").states[0].state_id;
+    const locStateId = script.locations[0].states[0].state_id;
+    expect(actorStateId).not.toBe(locStateId);
   });
 
   it("filters non-character names", async () => {
@@ -223,8 +268,7 @@ describe("parseEpisodes", () => {
     const scriptPath = result.script_path as string;
     const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
 
-    // 旁白 should not be in actors
-    const actorNames = script.actors.map((a: any) => a.name);
+    const actorNames = script.actors.map((a: any) => a.actor_name);
     expect(actorNames).not.toContain("旁白");
     expect(actorNames).not.toContain("字幕");
     expect(actorNames).toContain("张三");
@@ -284,13 +328,13 @@ describe("parseEpisodes", () => {
     const scriptPath = result.script_path as string;
     const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
 
-    const actor = script.actors.find((a: any) => a.name === "张三");
-    expect(actor.id).toBe("act_100");
+    const actor = script.actors.find((a: any) => a.actor_name === "张三");
+    expect(actor.actor_id).toBe("act_100");
 
-    const loc = script.locations.find((l: any) => l.name === "客厅");
-    expect(loc.id).toBe("loc_200");
+    const loc = script.locations.find((l: any) => l.location_name === "客厅");
+    expect(loc.location_id).toBe("loc_200");
 
-    expect(script.props[0].id).toBe("prp_300");
+    expect(script.props[0].prop_id).toBe("prp_300");
   });
 
   it("handles NPC layer filtering", async () => {
@@ -305,10 +349,9 @@ describe("parseEpisodes", () => {
     const scriptPath = result.script_path as string;
     const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
 
-    const actorNames = script.actors.map((a: any) => a.name);
+    const actorNames = script.actors.map((a: any) => a.actor_name);
     expect(actorNames).toContain("张三");
     expect(actorNames).toContain("李四");
-    // NPC layer should be filtered
     expect(actorNames).not.toContain("路人甲");
   });
 
@@ -323,9 +366,8 @@ describe("parseEpisodes", () => {
     const result = await parseEpisodes(dir);
     const scriptPath = result.script_path as string;
     const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
-    const actorNames = script.actors.map((a: any) => a.name);
+    const actorNames = script.actors.map((a: any) => a.actor_name);
     expect(actorNames).toContain("将军");
-    // Groups should be filtered
     expect(actorNames).not.toContain("士兵×10");
   });
 
@@ -343,5 +385,19 @@ describe("parseEpisodes", () => {
     expect(script.title).toBe("我的剧本");
     expect(script.worldview).toBe("现代都市");
     expect(script.style).toBe("写实");
+  });
+
+  it("top-level structure has no metadata or description fields", async () => {
+    const ep = `第1集
+1-1 日 内 客厅
+人物：张三
+张三：你好
+`;
+    const dir = await createProject({ "ep01.md": ep });
+    const result = await parseEpisodes(dir);
+    const scriptPath = result.script_path as string;
+    const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+    expect(script).not.toHaveProperty("metadata");
+    expect(script).not.toHaveProperty("description");
   });
 });

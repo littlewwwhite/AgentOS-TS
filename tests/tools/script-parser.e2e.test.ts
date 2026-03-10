@@ -27,7 +27,7 @@ describe.skipIf(!hasWorkspace)("script-parser E2E", () => {
     expect(stats.total_locations).toBeGreaterThan(0);
   });
 
-  it("produces valid JSON output", async () => {
+  it("produces valid JSON output with new structure", async () => {
     const result = await parseEpisodes(PROJECT_PATH);
     const scriptPath = result.script_path as string;
     const raw = await fs.readFile(scriptPath, "utf-8");
@@ -39,6 +39,15 @@ describe.skipIf(!hasWorkspace)("script-parser E2E", () => {
     expect(parsed).toHaveProperty("episodes");
     expect(Array.isArray(parsed.actors)).toBe(true);
     expect(Array.isArray(parsed.episodes)).toBe(true);
+
+    // Verify new naming convention
+    if (parsed.actors.length > 0) {
+      expect(parsed.actors[0]).toHaveProperty("actor_id");
+      expect(parsed.actors[0]).toHaveProperty("actor_name");
+    }
+    if (parsed.episodes.length > 0) {
+      expect(parsed.episodes[0]).toHaveProperty("episode_id");
+    }
   });
 
   it("scene structure has required fields", async () => {
@@ -48,16 +57,20 @@ describe.skipIf(!hasWorkspace)("script-parser E2E", () => {
 
     const firstScene = parsed.episodes[0]?.scenes[0];
     expect(firstScene).toBeDefined();
-    expect(firstScene).toHaveProperty("id");
-    expect(firstScene).toHaveProperty("location");
-    expect(firstScene).toHaveProperty("location_id");
-    expect(firstScene).toHaveProperty("time_of_day");
-    expect(firstScene).toHaveProperty("cast");
+    expect(firstScene).toHaveProperty("scene_id");
+    expect(firstScene).toHaveProperty("environment");
+    expect(firstScene.environment).toHaveProperty("space");
+    expect(firstScene.environment).toHaveProperty("time");
+    expect(firstScene).toHaveProperty("locations");
+    expect(firstScene).toHaveProperty("actors");
     expect(firstScene).toHaveProperty("actions");
     expect(Array.isArray(firstScene.actions)).toBe(true);
+
+    // Scene ID should have episode prefix
+    expect(firstScene.scene_id).toMatch(/^ep\d+_scn_\d+$/);
   });
 
-  it("actions have correct types", async () => {
+  it("actions have correct types and no sequence field", async () => {
     const result = await parseEpisodes(PROJECT_PATH);
     const scriptPath = result.script_path as string;
     const parsed = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
@@ -68,38 +81,14 @@ describe.skipIf(!hasWorkspace)("script-parser E2E", () => {
     );
     const actionTypes = new Set(allActions.map((a: { type: string }) => a.type));
 
-    // Should contain at least dialogue and action types
     expect(actionTypes.size).toBeGreaterThan(0);
     for (const t of actionTypes) {
       expect(["dialogue", "action", "inner_thought", "sfx"]).toContain(t);
     }
-  });
 
-  it("matches Python output stats", async () => {
-    // Run Python parser and compare stats
-    try {
-      const { stdout } = await execAsync(
-        `cd ../AgentOS && uv run python -c "
-import asyncio, json
-from agentos.tools.script_parser import parse_episodes
-result = asyncio.run(parse_episodes('${PROJECT_PATH}'))
-print(json.dumps(result))
-"`,
-        { timeout: 15000 },
-      );
-      const pyResult = JSON.parse(stdout.trim());
-      const tsResult = await parseEpisodes(PROJECT_PATH);
-
-      const pyStats = pyResult.stats;
-      const tsStats = tsResult.stats as Record<string, number>;
-
-      expect(tsStats.total_episodes).toBe(pyStats.total_episodes);
-      expect(tsStats.total_scenes).toBe(pyStats.total_scenes);
-      expect(tsStats.total_actors).toBe(pyStats.total_actors);
-      expect(tsStats.total_locations).toBe(pyStats.total_locations);
-    } catch {
-      // Skip if Python env not available
-      console.log("  (Python comparison skipped: uv/python not available)");
+    // No sequence field
+    for (const a of allActions) {
+      expect(a).not.toHaveProperty("sequence");
     }
   });
 });

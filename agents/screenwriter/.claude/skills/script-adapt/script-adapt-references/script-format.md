@@ -128,10 +128,10 @@ Phase 3 使用确定性解析器（`mcp__script__parse_script`）从剧本中提
 
 - 从 `人物：` 行和对白行（含 OS）收集唯一角色名
 - 排除群演描述（如"同学若干""路人×3"）
-- ID 按首次出场顺序分配：chr_001, chr_002...
+- ID 按首次出场顺序分配：act_001, act_002...
 
 ### 3.3 场景提取规则
 
-- 从场次头解析：episode, sequence, location, time_of_day, setting
-- `actor_ids` 来自该场的人物行 + 对白行中出现的角色
-- ID 按全局出场顺序分配：scn_001, scn_002...
+- 从场次头解析：episode_id, scene_id, environment (space + time), locations
+- `actors` 来自该场的人物行 + 对白行中出现的角色
+- scene_id 带集前缀：ep001_scn_001, ep001_scn_002, ..., ep002_scn_001, ...

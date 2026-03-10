@@ -55,16 +55,15 @@ describe("ScriptSchema", () => {
   it("validates a minimal script", () => {
     const data = {
       title: "Test",
-      actors: [{ id: "act_001", name: "Hero" }],
+      actors: [{ actor_id: "act_001", actor_name: "Hero" }],
       episodes: [
         {
-          episode: 1,
+          episode_id: "ep_001",
           scenes: [
             {
-              id: "scn_001",
-              sequence: 1,
-              location: "Forest",
-              actions: [{ sequence: 1, type: "dialogue", content: "Hello" }],
+              scene_id: "ep001_scn_001",
+              environment: { space: "interior", time: "day" },
+              actions: [{ type: "dialogue", content: "Hello" }],
             },
           ],
         },
@@ -72,43 +71,43 @@ describe("ScriptSchema", () => {
     };
     const result = ScriptSchema.parse(data);
     expect(result.actors).toHaveLength(1);
-    expect(result.episodes[0].scenes[0].cast).toEqual([]);
+    expect(result.episodes[0].scenes[0].actors).toEqual([]);
     expect(result.locations).toEqual([]);
-    expect(result.metadata).toEqual({});
   });
 
   it("validates script with full nested structure", () => {
     const data = {
       title: "Full Script",
-      description: "A test script",
       worldview: "Fantasy",
       style: "anime",
       actors: [
-        { id: "act_001", name: "Hero", states: [{ id: "st_001", name: "casual" }] },
+        {
+          actor_id: "act_001",
+          actor_name: "Hero",
+          states: [{ state_id: "st_001", state_name: "casual" }],
+        },
       ],
       locations: [
-        { id: "loc_001", name: "Forest", states: [{ id: "lst_001", name: "ruins" }] },
+        {
+          location_id: "loc_001",
+          location_name: "Forest",
+          states: [{ state_id: "st_002", state_name: "ruins" }],
+        },
       ],
-      props: [{ id: "prp_001", name: "Sword", description: "A magic sword" }],
+      props: [{ prop_id: "prp_001", prop_name: "Sword" }],
       episodes: [
         {
-          episode: 1,
+          episode_id: "ep_001",
           title: "Ep 1",
-          summary: "Summary",
           scenes: [
             {
-              id: "scn_001",
-              sequence: 1,
-              location: "Forest",
-              location_id: "loc_001",
-              location_state_id: "lst_001",
-              time_of_day: "dawn",
-              summary: "Opening",
-              cast: [{ actor_id: "act_001", state_id: "st_001" }],
-              prop_ids: ["prp_001"],
+              scene_id: "ep001_scn_001",
+              environment: { space: "interior", time: "dawn" },
+              locations: [{ location_id: "loc_001", state_id: "st_002" }],
+              actors: [{ actor_id: "act_001", state_id: "st_001" }],
+              props: [{ prop_id: "prp_001", state_id: null }],
               actions: [
                 {
-                  sequence: 1,
                   actor_id: "act_001",
                   type: "dialogue",
                   content: "Let's go",
@@ -118,17 +117,14 @@ describe("ScriptSchema", () => {
                   time_hint: "0-3s",
                 },
               ],
-              environment: "dark forest with mist",
-              metadata: { music_mood: "tense" },
             },
           ],
         },
       ],
-      metadata: { source_type: "original" },
     };
     const result = ScriptSchema.parse(data);
     expect(result.actors[0].states).toHaveLength(1);
-    expect(result.episodes[0].scenes[0].cast[0].state_id).toBe("st_001");
+    expect(result.episodes[0].scenes[0].actors[0].state_id).toBe("st_001");
   });
 });
 
@@ -173,7 +169,7 @@ describe("ProductionPlanSchema", () => {
       shots: [
         {
           id: "shot_001",
-          scene_id: "scn_001",
+          scene_id: "ep001_scn_001",
           sequence: 1,
           description: "Hero enters",
           actor_ids: ["act_001"],
