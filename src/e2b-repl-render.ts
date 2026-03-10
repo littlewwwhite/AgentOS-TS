@@ -1,11 +1,15 @@
 import type { ReplState } from "./e2b-repl-state.js";
 import type { SandboxEvent } from "./protocol.js";
+import { createMarkdownState, transformMarkdownChunk, flushMarkdownBuffer } from "./repl-markdown.js";
 
 export interface ReplPalette {
   dim: (text: string) => string;
   cyan: (text: string) => string;
   yellow: (text: string) => string;
   red: (text: string) => string;
+  bold: (text: string) => string;
+  magenta: (text: string) => string;
+  green: (text: string) => string;
 }
 
 function formatToolLabel(name: string, input?: Record<string, unknown>): string {
@@ -59,17 +63,29 @@ function formatToolLabel(name: string, input?: Record<string, unknown>): string 
   return name;
 }
 
-function flushActiveStream(state: ReplState): { state: ReplState; output: string[] } {
+function formatAgentLabel(agent: string | undefined | null, palette: ReplPalette): string {
+  return agent ? `[${palette.bold(palette.magenta(agent))}]` : "[main]";
+}
+
+function flushActiveStream(state: ReplState, palette?: ReplPalette): { state: ReplState; output: string[] } {
   if (!state.activeStream) {
     return { state, output: [] };
   }
+  const output: string[] = [];
+  // Flush markdown buffer when ending a text stream
+  if (state.activeStream === "text" && palette) {
+    const flushed = flushMarkdownBuffer(state.markdownState, palette);
+    if (flushed.output) output.push(flushed.output);
+  }
+  output.push("\n");
   return {
     state: {
       ...state,
       textStarted: false,
       activeStream: null,
+      markdownState: createMarkdownState(),
     },
-    output: ["\n"],
+    output,
   };
 }
 
@@ -84,13 +100,27 @@ function appendStreamChunk(
   let nextState = state;
 
   if (state.activeStream && state.activeStream !== kind) {
-    const flushed = flushActiveStream(state);
+    const flushed = flushActiveStream(state, palette);
     nextState = flushed.state;
     output.push(...flushed.output);
   }
 
   if (!nextState.textStarted || nextState.activeStream !== kind) {
     output.push(palette.dim(label));
+  }
+
+  if (kind === "text") {
+    const md = transformMarkdownChunk(nextState.markdownState, text, palette);
+    output.push(md.output);
+    return {
+      state: {
+        ...nextState,
+        textStarted: true,
+        activeStream: kind,
+        markdownState: md.state,
+      },
+      output,
+    };
   }
 
   output.push(text);
@@ -111,19 +141,19 @@ export function renderSandboxEvent(
 ): { state: ReplState; output: string[] } {
   switch (event.type) {
     case "text": {
-      const label = `[${event.agent ?? "main"}] `;
+      const label = `${formatAgentLabel(event.agent, palette)} `;
       return appendStreamChunk(state, label, event.text, "text", palette);
     }
 
     case "thinking": {
-      const label = `${palette.dim(`[${event.agent ?? "main"} thinking]\n`)}`;
+      const label = `${palette.dim(`${formatAgentLabel(event.agent, palette)} thinking`)}\n`;
       return appendStreamChunk(state, label, palette.dim(event.text), "thinking", palette);
     }
 
     case "tool_use": {
-      const flushed = flushActiveStream(state);
+      const flushed = flushActiveStream(state, palette);
       const indent = event.nested ? "      " : "  ";
-      const label = event.agent ? palette.dim(`[${event.agent}] `) : "";
+      const label = formatAgentLabel(event.agent, palette) + " ";
       const toolLabel = formatToolLabel(event.tool, event.input);
       return {
         state: flushed.state,
@@ -140,7 +170,7 @@ export function renderSandboxEvent(
       const flushed = flushActiveStream({
         ...state,
         busy: false,
-      });
+      }, palette);
       const cost = `$${event.cost.toFixed(4)}`;
       const duration = `${(event.duration_ms / 1000).toFixed(1)}s`;
       return {
@@ -153,7 +183,7 @@ export function renderSandboxEvent(
       const flushed = flushActiveStream({
         ...state,
         busy: false,
-      });
+      }, palette);
       return {
         state: flushed.state,
         output: [...flushed.output, `${palette.red(`  ✗ ${event.message}`)}\n`],
@@ -170,7 +200,7 @@ export function renderSandboxEvent(
       };
 
     case "skills": {
-      const flushed = flushActiveStream(state);
+      const flushed = flushActiveStream(state, palette);
       const output = [...flushed.output, `${palette.dim("  Skills:")}\n`];
       for (const [name, description] of Object.entries(event.skills)) {
         const short = description.length > 60 ? `${description.slice(0, 60)}…` : description;
@@ -183,7 +213,7 @@ export function renderSandboxEvent(
     }
 
     case "system": {
-      const flushed = flushActiveStream(state);
+      const flushed = flushActiveStream(state, palette);
       if (event.subtype === "status" && event.detail?.status === "compacting") {
         return {
           state: flushed.state,
@@ -210,7 +240,7 @@ export function renderSandboxEvent(
     case "agent_exited":
     case "history":
     case "ready":
-      return flushActiveStream(state);
+      return flushActiveStream(state, palette);
 
     default:
       return { state, output: [] };

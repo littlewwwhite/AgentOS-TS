@@ -8,6 +8,9 @@ const plainPalette = {
   cyan: (text: string) => text,
   yellow: (text: string) => text,
   red: (text: string) => text,
+  bold: (text: string) => text,
+  magenta: (text: string) => text,
+  green: (text: string) => text,
 };
 
 describe("renderSandboxEvent", () => {
@@ -22,7 +25,7 @@ describe("renderSandboxEvent", () => {
       plainPalette,
     );
 
-    expect(rendered.output.join("")).toContain("[screenwriter thinking]\n");
+    expect(rendered.output.join("")).toContain("[screenwriter] thinking");
     expect(rendered.output.join("")).toContain("Need to inspect the uploaded novel first.");
   });
 
@@ -64,5 +67,50 @@ describe("renderSandboxEvent", () => {
     expect(afterToolUse.output.join("")).toContain("Read(");
     expect(afterPreLog.output).toEqual([]);
     expect(afterPostLog.output).toEqual([]);
+  });
+
+  it("uses formatAgentLabel for text events", () => {
+    const rendered = renderSandboxEvent(
+      createInitialReplState(),
+      { type: "text", text: "hello\n", agent: "screenwriter" },
+      plainPalette,
+    );
+    expect(rendered.output.join("")).toContain("[screenwriter]");
+  });
+
+  it("uses [main] label when no agent", () => {
+    const rendered = renderSandboxEvent(
+      createInitialReplState(),
+      { type: "text", text: "hello\n" },
+      plainPalette,
+    );
+    expect(rendered.output.join("")).toContain("[main]");
+  });
+
+  it("uses formatAgentLabel for tool_use events", () => {
+    const rendered = renderSandboxEvent(
+      createInitialReplState(),
+      { type: "tool_use", tool: "Bash", id: "t1", input: { command: "ls" }, agent: "editor" },
+      plainPalette,
+    );
+    expect(rendered.output.join("")).toContain("[editor]");
+  });
+
+  it("applies markdown formatting to text stream", () => {
+    const tagPalette = {
+      dim: (s: string) => s,
+      cyan: (s: string) => `<cyan>${s}</cyan>`,
+      yellow: (s: string) => s,
+      red: (s: string) => s,
+      bold: (s: string) => `<bold>${s}</bold>`,
+      magenta: (s: string) => `<magenta>${s}</magenta>`,
+      green: (s: string) => s,
+    };
+    const rendered = renderSandboxEvent(
+      createInitialReplState(),
+      { type: "text", text: "## Title\n", agent: "writer" },
+      tagPalette,
+    );
+    expect(rendered.output.join("")).toContain("<bold>Title</bold>");
   });
 });

@@ -1,10 +1,12 @@
 import type { SandboxEvent } from "./protocol.js";
+import { createMarkdownState, type MarkdownState } from "./repl-markdown.js";
 
 export interface ReplState {
   activeAgent: string | null;
   busy: boolean;
   textStarted: boolean;
   activeStream: "text" | "thinking" | null;
+  markdownState: MarkdownState;
 }
 
 export function createInitialReplState(): ReplState {
@@ -13,6 +15,7 @@ export function createInitialReplState(): ReplState {
     busy: false,
     textStarted: false,
     activeStream: null,
+    markdownState: createMarkdownState(),
   };
 }
 
