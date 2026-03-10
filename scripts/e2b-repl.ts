@@ -18,6 +18,7 @@ import { parseE2BReplCliArgs, shouldRestoreWorkspaceOnStart } from "../src/e2b-r
 import { renderSandboxEvent } from "../src/e2b-repl-render.js";
 import { applyReplEvent, createInitialReplState } from "../src/e2b-repl-state.js";
 import { TerminalSpinner } from "../src/repl-spinner.js";
+import { getDefaultUploadRemotePath } from "../src/upload-paths.js";
 import { loadDotEnv } from "../src/env.js";
 import type { SandboxEvent } from "../src/protocol.js";
 import { matchEnterAgent } from "../src/protocol.js";
@@ -98,6 +99,12 @@ const spinner = new TerminalSpinner(process.stdout, dim);
 // ---------- Event handler ----------
 
 function handleEvent(event: SandboxEvent): void {
+  // Stop spinner BEFORE writing text/thinking output to prevent the spinner's
+  // render() from overwriting the first chunk of content via guardedWrite().
+  if (event.type === "text" || event.type === "thinking" || event.type === "result" || event.type === "error") {
+    spinner.stop();
+  }
+
   const rendered = renderSandboxEvent(replState, event, {
     dim,
     cyan,
@@ -134,18 +141,8 @@ function handleEvent(event: SandboxEvent): void {
       break;
     }
 
-    case "text":
-    case "thinking":
-      spinner.stop();
-      break;
-
     case "tool_use":
       spinner.start(`⏻ ${event.tool}`);
-      break;
-
-    case "result":
-    case "error":
-      spinner.stop();
       break;
 
     case "tool_log":
@@ -446,7 +443,7 @@ async function main() {
           if (!stat) {
             console.log(red(`  ✗ ${localPath} does not exist`));
           } else if (stat.isDirectory()) {
-            const remotePath = parts[2] ?? "/home/user/app/workspace/data";
+            const remotePath = parts[2] ?? getDefaultUploadRemotePath(localPath, true);
             try {
               const uploaded = await client.syncDir(localPath, remotePath);
               console.log(green(`  ✓ Synced ${uploaded.length} files → ${remotePath}`));
@@ -457,7 +454,7 @@ async function main() {
               console.log(red(`  ✗ ${err instanceof Error ? err.message : String(err)}`));
             }
           } else {
-            const remotePath = parts[2] ?? `/home/user/app/workspace/${path.basename(localPath)}`;
+            const remotePath = parts[2] ?? getDefaultUploadRemotePath(localPath, false);
             try {
               const content = fs.readFileSync(localPath, "utf-8");
               await client.writeFile(remotePath, content);
