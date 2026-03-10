@@ -1,5 +1,5 @@
 // input: E2B SDK, protocol types
-// output: SandboxClient class for managing E2B sandbox lifecycle + communication
+// output: SandboxClient class for managing E2B sandbox lifecycle + communication + file sync
 // pos: Host-side E2B client — bridges JSON Lines protocol over E2B stdin/stdout
 
 import { Sandbox } from "e2b";
@@ -71,13 +71,28 @@ export class SandboxClient {
     this.startHeartbeat();
   }
 
-  /** Connect to an already-running sandbox by ID */
+  /** Connect to an already-running sandbox by ID and start agent process */
   async connect(sandboxId: string): Promise<void> {
     this._sandbox = await Sandbox.connect(sandboxId, {
       apiKey: this.opts.apiKey,
     });
+    await this.startProcess();
+    this.startHeartbeat();
   }
 
+  /** Disconnect from sandbox without destroying it — sandbox stays alive for reconnect */
+  async disconnect(): Promise<void> {
+    this.destroyed = true;
+    this.stopHeartbeat();
+    if (this.handle) {
+      await this.handle.kill().catch(() => {});
+      this.handle = null;
+    }
+    this._sandbox = null;
+    this.lineBuffer = "";
+  }
+
+  /** Destroy the sandbox entirely — cannot be reconnected */
   async destroy(): Promise<void> {
     this.destroyed = true;
     this.stopHeartbeat();
@@ -127,9 +142,105 @@ export class SandboxClient {
     return this._sandbox.files.list(dirPath);
   }
 
-  async readFile(filePath: string) {
+  async readFile(filePath: string): Promise<string>;
+  async readFile(filePath: string, opts: { format: "text" }): Promise<string>;
+  async readFile(filePath: string, opts: { format: "bytes" }): Promise<Uint8Array>;
+  async readFile(
+    filePath: string,
+    opts?: { format?: "text" | "bytes" },
+  ): Promise<string | Uint8Array> {
     if (!this._sandbox) throw new Error("Sandbox not started");
+    if (opts?.format === "bytes") {
+      return this._sandbox.files.read(filePath, { format: "bytes" });
+    }
     return this._sandbox.files.read(filePath);
+  }
+
+  async downloadUrl(filePath: string) {
+    if (!this._sandbox) throw new Error("Sandbox not started");
+    return this._sandbox.downloadUrl(filePath);
+  }
+
+  async writeFile(filePath: string, content: string) {
+    if (!this._sandbox) throw new Error("Sandbox not started");
+    return this._sandbox.files.write(filePath, content);
+  }
+
+  /**
+   * Recursively sync a local directory into the sandbox.
+   * Walks localDir, uploads every file preserving relative paths.
+   * Binary files are skipped (only text content supported by E2B files.write).
+   */
+  async syncDir(localDir: string, sandboxDir: string): Promise<string[]> {
+    if (!this._sandbox) throw new Error("Sandbox not started");
+    const fs = await import("node:fs/promises");
+    const nodePath = await import("node:path");
+
+    const uploaded: string[] = [];
+
+    const walk = async (dir: string): Promise<void> => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const localPath = nodePath.join(dir, entry.name);
+        const rel = nodePath.relative(localDir, localPath);
+        const remotePath = `${sandboxDir}/${rel}`;
+
+        if (entry.isDirectory()) {
+          await walk(localPath);
+        } else if (entry.isFile()) {
+          const content = await fs.readFile(localPath, "utf-8");
+          await this._sandbox!.files.write(remotePath, content);
+          uploaded.push(rel);
+        }
+      }
+    };
+
+    await walk(localDir);
+    return uploaded;
+  }
+
+  /**
+   * Recursively pull files from sandbox to local directory.
+   * Mirrors sandbox directory structure locally. Only text files are pulled.
+   */
+  async pullDir(sandboxDir: string, localDir: string): Promise<string[]> {
+    if (!this._sandbox) throw new Error("Sandbox not started");
+    const fs = await import("node:fs/promises");
+    const nodePath = await import("node:path");
+
+    const downloaded: string[] = [];
+
+    const walk = async (remotePath: string, localPath: string): Promise<void> => {
+      let entries;
+      try {
+        entries = await this._sandbox!.files.list(remotePath);
+      } catch {
+        return; // Directory doesn't exist in sandbox
+      }
+
+      await fs.mkdir(localPath, { recursive: true });
+
+      for (const entry of entries) {
+        const remoteFilePath = `${remotePath}/${entry.name}`;
+        const localFilePath = nodePath.join(localPath, entry.name);
+
+        if (entry.type === "dir") {
+          await walk(remoteFilePath, localFilePath);
+        } else {
+          try {
+            const content = await this._sandbox!.files.read(remoteFilePath);
+            await fs.writeFile(localFilePath, content);
+            const rel = nodePath.relative(localDir, localFilePath);
+            downloaded.push(rel);
+          } catch {
+            // Skip unreadable files (binary, permissions, etc.)
+          }
+        }
+      }
+    };
+
+    await walk(sandboxDir, localDir);
+    return downloaded;
   }
 
   // ---------- Getters ----------
