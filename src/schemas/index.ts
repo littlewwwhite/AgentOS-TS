@@ -14,14 +14,16 @@ export { ScriptSchema } from "./script.js";
 export type {
   Action,
   Actor,
-  ActorState,
-  CastMember,
   Episode,
+  Environment,
   Location,
-  LocationState,
   Prop,
   Scene,
+  SceneActorRef,
+  SceneLocationRef,
+  ScenePropRef,
   Script,
+  State,
 } from "./script.js";
 
 export { AssetManifestSchema } from "./assets.js";

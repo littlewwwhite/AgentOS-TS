@@ -1,47 +1,74 @@
 // input: Any content source (novel, comic, game, original)
-// output: Structured script data with Actor/ActorState tree (JSON-serializable pipeline IR)
+// output: Structured script data with unified State model (JSON-serializable pipeline IR)
 // pos: Universal data contract between all Stage1 variants and all downstream stages
 
 import { z } from "zod";
 
-export const ActorStateSchema = z.object({
-  id: z.string(), // "st_001" (globally unique)
-  name: z.string(), // "casual", "work", "wedding"
-});
-export type ActorState = z.infer<typeof ActorStateSchema>;
+// --- Unified state (shared by actors, locations, props) ---
 
-export const LocationStateSchema = z.object({
-  id: z.string(), // "lst_001" (globally unique)
-  name: z.string(), // "ruins", "activated", "intact"
+export const StateSchema = z.object({
+  state_id: z.string(), // "st_001" (globally unique across all entity types)
+  state_name: z.string(), // "casual", "ruins", "broken"
 });
-export type LocationState = z.infer<typeof LocationStateSchema>;
+export type State = z.infer<typeof StateSchema>;
+
+// --- Top-level entity registries ---
 
 export const ActorSchema = z.object({
-  id: z.string(), // "act_001"
-  name: z.string(),
-  states: z.array(ActorStateSchema).default([]),
+  actor_id: z.string(), // "act_001"
+  actor_name: z.string(),
+  states: z.array(StateSchema).default([]),
 });
 export type Actor = z.infer<typeof ActorSchema>;
 
 export const LocationSchema = z.object({
-  id: z.string(), // "loc_001"
-  name: z.string(),
-  states: z.array(LocationStateSchema).default([]),
+  location_id: z.string(), // "loc_001"
+  location_name: z.string(),
+  states: z.array(StateSchema).default([]),
 });
 export type Location = z.infer<typeof LocationSchema>;
 
 export const PropSchema = z.object({
-  id: z.string(), // "prp_001"
-  name: z.string(),
-  description: z.string().nullish(),
+  prop_id: z.string(), // "prp_001"
+  prop_name: z.string(),
+  states: z.array(StateSchema).default([]),
 });
 export type Prop = z.infer<typeof PropSchema>;
 
+// --- Scene-level references (entity + optional state) ---
+
+export const SceneActorRefSchema = z.object({
+  actor_id: z.string(),
+  state_id: z.string().nullish(),
+});
+export type SceneActorRef = z.infer<typeof SceneActorRefSchema>;
+
+export const SceneLocationRefSchema = z.object({
+  location_id: z.string(),
+  state_id: z.string().nullish(),
+});
+export type SceneLocationRef = z.infer<typeof SceneLocationRefSchema>;
+
+export const ScenePropRefSchema = z.object({
+  prop_id: z.string(),
+  state_id: z.string().nullish(),
+});
+export type ScenePropRef = z.infer<typeof ScenePropRefSchema>;
+
+// --- Environment ---
+
+export const EnvironmentSchema = z.object({
+  space: z.string(), // "interior" | "exterior"
+  time: z.string(), // "day" | "night" | "dawn" | "dusk" | "noon"
+});
+export type Environment = z.infer<typeof EnvironmentSchema>;
+
+// --- Action (no sequence — array order is the order) ---
+
 export const ActionSchema = z.object({
-  sequence: z.number().int(), // order within scene, 1-indexed
-  actor_id: z.string().nullish(), // null for scene-level (sfx, establishing)
-  type: z.string(), // dialogue | action | voiceover | inner_thought | narration | sfx
+  type: z.string(), // dialogue | action | inner_thought | sfx
   content: z.string(),
+  actor_id: z.string().nullish(), // null for scene-level (sfx, establishing)
   emotion: z.string().nullish(),
   direction: z.string().nullish(),
   beat: z.string().nullish(),
@@ -49,45 +76,36 @@ export const ActionSchema = z.object({
 });
 export type Action = z.infer<typeof ActionSchema>;
 
-export const CastMemberSchema = z.object({
-  actor_id: z.string(), // "act_001"
-  state_id: z.string().nullish(), // null = default state
-});
-export type CastMember = z.infer<typeof CastMemberSchema>;
+// --- Scene ---
 
 export const SceneSchema = z.object({
-  id: z.string(), // "scn_001"
-  sequence: z.number().int(),
-  location: z.string(),
-  location_id: z.string().nullish(),
-  location_state_id: z.string().nullish(),
-  time_of_day: z.string().nullish(),
-  summary: z.string().default(""),
-  cast: z.array(CastMemberSchema).default([]),
-  prop_ids: z.array(z.string()).default([]),
+  scene_id: z.string(), // "ep001_scn_001" (episode-prefixed, globally unique)
+  environment: EnvironmentSchema,
+  locations: z.array(SceneLocationRefSchema).default([]),
+  actors: z.array(SceneActorRefSchema).default([]),
+  props: z.array(ScenePropRefSchema).default([]),
   actions: z.array(ActionSchema).default([]),
-  environment: z.string().nullish(),
-  metadata: z.record(z.unknown()).default({}),
 });
 export type Scene = z.infer<typeof SceneSchema>;
 
+// --- Episode ---
+
 export const EpisodeSchema = z.object({
-  episode: z.number().int(), // 1-indexed
+  episode_id: z.string(), // "ep_001"
   title: z.string().nullish(),
-  summary: z.string().nullish(),
   scenes: z.array(SceneSchema),
 });
 export type Episode = z.infer<typeof EpisodeSchema>;
 
+// --- Script (top-level) ---
+
 export const ScriptSchema = z.object({
   title: z.string(),
-  description: z.string().nullish(),
   worldview: z.string().nullish(),
   style: z.string().nullish(),
   actors: z.array(ActorSchema),
   locations: z.array(LocationSchema).default([]),
   props: z.array(PropSchema).default([]),
   episodes: z.array(EpisodeSchema),
-  metadata: z.record(z.unknown()).default({}),
 });
 export type Script = z.infer<typeof ScriptSchema>;
