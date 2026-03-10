@@ -1,5 +1,5 @@
 name: video-producer
 description: "视频制作：负责视频生成与质量审核，支持图生视频、文生视频等操作，自动识别不合格视频并触发重新生成。"
-skills:
-  - video-create
-  - video-review
+mcpServers:
+  - storage
+  - video

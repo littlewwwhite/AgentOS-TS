@@ -1,5 +1,5 @@
 name: screenwriter
 description: "编剧：负责剧本创作，支持原创和小说改编两种模式，通过多阶段流程产出可指导 AI 生成画面的结构化剧本。"
-skills:
-  - script-adapt
-  - script-writer
+mcpServers:
+  - storage
+  - script

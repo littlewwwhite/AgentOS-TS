@@ -1,4 +1,3 @@
 name: skill-creator
 description: "Guide for creating effective skills that extend agent capabilities with specialized knowledge, workflows, or tool integrations."
-skills:
-  - skill-creator
+mcpServers: []

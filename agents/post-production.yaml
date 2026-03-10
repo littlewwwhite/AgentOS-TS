@@ -1,4 +1,5 @@
 name: post-production
 description: "后期制作：负责配乐与音效，支持智能音乐风格推荐、向量语义匹配选曲、音效生成与合成输出。"
-skills:
-  - music-matcher
+mcpServers:
+  - storage
+  - audio
