@@ -112,6 +112,8 @@ export class SandboxOrchestrator {
       string,
       { description: string; mcpServers?: ToolServerName[]; configuredSkills?: string[] }
     >;
+    // Don't leak non-standard agents map to SDK — only used for orchestrator routing
+    delete (this.baseOptions as Record<string, unknown>).agents;
 
     // Restore persisted session IDs
     this.mainSession = this.createSession("main", this.baseOptions, []);
@@ -143,7 +145,6 @@ export class SandboxOrchestrator {
         this.config.agentsDir,
         this.config.projectPath,
         name,
-        undefined,
         {
           name,
           description: this.agentDefinitions[name].description,

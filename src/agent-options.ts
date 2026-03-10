@@ -1,5 +1,5 @@
 // input: Base SDK options, agent directory, project path, agent name
-// output: SDK-compatible options with per-agent cwd + workspace snapshot (orchestrator MCP stripped)
+// output: SDK-compatible options with per-agent cwd + workspace snapshot (no MCP — freshMcpServers() provides per-query)
 // pos: Shared factory — single source of truth for agent session options
 
 import path from "node:path";
@@ -11,28 +11,24 @@ export async function buildAgentOptions(
   agentsDir: string,
   projectPath: string,
   agentName: string,
-  extraMcpServers?: Record<string, unknown>,
   manifest?: WorkerManifest,
 ): Promise<Record<string, unknown>> {
   const {
     systemPrompt: _orchestratorPrompt,
-    mcpServers: rawMcp,
+    mcpServers: _mcpServers,        // stripped: freshMcpServers() provides per-query
     agents: _agents,
     agent: _agent,
     allowedTools: _allowedTools,
     disallowedTools: _disallowedTools,
     permissionMode: _permissionMode,
+    resume: _resume,                // stripped: orchestrator session, not agent's
+    continue: _continue,            // stripped: orchestrator flag, not agent's
+    maxTurns: _maxTurns,            // stripped: agents get their own limit
     // Hooks are intentionally KEPT (passed through via ...rest).
     // Sub-agents are the ones executing domain tools — schema validation
     // and tool logging must apply to their tool calls, not just the orchestrator's.
     ...rest
   } = baseOptions;
-  // Strip orchestrator's `switch` server so agents never inherit `switch_to_agent`
-  const { switch: _switchServer, ...baseMcp } = (rawMcp as Record<string, unknown>) ?? {};
-  const mcpServers = {
-    ...baseMcp,
-    ...extraMcpServers,
-  };
 
   // Snapshot workspace state so the agent knows what artifacts exist
   const workspaceDesc = await describeWorkspace(projectPath);
@@ -55,7 +51,12 @@ export async function buildAgentOptions(
     cwd: spec.cwd ?? path.resolve(agentsDir, agentName),
     settingSources: spec.settingSources,
     permissionMode: spec.permissionMode,
-    mcpServers,
+    // mcpServers intentionally omitted — processQuery() calls freshMcpServers()
+    // which creates properly-scoped MCP instances before every query().
+    ...(spec.permissionMode === "bypassPermissions" && {
+      allowDangerouslySkipPermissions: true,
+    }),
+    maxTurns: 200,
     systemPrompt: spec.systemPrompt,
     // Enable Claude Code's full tool set including skill discovery from .claude/skills/.
     // Without this, systemPrompt preset loads the prompt text (which mentions the Skill tool)

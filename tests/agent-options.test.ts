@@ -26,6 +26,9 @@ const BASE_OPTIONS = {
   betas: ["context-1m-2025-08-07"],
   permissionMode: "default",
   disallowedTools: ["Bash", "Write"],
+  resume: "orch-session-123",
+  continue: true,
+  maxTurns: 30,
   hooks: {
     PreToolUse: [{ hooks: [] }],
     PostToolUse: [{ hooks: [] }],
@@ -52,28 +55,6 @@ describe("buildAgentOptions", () => {
     expect(prompt.append).toContain("## Workspace");
   });
 
-  it("strips master switch server from MCP servers", async () => {
-    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
-    const mcp = opts.mcpServers as Record<string, unknown>;
-    expect(mcp.switch).toBeUndefined();
-    expect(mcp.storage).toBeDefined();
-    expect(mcp.image).toBeDefined();
-  });
-
-  it("injects extra MCP servers (agent switch server)", async () => {
-    const extraMcp = { switch: { name: "agent-switch" } };
-    const opts = await buildAgentOptions(
-      BASE_OPTIONS,
-      "/agents",
-      "/workspace",
-      "screenwriter",
-      extraMcp,
-    );
-    const mcp = opts.mcpServers as Record<string, unknown>;
-    expect(mcp.switch).toEqual({ name: "agent-switch" });
-    expect(mcp.storage).toBeDefined();
-  });
-
   it("sets cwd to agent directory", async () => {
     const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
     expect(opts.cwd).toBe(path.resolve("/agents", "screenwriter"));
@@ -94,6 +75,7 @@ describe("buildAgentOptions", () => {
     expect(opts.model).toBe("claude-sonnet-4-6");
     expect(opts.maxBudgetUsd).toBe(10.0);
     expect(opts.betas).toEqual(["context-1m-2025-08-07"]);
+    expect(opts.maxTurns).toBe(200); // agent's own limit, not orchestrator's 30
   });
 
   it("agent prompt keeps the conversation attached after completion", async () => {
@@ -116,7 +98,19 @@ describe("buildAgentOptions", () => {
     expect(opts.allowedTools).toBeUndefined();
     expect(opts.disallowedTools).toBeUndefined();
     expect(opts.permissionMode).toBe("bypassPermissions");
+    expect(opts.allowDangerouslySkipPermissions).toBe(true);
     // Hooks are kept — sub-agents need schema validation and tool logging
     expect(opts.hooks).toBeDefined();
+  });
+
+  it("does not leak orchestrator resume/continue to sub-agent", async () => {
+    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
+    expect(opts.resume).toBeUndefined();
+    expect(opts.continue).toBeUndefined();
+  });
+
+  it("omits mcpServers (freshMcpServers provides them per-query)", async () => {
+    const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
+    expect(opts.mcpServers).toBeUndefined();
   });
 });
