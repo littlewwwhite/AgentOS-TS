@@ -16,3 +16,4 @@ data/
 doc/
 web/.next/
 web/out/
+.worktrees/
