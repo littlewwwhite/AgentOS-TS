@@ -157,7 +157,7 @@ export class SandboxOrchestrator {
       if (pendingId) {
         session.sessionId = pendingId;
         session.options.resume = pendingId;
-        session.options.continueConversation = false;
+        session.options.continue = false;
         this.pendingSessionIds.delete(name);
       }
       this.agents.set(name, session);
@@ -378,7 +378,7 @@ export class SandboxOrchestrator {
         // returns, producing output that looks like a successful switch
         // but is actually the same session hallucinating the other agent.
         if (this.signal.switchRequest || this.signal.returnRequest) {
-          (q as unknown as { abort?: () => void }).abort?.();
+          q.close();
           break;
         }
 
@@ -478,7 +478,7 @@ export class SandboxOrchestrator {
           if (r.session_id) {
             session.sessionId = r.session_id;
             session.options.resume = r.session_id;
-            session.options.continueConversation = false;
+            session.options.continue = false;
           }
           pendingResult = {
             type: "result",
@@ -490,11 +490,13 @@ export class SandboxOrchestrator {
             request_id: requestId,
           };
         } else if (msg.type === "assistant") {
-          const m = msg as unknown as { error?: { message?: string } };
-          if (m.error?.message) {
+          // SDKAssistantMessage.error is a string enum (e.g. 'rate_limit', 'billing_error'),
+          // not an object. Surface it so the frontend can react.
+          const m = msg as unknown as { error?: string };
+          if (m.error) {
             emit({
               type: "error",
-              message: m.error.message,
+              message: `[assistant] ${m.error}`,
               agent: agentField,
               request_id: requestId,
             });
@@ -605,7 +607,7 @@ export class SandboxOrchestrator {
       if (data.main && this.mainSession) {
         this.mainSession.sessionId = data.main;
         this.mainSession.options.resume = data.main;
-        this.mainSession.options.continueConversation = false;
+        this.mainSession.options.continue = false;
       }
       // Store agent session IDs for lazy application — sessions are created
       // on first use via getOrCreateAgent(), which will pick up these IDs.
