@@ -8,7 +8,10 @@
       "Grep"
     ],
     "deny": [
-      "Bash(*)",
+      "Bash(rm -rf *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(git *)",
       "Agent(*)"
     ]
   }

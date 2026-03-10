@@ -11,7 +11,10 @@
       "mcp__script__parse_script"
     ],
     "deny": [
-      "Bash(*)",
+      "Bash(rm -rf *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(git *)",
       "Write(../*)",
       "Write(assets/**)",
       "Agent(*)"
