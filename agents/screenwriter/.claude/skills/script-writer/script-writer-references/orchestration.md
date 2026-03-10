@@ -1,14 +1,40 @@
-# SWS 编排逻辑
+# SWS / NTSV2 编排逻辑
 
 ## 工作区管理
 
 ### 工作区结构
+
+#### SWS 工作区（原创模式）
 
 在项目根目录下创建 `sws-workspace/` 工作区：
 
 ```
 {project_root}/sws-workspace/
 ├── s1-ideation.md             ← S1 交付物（创意概念）
+├── style-guide.md             ← 风格指南（S1 确认后生成）
+├── s2-setting.md              ← S2 交付物（基础设定）
+├── s3-outline.md              ← S3 交付物（故事大纲）
+├── s4-character.md            ← S4 交付物（角色开发）
+├── anchor.md                  ← 锚点文档（S4 完成后组装）
+├── s5-tracking.md             ← S5 交付物（进度追踪）
+├── s6-episode-outline.md      ← S6 交付物（节拍表+场景清单）
+├── s7-scripts.md              ← S7 交付物（完整剧本）
+├── s8-polished.md             ← S8 交付物（终版剧本）
+├── memory-banks/              ← 记忆库存储目录（每项目一文件）
+│   └── {项目名}_{测试人}.md
+└── checkpoint.md              ← 流水线进度检查点
+```
+
+#### NTSV2 工作区（改编扩写模式）
+
+在项目根目录下创建 `ntsv2-workspace/` 工作区：
+
+```
+{project_root}/ntsv2-workspace/
+├── novel.txt                  ← 原文小说
+├── draft/                     ← 中间产物
+│   └── source-structure.json  ← 原文结构检测结果（S1 第零步生成）
+├── s1-analysis.md             ← S1 交付物（原文分析与灵感提取）
 ├── style-guide.md             ← 风格指南（S1 确认后生成）
 ├── s2-setting.md              ← S2 交付物（基础设定）
 ├── s3-outline.md              ← S3 交付物（故事大纲）
@@ -38,15 +64,28 @@
 
 当用户清理上下文（`/clear`）后继续时：
 
+#### SWS 模式
+
 1. 读取 `checkpoint.md` 恢复流水线状态
 2. 检查各阶段文件是否存在
 3. 读取 `style-guide.md` 恢复风格约束
 4. 读取 `sws-workspace/memory-banks/` 中对应项目的记忆库文件，恢复修改编号计数器和历史记录
 5. 提示用户进入下一阶段
 
+#### NTSV2 模式
+
+1. 读取 `checkpoint.md` 恢复流水线状态
+2. 检查各阶段文件是否存在
+3. 检查 `draft/source-structure.json` → 存在则原文结构检测已完成，读取分段策略（`source_mode`）供后续阶段使用
+4. 读取 `style-guide.md` 恢复风格约束
+5. 读取 `ntsv2-workspace/memory-banks/` 中对应项目的记忆库文件，恢复修改编号计数器和历史记录
+6. 提示用户进入下一阶段
+
 ---
 
 ## 启动流程
+
+### SWS 模式（原创）
 
 收到创意输入时：
 
@@ -54,6 +93,16 @@
 2. 展示流水线架构概览
 3. 读取 S1 reference 文件，开始创意构思
 4. 执行六维度扫描 → 缺失维度引导补全 → 核心元素分析 → 第一推动力判定 → 风格匹配
+
+### NTSV2 模式（改编扩写）
+
+收到小说原文或改编指令时：
+
+1. 创建 `ntsv2-workspace/` 工作区（含 `draft/` 子目录），同时在 `ntsv2-workspace/memory-banks/` 目录下基于 `memory-bank-template.md` 初始化记忆库文件
+2. 将原文保存至 `ntsv2-workspace/novel.txt`
+3. 展示流水线架构概览
+4. 调用 `mcp__source__detect_source_structure(project_path)` 执行原文结构检测，生成 `draft/source-structure.json`
+5. 读取 S1 reference 文件（`s1-analysis-extraction.md`），开始原文分析与灵感提取
 
 ## 阶段流转
 
