@@ -4,6 +4,10 @@
 
 import path from "node:path";
 import { Template, defaultBuildLogger } from "e2b";
+import {
+  computeTemplateInputFingerprint,
+  writeTemplateBuildState,
+} from "../src/e2b-template-state.js";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const APP = "/home/user/app";
@@ -20,10 +24,16 @@ const template = Template({ fileContextPath: ROOT })
   .makeDir(`${APP}/workspace`);
 
 async function main() {
+  const fingerprint = await computeTemplateInputFingerprint(ROOT);
   const info = await Template.build(template, "agentos-sandbox", {
     cpuCount: 2,
     memoryMB: 2048,
     onBuildLogs: defaultBuildLogger(),
+  });
+  await writeTemplateBuildState(ROOT, {
+    templateId: info.templateId,
+    fingerprint,
+    builtAt: new Date().toISOString(),
   });
   console.log(`Template built: ${info.name} (${info.templateId})`);
 }

@@ -5,9 +5,15 @@
 // Usage: bun scripts/e2b-repl.ts [--sandbox <id>] [--workspace <path>] [--restore-workspace]
 
 import fs from "node:fs";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import readline from "node:readline";
 import { SandboxClient } from "../src/e2b-client.js";
+import {
+  computeTemplateInputFingerprint,
+  decideTemplateBuildOnStart,
+  readTemplateBuildState,
+} from "../src/e2b-template-state.js";
 import { parseE2BReplCliArgs, shouldRestoreWorkspaceOnStart } from "../src/e2b-repl-cli.js";
 import { renderSandboxEvent } from "../src/e2b-repl-render.js";
 import { applyReplEvent, createInitialReplState } from "../src/e2b-repl-state.js";
@@ -59,6 +65,7 @@ const SLASH_COMMANDS = [
 const EXIT_RE = /^(?:退出|返回|exit|back|go\s+back)$/i;
 
 const SANDBOX_WORKSPACE = "/home/user/app/workspace";
+const PROJECT_ROOT = path.resolve(import.meta.dir, "..");
 const LOCAL_WORKSPACE = localWorkspaceOverride
   ? path.resolve(localWorkspaceOverride)
   : path.resolve(import.meta.dir, "../workspace");
@@ -126,6 +133,51 @@ function completer(line: string): [string[], string] {
   return [[], line];
 }
 
+function runLocalCommand(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, {
+      cwd: PROJECT_ROOT,
+      env: process.env,
+      stdio: "inherit",
+    });
+
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      if (signal) {
+        reject(new Error(`Command exited from signal ${signal}`));
+        return;
+      }
+      reject(new Error(`Command exited with code ${code ?? "unknown"}`));
+    });
+  });
+}
+
+async function ensureTemplateIsCurrent(connectSandboxId: string | null): Promise<void> {
+  const currentFingerprint = await computeTemplateInputFingerprint(PROJECT_ROOT);
+  const savedState = await readTemplateBuildState(PROJECT_ROOT);
+  const decision = decideTemplateBuildOnStart({
+    connectSandboxId,
+    currentFingerprint,
+    savedFingerprint: savedState?.fingerprint ?? null,
+  });
+
+  if (!decision.shouldBuild) {
+    return;
+  }
+
+  if (decision.reason === "missing_state") {
+    console.log(dim("  No local E2B template build state found."));
+  } else {
+    console.log(dim("  Local E2B template inputs changed since the last build."));
+  }
+  console.log(dim("  Rebuilding E2B template..."));
+  await runLocalCommand(["run", "build:e2b"]);
+}
+
 // ---------- Main ----------
 
 async function main() {
@@ -155,10 +207,12 @@ async function main() {
       const msg = err instanceof Error ? err.message : String(err);
       console.log(yellow(`  ⚠ Could not reconnect: ${msg}`));
       console.log(dim("  Creating new sandbox..."));
+      await ensureTemplateIsCurrent(null);
       await client.start();
     }
   } else {
     console.log(dim("  Creating sandbox..."));
+    await ensureTemplateIsCurrent(null);
     await client.start();
   }
   console.log(dim(`  Sandbox: ${client.sandboxId}`));
