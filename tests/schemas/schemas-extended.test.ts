@@ -14,15 +14,16 @@ import {
 } from "../../src/schemas/index.js";
 
 describe("schemaRegistry", () => {
-  it("has all 6 expected entries", () => {
+  it("has all expected entries including source-structure", () => {
     const keys = Object.keys(schemaRegistry);
+    expect(keys).toContain("draft/source-structure.json");
     expect(keys).toContain("design.json");
     expect(keys).toContain("catalog.json");
     expect(keys).toContain("script.json");
     expect(keys).toContain("assets/manifest.json");
     expect(keys).toContain("production/plan.json");
     expect(keys).toContain("output/timeline.json");
-    expect(keys.length).toBe(6);
+    expect(keys.length).toBe(7);
   });
 });
 
