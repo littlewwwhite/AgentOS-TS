@@ -12,7 +12,17 @@ export async function buildAgentOptions(
   agentName: string,
   extraMcpServers?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const { systemPrompt: _orchestratorPrompt, mcpServers: rawMcp, agents: _agents, agent: _agent, ...rest } = baseOptions;
+  const {
+    systemPrompt: _orchestratorPrompt,
+    mcpServers: rawMcp,
+    agents: _agents,
+    agent: _agent,
+    allowedTools: _allowedTools,
+    disallowedTools: _disallowedTools,
+    permissionMode: _permissionMode,
+    hooks: _hooks,
+    ...rest
+  } = baseOptions;
   // Strip orchestrator's `switch` server so agents never inherit `switch_to_agent`
   const { switch: _switchServer, ...baseMcp } = (rawMcp as Record<string, unknown>) ?? {};
   const mcpServers = {

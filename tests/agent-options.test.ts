@@ -23,6 +23,12 @@ const BASE_OPTIONS = {
   agents: { screenwriter: { description: "editor" } },
   maxBudgetUsd: 10.0,
   betas: ["context-1m-2025-08-07"],
+  permissionMode: "default",
+  disallowedTools: ["Bash", "Write"],
+  hooks: {
+    PreToolUse: [{ hooks: [] }],
+    PostToolUse: [{ hooks: [] }],
+  },
 };
 
 describe("buildAgentOptions", () => {
@@ -140,5 +146,19 @@ describe("buildAgentOptions", () => {
     );
     // agent field must NOT be passed to SDK — it requires a matching agents map entry
     expect(opts.agent).toBeUndefined();
+  });
+
+  it("does not inherit main permission or hook policy", async () => {
+    const opts = await buildAgentOptions(
+      BASE_OPTIONS,
+      "/agents",
+      "/workspace",
+      "screenwriter",
+    );
+
+    expect(opts.allowedTools).toBeUndefined();
+    expect(opts.disallowedTools).toBeUndefined();
+    expect(opts.permissionMode).toBeUndefined();
+    expect(opts.hooks).toBeUndefined();
   });
 });
