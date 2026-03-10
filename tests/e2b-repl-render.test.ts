@@ -11,6 +11,7 @@ const plainPalette = {
   bold: (text: string) => text,
   magenta: (text: string) => text,
   green: (text: string) => text,
+  badge: (name: string) => `[${name}]`,
 };
 
 describe("renderSandboxEvent", () => {
@@ -69,7 +70,7 @@ describe("renderSandboxEvent", () => {
     expect(afterPostLog.output).toEqual([]);
   });
 
-  it("uses formatAgentLabel for text events", () => {
+  it("uses agent badge for text events", () => {
     const rendered = renderSandboxEvent(
       createInitialReplState(),
       { type: "text", text: "hello\n", agent: "screenwriter" },
@@ -78,7 +79,7 @@ describe("renderSandboxEvent", () => {
     expect(rendered.output.join("")).toContain("[screenwriter]");
   });
 
-  it("uses [main] label when no agent", () => {
+  it("uses [main] badge when no agent", () => {
     const rendered = renderSandboxEvent(
       createInitialReplState(),
       { type: "text", text: "hello\n" },
@@ -87,13 +88,24 @@ describe("renderSandboxEvent", () => {
     expect(rendered.output.join("")).toContain("[main]");
   });
 
-  it("uses formatAgentLabel for tool_use events", () => {
+  it("uses agent badge for tool_use events with bold tool name", () => {
     const rendered = renderSandboxEvent(
       createInitialReplState(),
       { type: "tool_use", tool: "Bash", id: "t1", input: { command: "ls" }, agent: "editor" },
       plainPalette,
     );
-    expect(rendered.output.join("")).toContain("[editor]");
+    const joined = rendered.output.join("");
+    expect(joined).toContain("[editor]");
+    expect(joined).toContain("Bash(ls)");
+  });
+
+  it("formats Skill tool_use with skill name", () => {
+    const rendered = renderSandboxEvent(
+      createInitialReplState(),
+      { type: "tool_use", tool: "Skill", id: "t1", input: { skill: "commit" } },
+      plainPalette,
+    );
+    expect(rendered.output.join("")).toContain("skill:commit");
   });
 
   it("applies markdown formatting to text stream", () => {
@@ -105,6 +117,7 @@ describe("renderSandboxEvent", () => {
       bold: (s: string) => `<bold>${s}</bold>`,
       magenta: (s: string) => `<magenta>${s}</magenta>`,
       green: (s: string) => s,
+      badge: (name: string) => `[${name}]`,
     };
     const rendered = renderSandboxEvent(
       createInitialReplState(),

@@ -45,6 +45,24 @@ const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
+const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
+
+const BADGE_STYLES = [
+  "\x1b[44m\x1b[1;97m",  // blue bg, bold bright white
+  "\x1b[45m\x1b[1;97m",  // magenta bg
+  "\x1b[46m\x1b[1;30m",  // cyan bg, bold black
+  "\x1b[42m\x1b[1;30m",  // green bg
+  "\x1b[43m\x1b[1;30m",  // yellow bg
+];
+
+function badge(name: string): string {
+  if (name === "main") {
+    return `\x1b[100m\x1b[97m ${name} \x1b[0m`;
+  }
+  const hash = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
+  const style = BADGE_STYLES[Math.abs(hash) % BADGE_STYLES.length];
+  return `${style} ${name} \x1b[0m`;
+}
 
 // ---------- Constants ----------
 
@@ -86,8 +104,9 @@ function handleEvent(event: SandboxEvent): void {
     yellow,
     red,
     bold,
-    magenta: (s: string) => `\x1b[35m${s}\x1b[0m`,
+    magenta,
     green,
+    badge,
   });
   replState = rendered.state;
   for (const chunk of rendered.output) {

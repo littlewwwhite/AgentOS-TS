@@ -14,6 +14,7 @@ const palette: ReplPalette = {
   bold: (s) => `<bold>${s}</bold>`,
   magenta: (s) => `<magenta>${s}</magenta>`,
   green: (s) => `<green>${s}</green>`,
+  badge: (s) => `[${s}]`,
 };
 
 describe("transformMarkdownChunk", () => {

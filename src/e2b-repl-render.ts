@@ -10,6 +10,7 @@ export interface ReplPalette {
   bold: (text: string) => string;
   magenta: (text: string) => string;
   green: (text: string) => string;
+  badge: (name: string) => string;
 }
 
 function formatToolLabel(name: string, input?: Record<string, unknown>): string {
@@ -23,6 +24,10 @@ function formatToolLabel(name: string, input?: Record<string, unknown>): string 
       return `Bash(${short})`;
     }
     return "Bash";
+  }
+  if (name === "Skill") {
+    const skillName = typeof input.skill === "string" ? input.skill : null;
+    return skillName ? `skill:${skillName}` : "Skill";
   }
   if (name === "Agent" || name === "Task") {
     const agentName = input.subagent_type ?? input.name ?? input.agent ?? null;
@@ -63,8 +68,8 @@ function formatToolLabel(name: string, input?: Record<string, unknown>): string 
   return name;
 }
 
-function formatAgentLabel(agent: string | undefined | null, palette: ReplPalette): string {
-  return agent ? `[${palette.bold(palette.magenta(agent))}]` : "[main]";
+function formatAgentBadge(agent: string | undefined | null, palette: ReplPalette): string {
+  return palette.badge(agent ?? "main");
 }
 
 function flushActiveStream(state: ReplState, palette?: ReplPalette): { state: ReplState; output: string[] } {
@@ -106,7 +111,7 @@ function appendStreamChunk(
   }
 
   if (!nextState.textStarted || nextState.activeStream !== kind) {
-    output.push(palette.dim(label));
+    output.push(label);
   }
 
   if (kind === "text") {
@@ -141,23 +146,24 @@ export function renderSandboxEvent(
 ): { state: ReplState; output: string[] } {
   switch (event.type) {
     case "text": {
-      const label = `${formatAgentLabel(event.agent, palette)} `;
+      const label = `${formatAgentBadge(event.agent, palette)} `;
       return appendStreamChunk(state, label, event.text, "text", palette);
     }
 
     case "thinking": {
-      const label = `${palette.dim(`${formatAgentLabel(event.agent, palette)} thinking`)}\n`;
+      const badge = formatAgentBadge(event.agent, palette);
+      const label = `${badge} ${palette.dim("thinking")}\n`;
       return appendStreamChunk(state, label, palette.dim(event.text), "thinking", palette);
     }
 
     case "tool_use": {
       const flushed = flushActiveStream(state, palette);
       const indent = event.nested ? "      " : "  ";
-      const label = formatAgentLabel(event.agent, palette) + " ";
+      const badge = formatAgentBadge(event.agent, palette);
       const toolLabel = formatToolLabel(event.tool, event.input);
       return {
         state: flushed.state,
-        output: [...flushed.output, `${label}${indent}${palette.cyan("\u23fb")} ${toolLabel}\n`],
+        output: [...flushed.output, `${badge} ${indent}${palette.cyan("\u23fb")} ${palette.bold(toolLabel)}\n`],
       };
     }
 
