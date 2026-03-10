@@ -42,7 +42,7 @@ describe("buildOptions", () => {
     expect(opts).toHaveProperty("hooks");
     expect(opts).toHaveProperty("systemPrompt");
     expect(opts).toHaveProperty("cwd", "/tmp/test-ws");
-    expect(opts).toHaveProperty("permissionMode", "default");
+    expect(opts).toHaveProperty("permissionMode", "dontAsk");
     expect(opts).toHaveProperty("includePartialMessages", true);
   });
 
@@ -57,7 +57,7 @@ describe("buildOptions", () => {
 
     expect(mockCreateToolServers).toHaveBeenCalledWith([]);
     expect(opts.mcpServers).toBe(toolServers);
-    expect(opts.permissionMode).toBe("default");
+    expect(opts.permissionMode).toBe("dontAsk");
     expect(opts.disallowedTools).toEqual(
       expect.arrayContaining(["Bash", "Write"]),
     );
@@ -82,16 +82,16 @@ describe("buildOptions", () => {
     expect(prompt.append).toContain("script-writer");
   });
 
-  it("passes through model, resume, continueConversation", async () => {
+  it("passes through model, resume, continue", async () => {
     const opts = await buildOptions("/tmp/test-ws", "agents", "opus", "sess-123", true);
     expect(opts.model).toBe("opus");
     expect(opts.resume).toBe("sess-123");
-    expect(opts.continueConversation).toBe(true);
+    expect(opts.continue).toBe(true);
   });
 
-  it("defaults continueConversation to false", async () => {
+  it("defaults continue to false", async () => {
     const opts = await buildOptions("/tmp/test-ws", "agents");
-    expect(opts.continueConversation).toBe(false);
+    expect(opts.continue).toBe(false);
   });
 });
 

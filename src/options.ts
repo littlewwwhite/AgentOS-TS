@@ -45,7 +45,7 @@ export async function buildOptions(
   agentsDir: string,
   model?: string,
   resume?: string,
-  continueConversation = false,
+  shouldContinue = false,
 ) {
   const manifests = await loadAgentManifests(agentsDir);
   const workspaceDescription = await describeWorkspace(projectPath);
@@ -93,6 +93,6 @@ export async function buildOptions(
     maxBudgetUsd: MAX_BUDGET_USD,
     model,
     resume,
-    continueConversation,
+    continue: shouldContinue,
   };
 }

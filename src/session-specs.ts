@@ -60,7 +60,9 @@ export async function buildMainSessionSpec(input: BuildMainSessionSpecInput): Pr
     settingSources: ["project"],
     allowedTools: ["TodoWrite", "mcp__switch__switch_to_agent"],
     disallowedTools: ["Bash", "Write", "Edit", "NotebookEdit"],
-    permissionMode: "default",
+    // "dontAsk": auto-approve allowedTools, silently deny everything else.
+    // Main runs headless in a sandbox — "default" would hang waiting for human approval.
+    permissionMode: "dontAsk",
     mcpServerNames: ["switch"],
     systemPrompt: {
       type: "preset",
@@ -103,6 +105,10 @@ export async function buildWorkerSessionSpec(
   return {
     cwd: path.resolve(input.agentsDir, input.agentName),
     settingSources: ["project"],
+    // "bypassPermissions" auto-approves everything; settings.json deny rules (loaded via
+    // settingSources: ["project"]) still override per SDK spec — effectively a deny-list model.
+    // "dontAsk" would require ALL needed tools in the allow list, but current settings.json
+    // files only declare MCP/Write tools, omitting common ones (Glob, Grep, Skill, Edit).
     permissionMode: "bypassPermissions",
     mcpServerNames: [...input.manifest.mcpServers],
     systemPrompt: {

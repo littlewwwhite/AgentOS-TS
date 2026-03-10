@@ -21,7 +21,7 @@ describe("buildMainSessionSpec", () => {
     expect(spec.disallowedTools).toEqual(
       expect.arrayContaining(["Bash", "Write", "Edit", "NotebookEdit"]),
     );
-    expect(spec.permissionMode).toBe("default");
+    expect(spec.permissionMode).toBe("dontAsk");
     expect(spec.mcpServerNames).toEqual(["switch"]);
     expect(spec.systemPrompt.append).toContain("conversation focus stays with that sub-agent");
     expect(spec.systemPrompt.append).toContain(
