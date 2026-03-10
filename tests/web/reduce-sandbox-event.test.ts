@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  createInitialUiState,
-  reduceSandboxEvent,
-} from "../../web/lib/reduce-sandbox-event";
+import { createInitialUiState, reduceSandboxEvent } from "../../web/lib/reduce-sandbox-event";
 
 describe("reduceSandboxEvent", () => {
   it("marks the connection ready and registers available agents", () => {
@@ -125,6 +122,40 @@ describe("reduceSandboxEvent", () => {
         streaming: false,
       },
     ]);
+  });
+
+  it("preserves entered system message when history arrives first", () => {
+    const restored = reduceSandboxEvent(createInitialUiState(), {
+      type: "history",
+      agent: "screenwriter",
+      messages: [
+        { role: "user", content: "Resume the draft", timestamp: 1000 },
+        { role: "assistant", content: "Loaded previous draft", timestamp: 2000 },
+      ],
+    });
+    const entered = reduceSandboxEvent(restored, {
+      type: "agent_entered",
+      agent: "screenwriter",
+      session_id: "session-screenwriter",
+    });
+
+    expect(entered.sessions.screenwriter.messages).toHaveLength(3);
+    expect(entered.sessions.screenwriter.messages[0]).toEqual({
+      kind: "user",
+      id: "history-screenwriter-0",
+      text: "Resume the draft",
+      createdAt: 1000,
+    });
+    expect(entered.sessions.screenwriter.messages[1]).toEqual({
+      kind: "assistant",
+      id: "history-screenwriter-1",
+      text: "Loaded previous draft",
+      streaming: false,
+    });
+    expect(entered.sessions.screenwriter.messages[2]).toMatchObject({
+      kind: "system",
+      text: "Entered agent: screenwriter",
+    });
   });
 
   it("tracks active agent transitions and skills payloads", () => {

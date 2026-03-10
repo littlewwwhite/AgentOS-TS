@@ -36,7 +36,11 @@ export function getPreviewKind(filePath: string | null): PreviewKind {
 }
 
 export function shouldUseFragmentCode(kind: PreviewKind): boolean {
-  return kind === "text" || kind === "json";
+  return kind === "text" || kind === "json" || kind === "markdown";
+}
+
+export function hasRenderedPreview(kind: PreviewKind): boolean {
+  return kind === "markdown" || kind === "image" || kind === "video";
 }
 
 export function getLeafName(filePath: string | null): string {

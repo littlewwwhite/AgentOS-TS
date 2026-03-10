@@ -26,13 +26,27 @@ export interface EventBase {
   agent?: string;
 }
 
+export type AgentTransitionReason = "manual" | "delegation" | "return";
+
 export type ReadyEvent = EventBase & { type: "ready"; skills: string[] };
 export type TextEvent = EventBase & { type: "text"; text: string };
-export type ToolUseEvent = EventBase & { type: "tool_use"; tool: string; id: string };
+export type ThinkingEvent = EventBase & { type: "thinking"; text: string };
+export type ToolUseEvent = EventBase & {
+  type: "tool_use";
+  tool: string;
+  id: string;
+  input?: Record<string, unknown>;
+  nested?: boolean;
+};
 export type ToolLogEvent = EventBase & {
   type: "tool_log";
   tool: string;
   phase: "pre" | "post";
+  detail?: Record<string, unknown>;
+};
+export type SystemEvent = EventBase & {
+  type: "system";
+  subtype: string;
   detail?: Record<string, unknown>;
 };
 export type ResultEvent = EventBase & {
@@ -53,10 +67,14 @@ export type AgentEnteredEvent = EventBase & {
   type: "agent_entered";
   agent: string;
   session_id?: string;
+  reason?: AgentTransitionReason;
+  parent_agent?: string;
 };
 export type AgentExitedEvent = EventBase & {
   type: "agent_exited";
   agent: string;
+  reason?: AgentTransitionReason;
+  parent_agent?: string;
 };
 export type HistoryEvent = EventBase & {
   type: "history";
@@ -70,8 +88,10 @@ export type HistoryEvent = EventBase & {
 export type SandboxEvent =
   | ReadyEvent
   | TextEvent
+  | ThinkingEvent
   | ToolUseEvent
   | ToolLogEvent
+  | SystemEvent
   | ResultEvent
   | ErrorEvent
   | StatusEvent

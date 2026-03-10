@@ -8,11 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import {
-  findFirstFile,
-  type FileTreeNode,
-  useFileTree,
-} from "@/hooks/use-file-tree";
+import { type FileTreeNode, useFileTree } from "@/hooks/use-file-tree";
 import {
   getServerBaseUrl,
   useSandboxConnection,
@@ -83,16 +79,6 @@ export function AgentOsRuntimeProvider({
     uiState.connection === "ready",
     "/home/user/app/workspace",
   );
-
-  useEffect(() => {
-    if (selectedPreviewPath) {
-      return;
-    }
-    const firstFile = findFirstFile(tree);
-    if (firstFile) {
-      setSelectedPreviewPath(firstFile);
-    }
-  }, [selectedPreviewPath, tree]);
 
   const resultCount = useMemo(
     () =>

@@ -5,6 +5,7 @@ export type ConnectionState = "connecting" | "ready" | "disconnected" | "error";
 export type TimelineItem =
   | { kind: "user"; id: string; text: string; createdAt: number }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
+  | { kind: "thinking"; id: string; text: string; streaming: boolean }
   | { kind: "tool_use"; id: string; tool: string; toolCallId: string }
   | {
       kind: "tool_log";
@@ -102,11 +103,15 @@ function updateSession(
   updater: (session: AgentTimeline) => AgentTimeline,
 ): UiState {
   const next = ensureSession(state, sessionKey);
+  const session = next.sessions[sessionKey];
+  if (!session) {
+    return next;
+  }
   return {
     ...next,
     sessions: {
       ...next.sessions,
-      [sessionKey]: updater(next.sessions[sessionKey]!),
+      [sessionKey]: updater(session),
     },
   };
 }
@@ -126,7 +131,10 @@ export function reduceSandboxEvent(state: UiState, event: SandboxEvent): UiState
 
     case "text": {
       const sessionState = ensureSession(state, sessionKey);
-      const session = sessionState.sessions[sessionKey]!;
+      const session = sessionState.sessions[sessionKey];
+      if (!session) {
+        return sessionState;
+      }
       const lastMessage = session.messages.at(-1);
 
       if (lastMessage?.kind === "assistant" && lastMessage.streaming) {
@@ -151,6 +159,44 @@ export function reduceSandboxEvent(state: UiState, event: SandboxEvent): UiState
           ...currentSession.messages,
           {
             kind: "assistant",
+            id,
+            text: event.text,
+            streaming: true,
+          },
+        ],
+      }));
+    }
+
+    case "thinking": {
+      const sessionState = ensureSession(state, sessionKey);
+      const session = sessionState.sessions[sessionKey];
+      if (!session) {
+        return sessionState;
+      }
+      const lastMessage = session.messages.at(-1);
+
+      if (lastMessage?.kind === "thinking" && lastMessage.streaming) {
+        return updateSession(sessionState, sessionKey, (currentSession) => ({
+          ...currentSession,
+          status: "busy",
+          messages: [
+            ...currentSession.messages.slice(0, -1),
+            {
+              ...lastMessage,
+              text: `${lastMessage.text}${event.text}`,
+            },
+          ],
+        }));
+      }
+
+      const [id, next] = nextItemId(sessionState, `thinking-${sessionKey}`);
+      return updateSession(next, sessionKey, (currentSession) => ({
+        ...currentSession,
+        status: "busy",
+        messages: [
+          ...currentSession.messages,
+          {
+            kind: "thinking",
             id,
             text: event.text,
             streaming: true,
@@ -197,18 +243,22 @@ export function reduceSandboxEvent(state: UiState, event: SandboxEvent): UiState
     case "result": {
       const [id, next] = nextItemId(ensureSession(state, sessionKey), `result-${sessionKey}`);
       return updateSession(next, sessionKey, (session) => {
-        const lastAssistantIndex = [...session.messages].reverse().findIndex(
-          (message) => message.kind === "assistant" && message.streaming,
-        );
+        const lastAssistantIndex = [...session.messages]
+          .reverse()
+          .findIndex((message) => message.kind === "assistant" && message.streaming);
         const assistantIndex =
-          lastAssistantIndex === -1
-            ? -1
-            : session.messages.length - lastAssistantIndex - 1;
+          lastAssistantIndex === -1 ? -1 : session.messages.length - lastAssistantIndex - 1;
 
         const messages =
           assistantIndex >= 0
             ? session.messages.map((message, index) => {
                 if (index !== assistantIndex || message.kind !== "assistant") {
+                  if (message.kind === "thinking" && message.streaming) {
+                    return {
+                      ...message,
+                      streaming: false,
+                    };
+                  }
                   return message;
                 }
                 return {
@@ -327,6 +377,25 @@ export function reduceSandboxEvent(state: UiState, event: SandboxEvent): UiState
         connection: "error",
         lastError: event.message,
       };
+    }
+
+    case "system": {
+      const [id, next] = nextItemId(ensureSession(state, sessionKey), `system-${sessionKey}`);
+      const detail =
+        event.detail && Object.keys(event.detail).length > 0
+          ? ` ${JSON.stringify(event.detail)}`
+          : "";
+      return updateSession(next, sessionKey, (session) => ({
+        ...session,
+        messages: [
+          ...session.messages,
+          {
+            kind: "system",
+            id,
+            text: `${event.subtype}${detail}`,
+          },
+        ],
+      }));
     }
   }
 }

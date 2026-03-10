@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FragmentCode } from "@/components/fragments/fragment-code";
-import { Button } from "@/components/ui/button";
 import { getServerBaseUrl } from "@/hooks/use-sandbox-connection";
 import {
   getLeafName,
@@ -15,21 +14,17 @@ import {
 export interface PreviewPaneProps {
   projectId: string;
   selectedPath: string | null;
+  mode: "code" | "preview";
 }
 
-export function PreviewPane({ projectId, selectedPath }: PreviewPaneProps) {
+export function PreviewPane({ projectId, selectedPath, mode }: PreviewPaneProps) {
   const previewKind = getPreviewKind(selectedPath);
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (
-      !selectedPath ||
-      previewKind === "image" ||
-      previewKind === "video" ||
-      previewKind === "empty"
-    ) {
+    if (!selectedPath || previewKind === "image" || previewKind === "video") {
       setContent("");
       setError(null);
       return;
@@ -100,56 +95,69 @@ export function PreviewPane({ projectId, selectedPath }: PreviewPaneProps) {
     ];
   }, [content, previewKind, renderedJson, selectedPath]);
 
-  return (
-    <section className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex items-center justify-between gap-2 px-2">
-        <span className="truncate text-sm text-muted-foreground">
-          {selectedPath ?? "Select a workspace file"}
-        </span>
-        {downloadUrl ? (
-          <Button variant="ghost" size="sm" asChild>
-            <a href={downloadUrl} download={getLeafName(selectedPath)}>
-              Download
-            </a>
-          </Button>
-        ) : null}
+  if (!selectedPath) {
+    return (
+      <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
+        Select a workspace file to open code or preview output.
       </div>
+    );
+  }
 
-      <div className="h-full overflow-auto">
-        {previewKind === "empty" ? (
-          <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-dashed bg-background px-6 text-center text-sm text-muted-foreground">
-            Choose a file from the Files tab to preview code, markdown, JSON, images, or video output.
-          </div>
-        ) : loading ? (
-          <div className="rounded-xl border bg-background px-5 py-8 text-sm text-muted-foreground">
-            Loading preview...
-          </div>
-        ) : error ? (
-          <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-8 text-sm text-destructive-foreground">
-            {error}
-          </div>
-        ) : previewKind === "image" && downloadUrl ? (
-          <div className="overflow-hidden rounded-xl border bg-background p-3">
-            <img
-              src={downloadUrl}
-              alt={selectedPath ?? "preview"}
-              className="mx-auto max-h-[68vh] rounded-lg object-contain"
-            />
-          </div>
-        ) : previewKind === "video" && downloadUrl ? (
-          <div className="overflow-hidden rounded-xl border bg-background p-3">
-            <video src={downloadUrl} controls className="mx-auto max-h-[68vh] w-full rounded-lg" />
-          </div>
-        ) : previewKind === "markdown" ? (
-          <article className="prose prose-invert max-w-none rounded-xl border bg-background px-5 py-5 prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-code:text-[#ff8800]">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-          </article>
-        ) : shouldUseFragmentCode(previewKind) ? (
-          <div className="rounded-xl border bg-background py-2">
-            <FragmentCode files={codeFiles} />
-          </div>
-        ) : null}
+  if (loading) {
+    return (
+      <div className="px-5 py-8 text-sm text-muted-foreground">
+        Loading {mode === "code" ? "code" : "preview"}...
       </div>
-    </section>
+    );
+  }
+
+  if (error) {
+    return <div className="px-5 py-8 text-sm text-red-400">{error}</div>;
+  }
+
+  if (mode === "code") {
+    if (!shouldUseFragmentCode(previewKind)) {
+      return (
+        <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
+          Code view is available for text, markdown, and JSON files.
+        </div>
+      );
+    }
+
+    return <FragmentCode files={codeFiles} />;
+  }
+
+  if (previewKind === "markdown") {
+    return (
+      <article className="prose prose-invert max-w-none px-5 py-5 prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-code:text-[#ff8800]">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      </article>
+    );
+  }
+
+  if (previewKind === "image" && downloadUrl) {
+    return (
+      <div className="flex h-full items-center justify-center p-4">
+        <img
+          src={downloadUrl}
+          alt={selectedPath}
+          className="max-h-[68vh] rounded-lg object-contain"
+        />
+      </div>
+    );
+  }
+
+  if (previewKind === "video" && downloadUrl) {
+    return (
+      <div className="p-4">
+        <video src={downloadUrl} controls className="mx-auto max-h-[68vh] w-full rounded-lg" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
+      Preview is only available for markdown, image, and video files.
+    </div>
   );
 }
