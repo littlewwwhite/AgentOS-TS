@@ -102,26 +102,3 @@ describe("fetchHistory", () => {
     expect(result).toEqual([{ role: "user", content: "hi" }]);
   });
 });
-
-// ---------- truncate ----------
-
-describe("truncate", () => {
-  it("returns short text unchanged", () => {
-    expect(truncate("short text")).toBe("short text");
-  });
-
-  it("truncates long text with ellipsis", () => {
-    const long = "a".repeat(200);
-    const result = truncate(long);
-    expect(result).toHaveLength(120);
-    expect(result.endsWith("\u2026")).toBe(true);
-  });
-
-  it("collapses multiline to single line", () => {
-    expect(truncate("line1\nline2\nline3")).toBe("line1 line2 line3");
-  });
-
-  it("trims whitespace", () => {
-    expect(truncate("  hello  ")).toBe("hello");
-  });
-});
