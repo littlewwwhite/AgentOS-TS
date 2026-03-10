@@ -130,6 +130,13 @@ describe("parseEpisodes", () => {
     expect(stats.total_scenes).toBe(3);
     expect(stats.total_actors).toBe(3);
     expect(stats.total_locations).toBe(3);
+
+    // Verify scene IDs reset per episode
+    const scriptPath = result.script_path as string;
+    const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+    expect(script.episodes[0].scenes[0].id).toBe("scn_001");
+    expect(script.episodes[0].scenes[1].id).toBe("scn_002");
+    expect(script.episodes[1].scenes[0].id).toBe("scn_001");
   });
 
   it("handles time words correctly", async () => {

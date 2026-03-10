@@ -292,6 +292,8 @@ export async function parseEpisodes(
   let currentScene: ParsedScene | null = null;
   let actionCounter = 0;
   let scnCounter = 0;
+  let epScnCounter = 0;
+  const sceneGlobalIdx = new Map<ParsedScene, number>();
 
   function flushScene(): void {
     if (currentScene && currentEpisode) {
@@ -338,6 +340,7 @@ export async function parseEpisodes(
           scenes: [],
         };
         actionCounter = 0;
+        epScnCounter = 0;
         continue;
       }
 
@@ -346,12 +349,13 @@ export async function parseEpisodes(
       if (m) {
         flushScene();
         scnCounter++;
+        epScnCounter++;
         const locName = m[5].trim();
         const locStateName = m[6]?.trim() ?? null;
         const locId = registerLocation(locName);
 
         currentScene = {
-          id: `scn_${String(scnCounter).padStart(3, "0")}`,
+          id: `scn_${String(epScnCounter).padStart(3, "0")}`,
           sequence: Number.parseInt(m[2], 10),
           location: locName,
           location_id: locId,
@@ -360,6 +364,8 @@ export async function parseEpisodes(
           prop_ids: [],
           actions: [],
         };
+
+        sceneGlobalIdx.set(currentScene, scnCounter);
 
         if (locStateName) {
           sceneLocStates[scnCounter] = [locId, locStateName];
@@ -381,6 +387,7 @@ export async function parseEpisodes(
             scenes: [],
           };
           actionCounter = 0;
+          epScnCounter = 1; // first scene already counted above
         }
         continue;
       }
@@ -512,7 +519,7 @@ export async function parseEpisodes(
   // Resolve scene.cast with concrete state IDs
   for (const ep of episodes) {
     for (const scene of ep.scenes) {
-      const scnNum = Number.parseInt(scene.id.split("_")[1], 10);
+      const scnNum = sceneGlobalIdx.get(scene)!;
       const castEntries: Array<{ actor_id: string; state_id: string | null }> = [];
       for (const [aid, stateName] of Object.entries(sceneCast[scnNum] ?? {})) {
         const stateId = stateName ? (stateIdMap[`${aid}|${stateName}`] ?? null) : null;
@@ -553,7 +560,7 @@ export async function parseEpisodes(
   // Resolve location_state_id in scenes
   for (const ep of episodes) {
     for (const scene of ep.scenes) {
-      const scnNum = Number.parseInt(scene.id.split("_")[1], 10);
+      const scnNum = sceneGlobalIdx.get(scene)!;
       const locState = sceneLocStates[scnNum];
       if (locState) {
         const [lid, stateName] = locState;
