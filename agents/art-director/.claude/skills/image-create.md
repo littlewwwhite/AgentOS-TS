@@ -11,7 +11,7 @@ description: "通过 anime-material-workbench API 生成图片，支持角色、
 
 ## Resources
 
-- **API 文档**：`references/api.md` — 完整的接口规范、字段说明和示例
+- **API 文档**：`${CLAUDE_SKILL_DIR}/image-create-references/api.md` — 完整的接口规范、字段说明和示例
 
 ---
 
@@ -174,5 +174,5 @@ python3 ~/.claude/skills/image-create/scripts/poll_image_task.py \
 - `isDeleted == 1` 的模型不展示给用户。
 - **Token 完全由 `auth.py` 自动管理**，无需手动传入或维护。
 - If the API returns `REPEAT_ASK_DOING_NOT_OPERATE`, an identical task is already running; advise the user to wait.
-- Always load `references/api.md` when looking up field details, error codes, or full examples.
+- Always load `${CLAUDE_SKILL_DIR}/image-create-references/api.md` when looking up field details, error codes, or full examples.
 - **所有接口调用（入参、原始响应）均不向用户展示，只输出处理后的结论性内容**（如模型列表、参数选项、taskId、图片链接等）。

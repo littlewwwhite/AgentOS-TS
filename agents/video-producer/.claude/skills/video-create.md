@@ -17,8 +17,8 @@ description: "通过 anime-material-workbench API 生成视频，支持图生视
 
 | 文件 | 内容 |
 |:-----|:-----|
-| `references/prompt-params-spec.md` | 参数类型解析规则（ENUM/INT/FLOAT/FileListType/FrameListType/multi_prompt）与 JSON 组装示例 |
-| `references/reference-video-mode.md` | 参考生视频模式协议（multi_param + richTaskPrompt 结构） |
+| `${CLAUDE_SKILL_DIR}/video-create-references/prompt-params-spec.md` | 参数类型解析规则（ENUM/INT/FLOAT/FileListType/FrameListType/multi_prompt）与 JSON 组装示例 |
+| `${CLAUDE_SKILL_DIR}/video-create-references/reference-video-mode.md` | 参考生视频模式协议（multi_param + richTaskPrompt 结构） |
 
 ---
 
@@ -96,9 +96,9 @@ print(json.dumps(result, ensure_ascii=False))
 
 从步骤 2 缓存中取出所选模型的 `modelParams`，按类型展示所有参数及可选值。
 
-各参数类型的解析规则详见 → `references/prompt-params-spec.md`
+各参数类型的解析规则详见 → `${CLAUDE_SKILL_DIR}/video-create-references/prompt-params-spec.md`
 
-参考生视频模式（`reference_video: true`）详见 → `references/reference-video-mode.md`
+参考生视频模式（`reference_video: true`）详见 → `${CLAUDE_SKILL_DIR}/video-create-references/reference-video-mode.md`
 
 将用户确认结果组装为 `promptParams` JSON。未填且有 `default` 的用默认值；无默认值且未填则不传。
 

@@ -30,15 +30,16 @@ Phase 1 分析设计  →  Phase 2 写作  →  Phase 3 结构解析
 
 ---
 
-## 阶段路由
+## Reference Loading
 
-所有 reference 文件已通过 loader 预加载，在 prompt 的 `## Reference Documents` 节中以 `## {filename}` 标题形式提供。进入某阶段时，直接参考对应节的内容，无需运行时读取文件。
+Reference files are in `${CLAUDE_SKILL_DIR}/script-adapt-references/`.
+Use `Read` to load the files listed for each phase when entering it.
 
-| 阶段 | 参考预加载的 Reference Documents 中对应节 | 产物 |
-|------|------------------------------------------|------|
-| **Phase 1** 分析设计 | `## phase1-design.md` + `## shared-domain.md` + `## style-options.md` | design.json + catalog.json |
-| **Phase 2** 写作 | `## phase2-writing.md` + `## writing-rules.md` + `## script-format.md` | episodes/ep\*.md |
-| **Phase 3** 结构解析 | `## phase3-extraction.md` | script.json |
+| Phase | Files to Read | Deliverables |
+|-------|--------------|--------------|
+| **Phase 1** | `phase1-design.md`, `shared-domain.md`, `style-options.md` | design.json + catalog.json |
+| **Phase 2** | `phase2-writing.md`, `writing-rules.md`, `script-format.md` | episodes/ep\*.md |
+| **Phase 3** | `phase3-extraction.md` | script.json |
 
 ---
 
@@ -107,7 +108,7 @@ Phase 1 分析设计  →  Phase 2 写作  →  Phase 3 结构解析
 1. 以小说文件名（去掉扩展名）创建工作区文件夹
 2. 将原文保存至工作区的 `source.txt`
 3. 展示流水线架构概览
-4. 参考 Phase 1 对应的预加载 Reference Documents，开始分析设计
+4. Read Phase 1 的 reference 文件，开始分析设计
 
 ### 阶段流转
 
@@ -129,7 +130,7 @@ Phase 1 分析设计  →  Phase 2 写作  →  Phase 3 结构解析
 
 1. 检查依赖矩阵——前置文件是否存在
 2. 依赖缺失：告知需先完成哪些阶段
-3. 依赖满足：参考目标阶段对应的预加载 Reference Documents 并开始
+3. 依赖满足：Read 目标阶段的 reference 文件并开始
 
 ---
 
