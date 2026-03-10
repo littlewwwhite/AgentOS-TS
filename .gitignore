@@ -14,3 +14,5 @@ e2b/package.json
 test-project/
 data/
 doc/
+web/.next/
+web/out/

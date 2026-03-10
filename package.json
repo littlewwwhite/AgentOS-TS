@@ -8,7 +8,6 @@
   },
   "scripts": {
     "start": "bun src/index.ts",
-
     "sandbox": "bun src/sandbox.ts",
     "start:e2b": "bun scripts/e2b-repl.ts",
     "build": "tsc",
@@ -17,19 +16,22 @@
     "test:e2b": "vitest run --config vitest.e2b.config.ts",
     "test:watch": "vitest",
     "lint": "biome check src/ tests/",
-    "format": "biome format --write src/ tests/"
+    "format": "biome format --write src/ tests/",
+    "server": "bun src/server.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "chalk": "^5.6.2",
     "e2b": "^2.14.1",
-"yaml": "^2.8.2",
+    "ws": "^8.19.0",
+    "yaml": "^2.8.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.19.15",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
