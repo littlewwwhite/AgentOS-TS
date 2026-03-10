@@ -48,4 +48,27 @@ describe("loadAgentConfigs", () => {
 
     await fs.rm(tmpDir, { recursive: true });
   });
+
+  it("filters unknown mcp server names from YAML", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "loader-invalid-mcp-"));
+
+    await fs.writeFile(
+      path.join(tmpDir, "test-agent.yaml"),
+      [
+        "name: test-agent",
+        'description: "A test agent"',
+        "mcpServers:",
+        "  - storage",
+        "  - not-a-real-server",
+        "  - script",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const configs = await loadAgentConfigs(tmpDir);
+
+    expect(configs["test-agent"].mcpServers).toEqual(["storage", "script"]);
+
+    await fs.rm(tmpDir, { recursive: true });
+  });
 });

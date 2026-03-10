@@ -6,12 +6,22 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import yaml from "yaml";
 
+import { isToolServerName, type ToolServerName } from "./tools/index.js";
+
 // --- Agent config loading (agents/*.yaml) ---
 
 export interface AgentConfig {
   name: string;
   description: string;
-  mcpServers?: string[];
+  mcpServers?: ToolServerName[];
+}
+
+function parseToolServerNames(value: unknown): ToolServerName[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  return value.filter(
+    (entry): entry is ToolServerName => typeof entry === "string" && isToolServerName(entry),
+  );
 }
 
 export async function loadAgentConfigs(agentsDir: string): Promise<Record<string, AgentConfig>> {
@@ -35,7 +45,7 @@ export async function loadAgentConfigs(agentsDir: string): Promise<Record<string
     agents[name] = {
       name,
       description: (config.description as string) ?? "",
-      mcpServers: (config.mcpServers as string[]) ?? undefined,
+      mcpServers: parseToolServerNames(config.mcpServers),
     };
   }
 
