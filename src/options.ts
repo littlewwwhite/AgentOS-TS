@@ -115,7 +115,7 @@ export async function buildOptions(
     betas: ["context-1m-2025-08-07"],
     settingSources: ["project"],
     cwd: projectPath,
-    permissionMode: "acceptEdits",
+    permissionMode: "bypassPermissions",
     includePartialMessages: true,
     maxBudgetUsd: MAX_BUDGET_USD,
     model,

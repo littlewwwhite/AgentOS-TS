@@ -330,16 +330,24 @@ export class SandboxOrchestrator {
     try {
       for await (const msg of q as AsyncIterable<SDKMessage>) {
         if (msg.type === "stream_event") {
-          const ev = msg.event as {
-            type?: string;
-            delta?: { type?: string; text?: string };
-          };
-          if (
-            ev.type === "content_block_delta" &&
-            ev.delta?.type === "text_delta" &&
-            ev.delta.text
-          ) {
-            emit({ type: "text", text: ev.delta.text, agent: agentField, request_id: requestId });
+          const ev = msg.event as Record<string, unknown>;
+
+          if (ev.type === "content_block_start") {
+            const block = ev.content_block as { type?: string; name?: string; id?: string } | undefined;
+            if (block?.type === "tool_use" && block.name) {
+              emit({
+                type: "tool_use",
+                tool: block.name,
+                id: block.id ?? "",
+                agent: agentField,
+                request_id: requestId,
+              });
+            }
+          } else if (ev.type === "content_block_delta") {
+            const delta = ev.delta as { type?: string; text?: string } | undefined;
+            if (delta?.type === "text_delta" && delta.text) {
+              emit({ type: "text", text: delta.text, agent: agentField, request_id: requestId });
+            }
           }
         } else if (msg.type === "tool_progress") {
           const tp = msg as unknown as { tool_name?: string; tool_use_id?: string };
@@ -350,6 +358,19 @@ export class SandboxOrchestrator {
             agent: agentField,
             request_id: requestId,
           });
+        } else if (msg.type === "tool_use_summary") {
+          const s = msg as unknown as { summary?: string; tool_summary?: string };
+          const text = s.summary ?? s.tool_summary;
+          if (text) {
+            emit({
+              type: "tool_log",
+              tool: "summary",
+              phase: "post",
+              detail: { summary: text },
+              agent: agentField,
+              request_id: requestId,
+            });
+          }
         } else if (msg.type === "result") {
           const r = msg as unknown as {
             total_cost_usd?: number;
@@ -371,6 +392,28 @@ export class SandboxOrchestrator {
             agent: agentField,
             request_id: requestId,
           });
+        } else if (msg.type === "assistant") {
+          const m = msg as unknown as { error?: { message?: string } };
+          if (m.error?.message) {
+            emit({ type: "error", message: m.error.message, agent: agentField, request_id: requestId });
+          }
+        } else {
+          // Catch-all for SDK message types not in the type union
+          const t = (msg as Record<string, unknown>).type;
+          if (t === "streamlined_tool_use_summary") {
+            const s = msg as unknown as { summary?: string; tool_summary?: string };
+            const text = s.summary ?? s.tool_summary;
+            if (text) {
+              emit({
+                type: "tool_log",
+                tool: "summary",
+                phase: "post",
+                detail: { summary: text },
+                agent: agentField,
+                request_id: requestId,
+              });
+            }
+          }
         }
       }
     } finally {

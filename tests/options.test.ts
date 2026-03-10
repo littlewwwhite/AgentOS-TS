@@ -38,7 +38,7 @@ describe("buildOptions", () => {
     expect(opts).toHaveProperty("hooks");
     expect(opts).toHaveProperty("systemPrompt");
     expect(opts).toHaveProperty("cwd", "/tmp/test-ws");
-    expect(opts).toHaveProperty("permissionMode", "acceptEdits");
+    expect(opts).toHaveProperty("permissionMode", "bypassPermissions");
     expect(opts).toHaveProperty("includePartialMessages", true);
   });
 
