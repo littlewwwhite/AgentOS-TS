@@ -22,11 +22,11 @@ model: sonnet
 ## 流水线概览
 
 ```
-Phase 1 分析设计  →  Phase 2 写作  →  Phase 3 结构解析
-  (design.json+catalog.json)  (ep*.md)  (script.json)
+Phase 1A 分析推荐 → CP1（用户确认） → Phase 1B 设计生成 → CP2（用户确认） → Phase 2 写作 → Phase 3 结构解析
+  (改编分析报告)    (参数确认)    (design.json+catalog.json)  (大纲确认)    (ep*.md)    (script.json)
 ```
 
-每个阶段产物写入工作区，实现阶段间数据流转与质量追溯。
+每个阶段产物写入工作区，CP1/CP2 为用户确认检查点，实现阶段间数据流转与质量追溯。
 
 ---
 
@@ -57,6 +57,7 @@ Use `Read` to load the files listed for each phase when entering it.
 ├── draft/                            <- 中间产物（LLM 写入）
 │   ├── design.json                   <- Phase 1（世界观 + 分集大纲 + 视觉风格）
 │   ├── catalog.json                  <- Phase 1（资产清单）
+│   ├── connectivity.md               <- Phase 2（跨集连贯性地图，下游 Phase 3 及其他 agent 共用）
 │   └── episodes/
 │       └── ep{NN}.md                 <- Phase 2（场记格式）
 └── output/                           <- 最终产物（工具写入）
@@ -74,10 +75,11 @@ Use `Read` to load the files listed for each phase when entering it.
 当用户清理上下文（`/clear`）后继续时，按以下顺序检查工作区文件以恢复流水线状态：
 
 1. 检查 `draft/design.json` + `draft/catalog.json` → 存在则 Phase 1 完成
-2. 检查 `draft/episodes/` 目录（至少一个 ep*.md）→ 存在则 Phase 2 完成
-3. 检查 `output/script.json` → 存在则 Phase 3 完成（NTS 完成）
+2. 检查 `draft/connectivity.md` → 存在则连贯性地图已生成
+3. 检查 `draft/episodes/` 目录（至少一个 ep*.md）→ 存在则 Phase 2 进行中/完成
+4. 检查 `output/script.json` → 存在则 Phase 3 完成（NTS 完成）
 
-根据恢复结果，提示用户进入下一阶段。
+根据恢复结果，提示用户进入下一阶段。Phase 2 恢复时额外读取 connectivity.md + 扫描已完成集数，从断点继续。
 
 ---
 
@@ -86,8 +88,8 @@ Use `Read` to load the files listed for each phase when entering it.
 | 阶段 | 输入 | 输出 | 工作区文件 |
 |------|------|------|-----------|
 | Phase 1 分析设计 | source.txt | design.json + catalog.json | draft/*.json |
-| Phase 2 写作 | draft/design.json + draft/catalog.json | ep\*.md | draft/episodes/\*.md |
-| Phase 3 结构解析 | draft/episodes/ep\*.md + draft/catalog.json | script.json | output/script.json |
+| Phase 2 写作 | draft/design.json + draft/catalog.json | connectivity.md + ep\*.md | draft/connectivity.md + draft/episodes/\*.md |
+| Phase 3 结构解析 | draft/episodes/ep\*.md + draft/catalog.json + draft/connectivity.md | script.json | output/script.json |
 
 ### 依赖矩阵
 
@@ -95,7 +97,7 @@ Use `Read` to load the files listed for each phase when entering it.
 |---------|---------|
 | Phase 1 | source.txt |
 | Phase 2 | draft/design.json + draft/catalog.json |
-| Phase 3 | draft/episodes/（至少 1 个 ep\*.md） |
+| Phase 3 | draft/episodes/（至少 1 个 ep\*.md） + draft/connectivity.md |
 
 ---
 
@@ -115,7 +117,9 @@ Use `Read` to load the files listed for each phase when entering it.
 每个阶段完成后：
 
 1. 将交付物保存至对应工作区目录
-2. 提示下一阶段
+2. Phase 1 内含两个用户确认检查点（CP1 改编分析报告、CP2 分集大纲预览），等待用户确认后才继续
+3. Phase 1 完成后不自动流转，提示用户主动进入 Phase 2
+4. Phase 2 完成后提示进入 Phase 3
 
 ### 状态查询
 
@@ -138,11 +142,12 @@ Use `Read` to load the files listed for each phase when entering it.
 
 解析用户输入，判断操作：
 
-1. **长文本（小说）**：初始化工作区 → 保存原文 → 进入 Phase 1
+1. **长文本（小说）**：初始化工作区 → 保存原文 → 进入 Phase 1A
 2. **"状态"**：检查文件 → 展示状态面板
 3. **"下一步" / "继续"**：检查进度 → 进入下一阶段
 4. **"跳转阶段 {N}"**：检查依赖 → 进入目标阶段
 5. **无输入**：检查工作区是否存在 → 存在则展示状态，不存在则提示提供原文
 6. **阶段指令**（如"开始 Phase 2"、"进入写作"）：路由至对应阶段
 7. **"从第 N 集开始"**（Phase 2 期间）：传递给 Phase 2 执行分段写作
+8. **"确认" / "调整 {参数}"**（Phase 1 检查点期间）：处理 CP1/CP2 用户反馈，确认则继续，调整则重新生成对应内容
 
