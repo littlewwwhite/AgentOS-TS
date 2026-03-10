@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { parseCommand, emit } from "../src/protocol.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { emit, parseCommand } from "../src/protocol.js";
 import type { SandboxEvent } from "../src/protocol.js";
 
 describe("parseCommand", () => {
@@ -135,17 +135,13 @@ describe("emit", () => {
   it("writes JSON followed by newline", () => {
     const event: SandboxEvent = { type: "ready", skills: ["a", "b"] };
     emit(event);
-    expect(writeSpy).toHaveBeenCalledWith(
-      '{"type":"ready","skills":["a","b"]}\n',
-    );
+    expect(writeSpy).toHaveBeenCalledWith('{"type":"ready","skills":["a","b"]}\n');
   });
 
   it("emits error event correctly", () => {
     const event: SandboxEvent = { type: "error", message: "boom" };
     emit(event);
-    expect(writeSpy).toHaveBeenCalledWith(
-      '{"type":"error","message":"boom"}\n',
-    );
+    expect(writeSpy).toHaveBeenCalledWith('{"type":"error","message":"boom"}\n');
   });
 
   it("emits result event with all fields", () => {
@@ -183,5 +179,17 @@ describe("emit", () => {
     const parsed = JSON.parse(output);
     expect(parsed.type).toBe("tool_log");
     expect(parsed.agent).toBe("writer");
+  });
+
+  it("emits thinking event correctly", () => {
+    const event: SandboxEvent = {
+      type: "thinking",
+      text: "Need to inspect the source file first.",
+      agent: "writer",
+    };
+    emit(event);
+    const output = (writeSpy.mock.calls[0] as string[])[0];
+    const parsed = JSON.parse(output);
+    expect(parsed).toEqual(event);
   });
 });

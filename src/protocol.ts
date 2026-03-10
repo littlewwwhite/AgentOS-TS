@@ -7,8 +7,8 @@
 export type ChatCommand = {
   cmd: "chat";
   message: string;
-  target?: string;      // one-shot routing without state change
-  request_id?: string;  // correlate responses in concurrent scenarios
+  target?: string; // one-shot routing without state change
+  request_id?: string; // correlate responses in concurrent scenarios
 };
 
 export type InterruptCommand = { cmd: "interrupt" };
@@ -35,8 +35,11 @@ export interface EventBase {
   agent?: string;
 }
 
+export type AgentTransitionReason = "manual" | "delegation" | "return";
+
 export type ReadyEvent = EventBase & { type: "ready"; skills: string[] };
 export type TextEvent = EventBase & { type: "text"; text: string };
+export type ThinkingEvent = EventBase & { type: "thinking"; text: string };
 export type ToolUseEvent = EventBase & {
   type: "tool_use";
   tool: string;
@@ -71,12 +74,16 @@ export type StatusEvent = EventBase & {
 export type SkillsEvent = EventBase & { type: "skills"; skills: Record<string, string> };
 export type AgentEnteredEvent = EventBase & {
   type: "agent_entered";
-  agent: string;  // required — override EventBase's optional
+  agent: string; // required — override EventBase's optional
   session_id?: string;
+  reason?: AgentTransitionReason;
+  parent_agent?: string;
 };
 export type AgentExitedEvent = EventBase & {
   type: "agent_exited";
-  agent: string;  // required
+  agent: string; // required
+  reason?: AgentTransitionReason;
+  parent_agent?: string;
 };
 /** Emitted during session restore to replay conversation history */
 export type HistoryEvent = EventBase & {
@@ -91,6 +98,7 @@ export type HistoryEvent = EventBase & {
 export type SandboxEvent =
   | ReadyEvent
   | TextEvent
+  | ThinkingEvent
   | ToolUseEvent
   | ToolLogEvent
   | SystemEvent
@@ -111,18 +119,23 @@ export function matchEnterAgent(input: string, agentNames: string[]): string | n
   const m = input.match(ENTER_RE);
   if (!m) return null;
   const name = m[1].trim().toLowerCase();
-  return agentNames.find(a => a.toLowerCase() === name) ?? null;
+  return agentNames.find((a) => a.toLowerCase() === name) ?? null;
 }
 
 // ---------- Helpers ----------
 
 const VALID_CMDS = new Set([
-  "chat", "interrupt", "status", "list_skills",
-  "enter_agent", "exit_agent", "resume",
+  "chat",
+  "interrupt",
+  "status",
+  "list_skills",
+  "enter_agent",
+  "exit_agent",
+  "resume",
 ]);
 
 export function emit(event: SandboxEvent): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
+  process.stdout.write(`${JSON.stringify(event)}\n`);
 }
 
 export function parseCommand(line: string): SandboxCommand | null {
