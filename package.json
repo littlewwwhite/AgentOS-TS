@@ -3,12 +3,8 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Video production pipeline agent built on Claude Agent SDK (TypeScript)",
-  "bin": {
-    "agentos": "dist/index.js"
-  },
   "scripts": {
-    "start": "bun src/index.ts",
-    "sandbox": "bun src/sandbox.ts",
+    "start": "bun src/sandbox.ts",
     "start:e2b": "bun scripts/e2b-repl.ts",
     "build": "tsc",
     "build:e2b": "bun run build && bun e2b/build.ts",
@@ -22,7 +18,6 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "chalk": "^5.6.2",
     "e2b": "^2.14.1",
     "ws": "^8.19.0",
     "yaml": "^2.8.2",
