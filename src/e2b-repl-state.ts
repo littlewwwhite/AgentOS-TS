@@ -1,4 +1,4 @@
-import type { SandboxEvent } from "./protocol.js";
+import type { SandboxEvent, TodoItem } from "./protocol.js";
 import { createMarkdownState, type MarkdownState } from "./repl-markdown.js";
 
 export interface ReplState {
@@ -7,6 +7,7 @@ export interface ReplState {
   textStarted: boolean;
   activeStream: "text" | "thinking" | null;
   markdownState: MarkdownState;
+  todos: TodoItem[];
 }
 
 export function createInitialReplState(): ReplState {
@@ -16,6 +17,7 @@ export function createInitialReplState(): ReplState {
     textStarted: false,
     activeStream: null,
     markdownState: createMarkdownState(),
+    todos: [],
   };
 }
 

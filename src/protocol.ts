@@ -95,6 +95,20 @@ export type HistoryEvent = EventBase & {
   }>;
 };
 
+export type TodoStatus = "pending" | "in_progress" | "completed";
+
+export type TodoItem = {
+  id: string;
+  content: string;
+  status: TodoStatus;
+};
+
+/** Emitted when agent creates/updates a todo list (via TodoWrite) */
+export type TodoEvent = EventBase & {
+  type: "todo";
+  todos: TodoItem[];
+};
+
 export type SandboxEvent =
   | ReadyEvent
   | TextEvent
@@ -108,7 +122,8 @@ export type SandboxEvent =
   | SkillsEvent
   | AgentEnteredEvent
   | AgentExitedEvent
-  | HistoryEvent;
+  | HistoryEvent
+  | TodoEvent;
 
 // ---------- Natural language agent entry ----------
 

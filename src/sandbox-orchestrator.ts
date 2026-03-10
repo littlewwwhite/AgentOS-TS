@@ -436,6 +436,18 @@ export class SandboxOrchestrator {
                 agent: agentField,
                 request_id: requestId,
               });
+              // Forward TodoWrite as a structured todo event for REPL rendering
+              if (tool.name === "TodoWrite" && input) {
+                const todos = (input as { todos?: unknown[] }).todos;
+                if (Array.isArray(todos)) {
+                  emit({
+                    type: "todo",
+                    todos: todos as import("./protocol.js").TodoItem[],
+                    agent: agentField,
+                    request_id: requestId,
+                  });
+                }
+              }
               toolBlocks.delete(idx);
             }
           }

@@ -108,6 +108,54 @@ describe("renderSandboxEvent", () => {
     expect(rendered.output.join("")).toContain("skill:commit");
   });
 
+  it("renders todo list with status icons", () => {
+    const rendered = renderSandboxEvent(
+      createInitialReplState(),
+      {
+        type: "todo",
+        todos: [
+          { id: "1", content: "Analyze requirements", status: "completed" },
+          { id: "2", content: "Write implementation", status: "in_progress" },
+          { id: "3", content: "Add tests", status: "pending" },
+        ],
+        agent: "screenwriter",
+      },
+      plainPalette,
+    );
+    const joined = rendered.output.join("");
+    expect(joined).toContain("✓ Analyze requirements");
+    expect(joined).toContain("● Write implementation");
+    expect(joined).toContain("○ Add tests");
+    expect(rendered.state.todos).toHaveLength(3);
+  });
+
+  it("renders updated todo list replacing previous state", () => {
+    const first = renderSandboxEvent(
+      createInitialReplState(),
+      {
+        type: "todo",
+        todos: [
+          { id: "1", content: "Step A", status: "in_progress" },
+          { id: "2", content: "Step B", status: "pending" },
+        ],
+      },
+      plainPalette,
+    );
+    const second = renderSandboxEvent(
+      first.state,
+      {
+        type: "todo",
+        todos: [
+          { id: "1", content: "Step A", status: "completed" },
+          { id: "2", content: "Step B", status: "in_progress" },
+        ],
+      },
+      plainPalette,
+    );
+    expect(second.state.todos[0].status).toBe("completed");
+    expect(second.state.todos[1].status).toBe("in_progress");
+  });
+
   it("applies markdown formatting to text stream", () => {
     const tagPalette = {
       dim: (s: string) => s,

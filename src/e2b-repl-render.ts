@@ -248,6 +248,19 @@ export function renderSandboxEvent(
     case "ready":
       return flushActiveStream(state, palette);
 
+    case "todo": {
+      const flushed = flushActiveStream(state, palette);
+      const lines = event.todos.map((t) => {
+        if (t.status === "completed") return `  ${palette.green("✓")} ${palette.dim(t.content)}`;
+        if (t.status === "in_progress") return `  ${palette.cyan("●")} ${t.content}`;
+        return `  ${palette.dim("○")} ${palette.dim(t.content)}`;
+      });
+      return {
+        state: { ...flushed.state, todos: event.todos },
+        output: [...flushed.output, `\n${lines.join("\n")}\n`],
+      };
+    }
+
     default:
       return { state, output: [] };
   }
