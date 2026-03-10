@@ -2,21 +2,29 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { loadAgentConfigs } from "./loader.js";
+import type { ToolServerName } from "./tools/index.js";
 
 export interface AgentManifest {
   name: string;
   description: string;
   skills: string[];
-  mcpServers: string[];
+  mcpServers: ToolServerName[];
 }
 
-async function listMarkdownSkillNames(skillsDir: string): Promise<string[]> {
+async function listSkillNames(skillsDir: string): Promise<string[]> {
   try {
     const entries = await fs.readdir(skillsDir, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-      .map((entry) => entry.name.slice(0, -3))
-      .sort();
+    const names: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      try {
+        await fs.access(path.join(skillsDir, entry.name, "SKILL.md"));
+        names.push(entry.name);
+      } catch {
+        // subdirectory without SKILL.md — skip
+      }
+    }
+    return names.sort();
   } catch {
     return [];
   }
@@ -30,7 +38,7 @@ export async function loadAgentManifests(
 
   for (const [name, config] of Object.entries(configs)) {
     const skillsDir = path.join(agentsDir, name, ".claude", "skills");
-    const diskSkills = await listMarkdownSkillNames(skillsDir);
+    const diskSkills = await listSkillNames(skillsDir);
 
     manifests[name] = {
       name,

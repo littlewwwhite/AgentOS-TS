@@ -32,9 +32,10 @@ describe("loadAgentManifests", () => {
     );
 
     const skillsDir = path.join(tmpDir, "screenwriter", ".claude", "skills");
-    await fs.mkdir(path.join(skillsDir, "script-writer-references"), { recursive: true });
-    await fs.writeFile(path.join(skillsDir, "script-adapt.md"), "# script-adapt\n", "utf-8");
-    await fs.writeFile(path.join(skillsDir, "script-writer.md"), "# script-writer\n", "utf-8");
+    await fs.mkdir(path.join(skillsDir, "script-adapt"), { recursive: true });
+    await fs.writeFile(path.join(skillsDir, "script-adapt", "SKILL.md"), "# script-adapt\n", "utf-8");
+    await fs.mkdir(path.join(skillsDir, "script-writer"), { recursive: true });
+    await fs.writeFile(path.join(skillsDir, "script-writer", "SKILL.md"), "# script-writer\n", "utf-8");
 
     const manifests = await loadAgentManifests(tmpDir);
 
@@ -58,8 +59,8 @@ describe("loadAgentManifests", () => {
     );
 
     const skillsDir = path.join(tmpDir, "screenwriter", ".claude", "skills");
-    await fs.mkdir(skillsDir, { recursive: true });
-    await fs.writeFile(path.join(skillsDir, "script-writer.md"), "# script-writer\n", "utf-8");
+    await fs.mkdir(path.join(skillsDir, "script-writer"), { recursive: true });
+    await fs.writeFile(path.join(skillsDir, "script-writer", "SKILL.md"), "# script-writer\n", "utf-8");
 
     const manifests = await loadAgentManifests(tmpDir);
 
