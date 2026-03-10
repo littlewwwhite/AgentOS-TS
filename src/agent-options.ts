@@ -58,9 +58,9 @@ export async function buildAgentOptions(
     }),
     maxTurns: 200,
     systemPrompt: spec.systemPrompt,
-    // Enable Claude Code's full tool set including skill discovery from .claude/skills/.
-    // Without this, systemPrompt preset loads the prompt text (which mentions the Skill tool)
-    // but the SDK won't scan .claude/skills/ to register project-level skills.
-    tools: { type: "preset", preset: "claude_code" },
+    // Do NOT set `tools` — the SDK default includes all built-in tools plus
+    // auto-discovered Skill tool.  Explicitly setting the preset may exclude
+    // project-level skills loaded via settingSources: ["project"].
+    // Reference: e2b-claude-agent also omits this option.
   };
 }
