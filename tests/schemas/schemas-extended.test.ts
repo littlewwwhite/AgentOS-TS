@@ -80,7 +80,6 @@ describe("DesignSchema", () => {
   });
 
   it("total_episodes accepts any integer (no min constraint)", () => {
-    // Schema uses z.number().int() — no explicit min constraint
     const result = DesignSchema.safeParse({ ...validDesign, total_episodes: -1 });
     expect(result.success).toBe(true);
   });
@@ -136,24 +135,22 @@ describe("CatalogSchema", () => {
 describe("ScriptSchema", () => {
   const validScript = {
     title: "Test",
-    actors: [{ id: "act_001", name: "Alice" }],
-    locations: [{ id: "loc_001", name: "Office" }],
+    actors: [{ actor_id: "act_001", actor_name: "Alice" }],
+    locations: [{ location_id: "loc_001", location_name: "Office" }],
     props: [],
     episodes: [
       {
-        episode: 1,
+        episode_id: "ep_001",
         title: "Ep1",
         scenes: [
           {
-            id: "scn_001",
-            sequence: 1,
-            location: "Office",
-            location_id: "loc_001",
-            time_of_day: "day",
-            cast: [{ actor_id: "act_001", state_id: null }],
-            prop_ids: [],
+            scene_id: "ep001_scn_001",
+            environment: { space: "interior", time: "day" },
+            locations: [{ location_id: "loc_001", state_id: null }],
+            actors: [{ actor_id: "act_001", state_id: null }],
+            props: [],
             actions: [
-              { sequence: 1, type: "dialogue", content: "Hello", actor_id: "act_001" },
+              { type: "dialogue", content: "Hello", actor_id: "act_001" },
             ],
           },
         ],
@@ -171,7 +168,6 @@ describe("ScriptSchema", () => {
       ...validScript,
       worldview: "fantasy",
       style: "anime",
-      metadata: { version: 1 },
     });
     expect(result.success).toBe(true);
   });
@@ -183,31 +179,55 @@ describe("ScriptSchema", () => {
   });
 
   it("action type is a free string (not enum-constrained)", () => {
-    // ActionSchema.type is z.string() — accepts any string
     const result = ScriptSchema.safeParse({
       ...validScript,
       episodes: [{
         ...validScript.episodes[0],
         scenes: [{
           ...validScript.episodes[0].scenes[0],
-          actions: [{ sequence: 1, type: "custom_type", content: "test" }],
+          actions: [{ type: "custom_type", content: "test" }],
         }],
       }],
     });
     expect(result.success).toBe(true);
   });
 
-  it("rejects non-integer action sequence", () => {
+  it("actions have no sequence field", () => {
+    // Verify that adding a sequence field doesn't break (Zod strips unknown by default)
+    const result = ScriptSchema.safeParse(validScript);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const action = result.data.episodes[0].scenes[0].actions[0];
+      expect(action).not.toHaveProperty("sequence");
+    }
+  });
+
+  it("accepts actor and location states with unified st_ prefix", () => {
     const result = ScriptSchema.safeParse({
       ...validScript,
-      episodes: [{
-        ...validScript.episodes[0],
-        scenes: [{
-          ...validScript.episodes[0].scenes[0],
-          actions: [{ sequence: 1.5, type: "dialogue", content: "test" }],
-        }],
+      actors: [{
+        actor_id: "act_001",
+        actor_name: "Alice",
+        states: [{ state_id: "st_001", state_name: "casual" }],
+      }],
+      locations: [{
+        location_id: "loc_001",
+        location_name: "Forest",
+        states: [{ state_id: "st_002", state_name: "ruins" }],
       }],
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts props with states", () => {
+    const result = ScriptSchema.safeParse({
+      ...validScript,
+      props: [{
+        prop_id: "prp_001",
+        prop_name: "Sword",
+        states: [{ state_id: "st_003", state_name: "broken" }],
+      }],
+    });
+    expect(result.success).toBe(true);
   });
 });
