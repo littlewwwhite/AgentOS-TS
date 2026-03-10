@@ -56,6 +56,16 @@ Options:
   -h, --help       Show this help`;
 
 async function main(): Promise<void> {
+  // Clean host Claude Code env vars that break nested SDK subprocess
+  delete process.env.CLAUDECODE;
+  if (
+    process.env.ANTHROPIC_BASE_URL?.match(
+      /^https?:\/\/(127\.0\.0\.1|localhost)/,
+    )
+  ) {
+    delete process.env.ANTHROPIC_BASE_URL;
+  }
+
   // Load .env before anything else
   loadEnvToProcess(path.resolve(".env"));
 
