@@ -12,6 +12,7 @@ import { buildOptions } from "./options.js";
 import { emit } from "./protocol.js";
 import type { ChatCommand } from "./protocol.js";
 import { fetchHistory, HISTORY_LIMIT_SANDBOX } from "./session-history.js";
+import { createToolServers } from "./tools/index.js";
 import {
   createSwitchSignal,
   createDispatchServers,
@@ -78,8 +79,6 @@ export class SandboxOrchestrator {
   // Signal-driven agent switching
   private signal: SwitchSignal = createSwitchSignal();
   private pendingSessionIds = new Map<string, string>();
-  private masterSwitchServer: unknown = null;
-  private agentSwitchServer: unknown = null;
   private sessionsFile: string;
 
   constructor(config: OrchestratorConfig) {
@@ -105,19 +104,6 @@ export class SandboxOrchestrator {
       { description: string }
     >;
 
-    // Create MCP servers for signal-driven switching
-    const agentNames = Object.keys(this.agentDefinitions);
-    if (agentNames.length > 0) {
-      const { masterServer, agentServer } = createDispatchServers(this.signal, agentNames);
-      this.masterSwitchServer = masterServer;
-      this.agentSwitchServer = agentServer;
-
-      // Inject switch server into master options
-      const mcpServers = { ...(this.baseOptions.mcpServers as Record<string, unknown> ?? {}) };
-      mcpServers.switch = this.masterSwitchServer;
-      this.baseOptions.mcpServers = mcpServers;
-    }
-
     // Restore persisted session IDs
     this.mainSession = this.createSession("main", this.baseOptions);
     this.loadSessions();
@@ -142,11 +128,9 @@ export class SandboxOrchestrator {
 
     let session = this.agents.get(name);
     if (!session) {
-      const extraMcp = this.agentSwitchServer
-        ? { switch: this.agentSwitchServer }
-        : undefined;
+      // mcpServers will be refreshed per-query in processQuery()
       const opts = await buildAgentOptions(
-        this.baseOptions, this.config.agentsDir, this.config.projectPath, name, extraMcp,
+        this.baseOptions, this.config.agentsDir, this.config.projectPath, name,
       );
       session = this.createSession(name, opts);
       // Apply persisted session ID if available
@@ -257,6 +241,17 @@ export class SandboxOrchestrator {
 
   // -- Internal --
 
+  /** Fresh MCP servers for each query() — SDK instances are single-use. */
+  private freshMcpServers(isMain: boolean): Record<string, unknown> {
+    const agentNames = Object.keys(this.agentDefinitions);
+    const servers: Record<string, unknown> = { ...createToolServers() };
+    if (agentNames.length > 0) {
+      const { masterServer, agentServer } = createDispatchServers(this.signal, agentNames);
+      servers.switch = isMain ? masterServer : agentServer;
+    }
+    return servers;
+  }
+
   private createSession(
     name: string,
     options: Record<string, unknown>,
@@ -312,6 +307,9 @@ export class SandboxOrchestrator {
     this.queryLock = next;
     await prev;
 
+    // SDK MCP server instances are single-use per query() — create fresh ones
+    session.options.mcpServers = this.freshMcpServers(session.name === "main");
+
     const t0 = Date.now();
     const agentField = session.name === "main" ? undefined : session.name;
 
@@ -319,6 +317,7 @@ export class SandboxOrchestrator {
       prompt,
       options: {
         ...session.options,
+        includePartialMessages: true,
         stderr: (data: string) => {
           const trimmed = data.trim();
           if (trimmed) emit({ type: "error", message: `[sdk-stderr] ${trimmed}`, agent: agentField, request_id: requestId });
@@ -327,26 +326,46 @@ export class SandboxOrchestrator {
     });
     session.activeQuery = q;
 
+    // Track tool blocks across stream events (mirrors local CLI's toolBlocks map)
+    const toolBlocks = new Map<number, { name: string; id: string; input: string }>();
+
     try {
       for await (const msg of q as AsyncIterable<SDKMessage>) {
         if (msg.type === "stream_event") {
           const ev = msg.event as Record<string, unknown>;
+          const isNested = !!(msg as { parent_tool_use_id?: string | null }).parent_tool_use_id;
 
           if (ev.type === "content_block_start") {
             const block = ev.content_block as { type?: string; name?: string; id?: string } | undefined;
             if (block?.type === "tool_use" && block.name) {
+              const idx = ev.index as number;
+              toolBlocks.set(idx, { name: block.name, id: block.id ?? "", input: "" });
+            }
+          } else if (ev.type === "content_block_delta") {
+            const delta = ev.delta as { type?: string; text?: string; partial_json?: string } | undefined;
+            if (delta?.type === "text_delta" && delta.text) {
+              emit({ type: "text", text: delta.text, agent: agentField, request_id: requestId });
+            } else if (delta?.type === "input_json_delta" && delta.partial_json) {
+              const idx = ev.index as number;
+              const tool = toolBlocks.get(idx);
+              if (tool) tool.input += delta.partial_json;
+            }
+          } else if (ev.type === "content_block_stop") {
+            const idx = ev.index as number;
+            const tool = toolBlocks.get(idx);
+            if (tool) {
+              let input: Record<string, unknown> | undefined;
+              try { input = JSON.parse(tool.input); } catch { /* incomplete */ }
               emit({
                 type: "tool_use",
-                tool: block.name,
-                id: block.id ?? "",
+                tool: tool.name,
+                id: tool.id,
+                input,
+                nested: isNested || undefined,
                 agent: agentField,
                 request_id: requestId,
               });
-            }
-          } else if (ev.type === "content_block_delta") {
-            const delta = ev.delta as { type?: string; text?: string } | undefined;
-            if (delta?.type === "text_delta" && delta.text) {
-              emit({ type: "text", text: delta.text, agent: agentField, request_id: requestId });
+              toolBlocks.delete(idx);
             }
           }
         } else if (msg.type === "tool_progress") {
@@ -377,6 +396,7 @@ export class SandboxOrchestrator {
             is_error?: boolean;
             duration_ms?: number;
             session_id?: string;
+            num_turns?: number;
           };
           if (r.session_id) {
             session.sessionId = r.session_id;
@@ -398,9 +418,23 @@ export class SandboxOrchestrator {
             emit({ type: "error", message: m.error.message, agent: agentField, request_id: requestId });
           }
         } else {
-          // Catch-all for SDK message types not in the type union
           const t = (msg as Record<string, unknown>).type;
-          if (t === "streamlined_tool_use_summary") {
+          if (t === "system") {
+            const sys = msg as unknown as {
+              subtype?: string;
+              status?: string | null;
+              compact_metadata?: { trigger: string; pre_tokens: number };
+            };
+            if (sys.subtype) {
+              emit({
+                type: "system",
+                subtype: sys.subtype,
+                detail: sys.compact_metadata ? { ...sys.compact_metadata } : { status: sys.status },
+                agent: agentField,
+                request_id: requestId,
+              });
+            }
+          } else if (t === "streamlined_tool_use_summary") {
             const s = msg as unknown as { summary?: string; tool_summary?: string };
             const text = s.summary ?? s.tool_summary;
             if (text) {

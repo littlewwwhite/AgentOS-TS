@@ -37,11 +37,22 @@ export interface EventBase {
 
 export type ReadyEvent = EventBase & { type: "ready"; skills: string[] };
 export type TextEvent = EventBase & { type: "text"; text: string };
-export type ToolUseEvent = EventBase & { type: "tool_use"; tool: string; id: string };
+export type ToolUseEvent = EventBase & {
+  type: "tool_use";
+  tool: string;
+  id: string;
+  input?: Record<string, unknown>;
+  nested?: boolean;
+};
 export type ToolLogEvent = EventBase & {
   type: "tool_log";
   tool: string;
   phase: "pre" | "post";
+  detail?: Record<string, unknown>;
+};
+export type SystemEvent = EventBase & {
+  type: "system";
+  subtype: string;
   detail?: Record<string, unknown>;
 };
 export type ResultEvent = EventBase & {
@@ -82,6 +93,7 @@ export type SandboxEvent =
   | TextEvent
   | ToolUseEvent
   | ToolLogEvent
+  | SystemEvent
   | ResultEvent
   | ErrorEvent
   | StatusEvent

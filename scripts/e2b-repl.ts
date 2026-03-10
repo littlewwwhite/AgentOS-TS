@@ -59,6 +59,53 @@ const LOCAL_WORKSPACE = localWorkspaceOverride
   ? path.resolve(localWorkspaceOverride)
   : path.resolve(import.meta.dir, "../workspace");
 
+// ---------- Tool label formatting ----------
+
+function formatToolLabel(name: string, input?: Record<string, unknown>): string {
+  if (!input) return name;
+  if (name === "Bash") {
+    if (typeof input.description === "string" && input.description.length > 0) {
+      return `Bash(${input.description})`;
+    }
+    if (typeof input.command === "string") {
+      const short = input.command.length > 60 ? input.command.slice(0, 57) + "\u2026" : input.command;
+      return `Bash(${short})`;
+    }
+    return "Bash";
+  }
+  if (name === "Agent" || name === "Task") {
+    const agentName = input.subagent_type ?? input.name ?? input.agent ?? null;
+    const desc = typeof input.description === "string" ? input.description.slice(0, 50) : "";
+    if (agentName) return `${agentName}${desc ? ` \u2014 ${desc}` : ""}`;
+    if (desc) return `Agent(${desc})`;
+    return "Agent";
+  }
+  const mcpMatch = name.match(/^mcp__(\w+)__(.+)$/);
+  if (mcpMatch) {
+    const [, server, tool] = mcpMatch;
+    const params = Object.entries(input)
+      .filter(([, v]) => v !== undefined && v !== null)
+      .slice(0, 3)
+      .map(([k, v]) => {
+        const sv = typeof v === "string"
+          ? (v.length > 30 ? `"${v.slice(0, 30)}\u2026"` : `"${v}"`)
+          : JSON.stringify(v);
+        return `${k}: ${sv}`;
+      })
+      .join(", ");
+    return `${server}:${tool}${params ? `(${params})` : ""}`;
+  }
+  const arg =
+    input.file_path ?? input.command ?? input.pattern ??
+    input.url ??
+    (typeof input.prompt === "string" ? input.prompt.slice(0, 60) : null) ?? "";
+  if (arg) {
+    const short = typeof arg === "string" && arg.length > 60 ? arg.slice(0, 57) + "\u2026" : arg;
+    return `${name}(${short})`;
+  }
+  return name;
+}
+
 // ---------- State ----------
 
 let activeAgent: string | null = null;
@@ -86,8 +133,10 @@ function handleEvent(event: SandboxEvent): void {
 
     case "tool_use": {
       if (textStarted) { process.stdout.write("\n"); textStarted = false; }
+      const indent = event.nested ? "      " : "  ";
       const label = event.agent ? dim(`[${event.agent}] `) : "";
-      console.log(`${label}${dim(`  \u26a1 ${event.tool}`)}`);
+      const toolLabel = formatToolLabel(event.tool, event.input);
+      console.log(`${label}${indent}${cyan("\u23fb")} ${toolLabel}`);
       break;
     }
 
@@ -137,6 +186,17 @@ function handleEvent(event: SandboxEvent): void {
     case "agent_exited":
       activeAgent = null;
       break;
+
+    case "system": {
+      if (textStarted) { process.stdout.write("\n"); textStarted = false; }
+      if (event.subtype === "status" && event.detail?.status === "compacting") {
+        console.log(`  ${cyan("\u23fb")} ${yellow("compacting context\u2026")}`);
+      } else if (event.subtype === "compact_boundary" && event.detail) {
+        const d = event.detail as { trigger?: string; pre_tokens?: number };
+        console.log(dim(`    \u23bf  compacted (${d.trigger}, ${d.pre_tokens} tokens before)`));
+      }
+      break;
+    }
   }
 }
 
