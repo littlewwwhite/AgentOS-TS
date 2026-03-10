@@ -90,6 +90,7 @@ export async function buildOptions(
     cwd: spec.cwd,
     permissionMode: spec.permissionMode,
     includePartialMessages: true,
+    maxTurns: 30, // orchestrator only dispatches — 30 turns is generous
     maxBudgetUsd: MAX_BUDGET_USD,
     model,
     resume,

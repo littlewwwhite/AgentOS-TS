@@ -44,6 +44,7 @@ describe("buildOptions", () => {
     expect(opts).toHaveProperty("cwd", "/tmp/test-ws");
     expect(opts).toHaveProperty("permissionMode", "dontAsk");
     expect(opts).toHaveProperty("includePartialMessages", true);
+    expect(opts).toHaveProperty("maxTurns", 30);
   });
 
   it("requests MCP tool servers and avoids bypass permissions for the main session", async () => {
