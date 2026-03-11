@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { FIXED_MODEL } from "../src/fixed-model.js";
 
 // Mock all external dependencies before importing the module under test
 vi.mock("../src/agent-manifest.js", () => ({
@@ -56,7 +57,7 @@ describe("buildOptions", () => {
 
     const opts = await buildOptions("/tmp/test-ws", "agents");
 
-    expect(mockCreateToolServers).toHaveBeenCalledWith(["source", "switch"]);
+    expect(mockCreateToolServers).toHaveBeenCalledWith(["source", "switch", "workspace"]);
     expect(opts.mcpServers).toBe(toolServers);
     expect(opts.permissionMode).toBe("dontAsk");
     expect(opts.disallowedTools).toEqual(
@@ -84,9 +85,9 @@ describe("buildOptions", () => {
     expect(prompt.append).toContain("Source materials: /tmp/test-ws/data/");
   });
 
-  it("passes through model, resume, continue", async () => {
+  it("pins the runtime model while preserving resume and continue", async () => {
     const opts = await buildOptions("/tmp/test-ws", "agents", "opus", "sess-123", true);
-    expect(opts.model).toBe("opus");
+    expect(opts.model).toBe(FIXED_MODEL);
     expect(opts.resume).toBe("sess-123");
     expect(opts.continue).toBe(true);
   });

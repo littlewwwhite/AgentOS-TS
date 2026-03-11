@@ -5,6 +5,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { FIXED_MODEL } from "./fixed-model.js";
 import { loadAgentManifests } from "./agent-manifest.js";
 import { buildHooks } from "./hooks/index.js";
 import { buildMainSessionSpec } from "./session-specs.js";
@@ -44,7 +45,7 @@ const MAX_BUDGET_USD = 10.0;
 export async function buildOptions(
   projectPath: string,
   agentsDir: string,
-  model?: string,
+  _model?: string,
   resume?: string,
   shouldContinue = false,
 ) {
@@ -94,7 +95,7 @@ export async function buildOptions(
     includePartialMessages: true,
     maxTurns: 30, // orchestrator only dispatches — 30 turns is generous
     maxBudgetUsd: MAX_BUDGET_USD,
-    model,
+    model: FIXED_MODEL,
     resume,
     continue: shouldContinue,
   };

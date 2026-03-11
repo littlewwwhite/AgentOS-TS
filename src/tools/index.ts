@@ -10,6 +10,7 @@ import { parseScript } from "./script-parser.js";
 import { detectSourceStructure, prepareSourceProject } from "./source.js";
 import { listAssets, readJson, saveAsset, writeJson } from "./storage.js";
 import { checkVideoStatus, generateVideo } from "./video.js";
+import { checkWorkspace } from "./workspace.js";
 
 const TOOL_SERVER_BUILDERS = {
   source: () => createSdkMcpServer({
@@ -24,6 +25,7 @@ const TOOL_SERVER_BUILDERS = {
   video: () => createSdkMcpServer({ name: "video", tools: [generateVideo, checkVideoStatus] }),
   audio: () => createSdkMcpServer({ name: "audio", tools: [generateTts, generateSfx, generateMusic] }),
   script: () => createSdkMcpServer({ name: "script", tools: [parseScript] }),
+  workspace: () => createSdkMcpServer({ name: "workspace", tools: [checkWorkspace] }),
 } satisfies Record<string, () => unknown>;
 
 export type ToolServerName = keyof typeof TOOL_SERVER_BUILDERS;
