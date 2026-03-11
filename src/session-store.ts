@@ -2,6 +2,8 @@
 // output: In-memory project session records for the host bridge
 // pos: Host state layer — minimal metadata store for project-scoped sandboxes
 
+import path from "node:path";
+
 export interface ProjectSession {
   projectId: string;
   sandboxId: string | null;
@@ -16,6 +18,14 @@ export interface ProjectSessionPatch {
 export class SessionStore {
   private readonly sessions = new Map<string, ProjectSession>();
   private lastTimestamp = 0;
+
+  /**
+   * Returns the default on-disk session database path for local mode.
+   * The directory is created lazily by SQLite; callers need not mkdir first.
+   */
+  static defaultPath(workspaceRoot: string): string {
+    return path.join(workspaceRoot, ".agentos", "sessions.db");
+  }
 
   get(projectId: string): ProjectSession | null {
     return this.sessions.get(projectId) ?? null;

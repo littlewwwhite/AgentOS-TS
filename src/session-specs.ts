@@ -45,6 +45,8 @@ interface BuildWorkerSessionSpecInput {
   agentName: string;
   manifest: WorkerManifest;
   workspaceDescription?: string;
+  /** Optional project context from ProjectMemory.getProjectContext() — injected into systemPrompt */
+  projectContext?: string;
 }
 
 export function describeAgentList(agents: Record<string, AgentRoutingDefinition>): string {
@@ -135,7 +137,7 @@ Otherwise, use your best judgment at checkpoints and continue automatically.
 
 Stay in this agent conversation after finishing the task.
 Do NOT hand control back to main automatically.
-Wait for the user's next instruction unless they explicitly ask to exit the agent.`,
+Wait for the user's next instruction unless they explicitly ask to exit the agent.${input.projectContext ? `\n\n## Project Context\n${input.projectContext}` : ""}`,
     },
   };
 }
