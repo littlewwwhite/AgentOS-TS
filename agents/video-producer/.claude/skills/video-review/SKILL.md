@@ -1,6 +1,6 @@
 ---
 name: video-review
-description: "AI 视频内容评审工具，基于提示词符合度+五维度进行结构化审核，自动识别不合格视频并触发重新生成。"
+description: AI 视频内容评审工具，基于提示词符合度+五维度进行结构化审核，自动识别不合格视频并触发重新生成。
 argument-hint: <视频文件路径或脚本路径>
 ---
 
@@ -73,7 +73,7 @@ C 多版本: ep##-sc##-l##-[Lver]-c##-##.mp4
 ```
 drama-storyboard (生成提示词JSON)
   -> 视频生成平台 (可灵/Seedance)
-  -> gemini-video.skill (视频内容分析)
+  -> gemini_analyzer (视频内容分析，Gemini API)
   -> video-review (提示词符合度 + 5维度评审)
   -> 六级判定
      | 合格 -> 记录到 final_selection.json
@@ -92,9 +92,61 @@ drama-storyboard (生成提示词JSON)
 | `scripts/workflow.py` | 一键完成：分析 -> 评审 -> 时间段分析 -> 优化 -> 重新生成 |
 | `scripts/c_level_generator.py` | C 级视频生成（单个时间切片 3-5秒） |
 | `scripts/final_selection.py` | 最终选择管理（set-l / add-shot / list / export） |
-| `scripts/gemini_adapter.py` | 三级回退：缓存 -> gemini-video.skill -> 内置分析器 |
+| `scripts/gemini_adapter.py` | 两级策略：缓存 -> 内置分析器 |
 | `scripts/optimizer.py` | 基于评审结果优化视频生成提示词 |
-| `references/prompt-rules/*.xml` | 优化规则文件（内容/风格/光照/音乐/音效） |
+| `${CLAUDE_SKILL_DIR}/video-review-references/prompt-rules/*.xml` | 优化规则文件（内容/风格/光照/音乐/音效） |
+
+## Bundled Scripts
+
+Deterministic scripts in `${CLAUDE_SKILL_DIR}/scripts/`, via `Bash` tool 调用。
+
+### Core Workflow
+| Script | Purpose |
+|--------|---------|
+| `workflow.py` | One-click pipeline: analyze -> review -> timerange analysis -> optimize -> regenerate |
+| `review.py` | Main review script, supports text scripts and video file analysis |
+| `evaluator.py` | Six-level quality judgment and scoring, outputs `*_review.json` |
+| `quality_control.py` | Quality control and regeneration tool, identifies failed videos and generates optimized prompts |
+
+### Video Generation & Management
+| Script | Purpose |
+|--------|---------|
+| `video_generator.py` | Automatically call video generation API to regenerate videos |
+| `submit_video_create.py` | Submit video generation task (battle mode disabled by default) |
+| `poll_video_create_task.py` | Poll video generation task status until completion or timeout |
+| `regenerate_videos.py` | Auto-regenerate failed videos based on quality control report |
+| `auto_regenerate.py` | Automated video regeneration tool, calls drama-storyboard skill to optimize prompts |
+| `c_level_generator.py` | Generate C-level videos (single time slice 3-5s) |
+| `final_selection.py` | Final selection management (set-l / add-shot / list / export) |
+
+### Video Analysis
+| Script | Purpose |
+|--------|---------|
+| `video_analyzer.py` | Video file analyzer, parses video path metadata and uses Gemini for content analysis |
+| `gemini_analyzer.py` | Gemini API video analysis, outputs `*_analysis.json` |
+| `gemini_adapter.py` | Two-tier strategy: cache -> built-in analyzer |
+
+### Authentication & Configuration
+| Script | Purpose |
+|--------|---------|
+| `auth.py` | Authentication module, obtains valid JWT via refreshToken interface |
+| `login.py` | Initial login via phone verification code, select work team, save session to local config |
+| `config.py` | Configuration management tool for review dimensions, weights, and platform standards |
+| `config_manager.py` | Unified project path and configuration management |
+| `dimensions_config.py` | Video review dimension configuration (5-dimension system) |
+
+### Batch Processing
+| Script | Purpose |
+|--------|---------|
+| `batch_workflow.py` | Batch process video folders, auto analyze, review, and optimize |
+| `batch_review.py` | Batch review tool, supports processing multiple video script files |
+| `batch_analyze.sh` | Shell script for batch video analysis |
+
+### Utilities
+| Script | Purpose |
+|--------|---------|
+| `optimizer.py` | Optimize video generation prompts based on review results |
+| `upload_to_cos.py` | Upload local files to Tencent Cloud COS (public-read, returns direct access URL) |
 
 ## 关键约束
 
@@ -108,8 +160,8 @@ drama-storyboard (生成提示词JSON)
 
 | 文件 | 内容 |
 |------|------|
-| `references/quality-rules.md` | 完整判定规则、命名规范、工作流细节 |
-| `references/modules.md` | 各模块详细说明、评分算法、JSON 格式支持 |
-| `references/configuration.md` | 配置参数、输入输出格式、项目结构、JSON Schema |
-| `references/prompt-enhancement.md` | 提示词优化策略、XML 规则说明、集成方式 |
-| `references/auto-regeneration.md` | 自动重新生成使用指南 |
+| `${CLAUDE_SKILL_DIR}/video-review-references/quality-rules.md` | 完整判定规则、命名规范、工作流细节 |
+| `${CLAUDE_SKILL_DIR}/video-review-references/modules.md` | 各模块详细说明、评分算法、JSON 格式支持 |
+| `${CLAUDE_SKILL_DIR}/video-review-references/configuration.md` | 配置参数、输入输出格式、项目结构、JSON Schema |
+| `${CLAUDE_SKILL_DIR}/video-review-references/prompt-enhancement.md` | 提示词优化策略、XML 规则说明、集成方式 |
+| `${CLAUDE_SKILL_DIR}/video-review-references/auto-regeneration.md` | 自动重新生成使用指南 |

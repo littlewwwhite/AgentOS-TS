@@ -1,6 +1,6 @@
 ---
 name: image-create
-description: "通过 anime-material-workbench API 生成图片，支持角色、场景、道具等图片的创建与异步任务管理。"
+description: 通过 anime-material-workbench API 生成图片，支持角色、场景、道具等图片的创建与异步任务管理。
 ---
 
 # Image Create Skill
@@ -12,6 +12,17 @@ description: "通过 anime-material-workbench API 生成图片，支持角色、
 ## Resources
 
 - **API 文档**：`${CLAUDE_SKILL_DIR}/image-create-references/api.md` — 完整的接口规范、字段说明和示例
+
+## Bundled Scripts
+
+Deterministic scripts in `${CLAUDE_SKILL_DIR}/scripts/`, via `Bash` tool调用。
+
+| Script | Purpose |
+|--------|---------|
+| `auth.py` | Manage JWT authentication via refreshToken, auto-refresh expired tokens |
+| `login.py` | Initialize login with phone/SMS code, select work group, persist session config |
+| `submit_image_create.py` | Submit image generation task with model code and prompt parameters |
+| `poll_image_task.py` | Poll image task status until completion or timeout |
 
 ---
 

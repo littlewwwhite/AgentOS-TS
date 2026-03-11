@@ -1,6 +1,6 @@
 ---
 name: image-edit
-description: "通过 anime-material-workbench API 编辑图片，支持图片修改、风格迁移等编辑操作与异步任务管理。"
+description: 通过 anime-material-workbench API 编辑图片，支持图片修改、风格迁移等编辑操作与异步任务管理。
 ---
 
 # Image Edit Skill
@@ -12,6 +12,20 @@ description: "通过 anime-material-workbench API 编辑图片，支持图片修
 ## Resources
 
 - **上传脚本**：`scripts/upload_to_cos.py` — 将本地图片上传至腾讯云 COS 并返回访问 URL
+
+---
+
+## Bundled Scripts
+
+Deterministic scripts in `${CLAUDE_SKILL_DIR}/scripts/`, via `Bash` tool调用。
+
+| Script | Purpose |
+|--------|---------|
+| `auth.py` | Manage JWT authentication via refreshToken, auto-refresh expired tokens, print user info |
+| `login.py` | Initialize login with phone verification code, select work team, save session to local config |
+| `poll_image_edit_task.py` | Poll image edit task status until completion or timeout |
+| `submit_image_edit.py` | Submit image edit task with model code, prompt, and parameters |
+| `upload_to_cos.py` | Upload local image to Tencent Cloud COS and return access URL |
 
 ---
 

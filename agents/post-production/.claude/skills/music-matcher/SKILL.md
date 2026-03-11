@@ -1,6 +1,6 @@
 ---
 name: music-matcher
-description: "基于向量语义匹配的智能视频配乐工具。输入视频文件，自动完成 Gemini 视频分析、向量匹配选曲、FFmpeg 合成输出。"
+description: 基于向量语义匹配的智能视频配乐工具。输入视频文件，自动完成 Gemini 视频分析、向量匹配选曲、FFmpeg 合成输出。
 ---
 
 # Music Matcher — 智能视频配乐

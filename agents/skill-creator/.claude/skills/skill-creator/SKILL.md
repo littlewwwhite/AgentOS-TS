@@ -35,7 +35,7 @@ skill-name/
 │   └── Markdown instructions (required)
 └── Bundled Resources (optional)
     ├── scripts/          - Executable code (Python/Bash/etc.)
-    ├── references/       - Documentation intended to be loaded into context as needed
+    ├── ${CLAUDE_SKILL_DIR}/skill-creator-references/       - Documentation intended to be loaded into context as needed
     └── assets/           - Files used in output (templates, icons, fonts, etc.)
 ```
 
@@ -54,12 +54,12 @@ Executable code (Python/Bash/etc.) for tasks that require deterministic reliabil
 - **Benefits**: Token efficient, deterministic, may be executed without loading into context
 - **Note**: Scripts may still need to be read by Claude for patching or environment-specific adjustments
 
-##### References (`references/`)
+##### References (`${CLAUDE_SKILL_DIR}/skill-creator-references/`)
 
 Documentation and reference material intended to be loaded as needed into context to inform Claude's process and thinking.
 
 - **When to include**: For documentation that Claude should reference while working
-- **Examples**: `references/finance.md` for financial schemas, `references/mnda.md` for company NDA template, `references/policies.md` for company policies, `references/api_docs.md` for API specifications
+- **Examples**: `${CLAUDE_SKILL_DIR}/skill-creator-references/finance.md` for financial schemas, `${CLAUDE_SKILL_DIR}/skill-creator-references/mnda.md` for company NDA template, `${CLAUDE_SKILL_DIR}/skill-creator-references/policies.md` for company policies, `${CLAUDE_SKILL_DIR}/skill-creator-references/api_docs.md` for API specifications
 - **Use cases**: Database schemas, API documentation, domain knowledge, company policies, detailed workflow guides
 - **Benefits**: Keeps SKILL.md lean, loaded only when Claude determines it's needed
 - **Best practice**: If files are large (>10k words), include grep search patterns in SKILL.md
@@ -83,6 +83,16 @@ Skills use a three-level loading system to manage context efficiently:
 3. **Bundled resources** - As needed by Claude (Unlimited*)
 
 *Unlimited because scripts can be executed without reading into context window.
+
+## Bundled Scripts
+
+Deterministic scripts in `${CLAUDE_SKILL_DIR}/scripts/`, via `Bash` tool调用。
+
+| Script | Purpose |
+|--------|---------|
+| `init_skill.py` | Create a new skill from template with proper directory structure and YAML frontmatter |
+| `package_skill.py` | Package skill into distributable zip file with automatic validation |
+| `quick_validate.py` | Validate skill structure, frontmatter, and required fields |
 
 ## Skill Creation Process
 
@@ -125,7 +135,7 @@ Example: When designing a `frontend-webapp-builder` skill for queries like "Buil
 Example: When building a `big-query` skill to handle queries like "How many users have logged in today?" the analysis shows:
 
 1. Querying BigQuery requires re-discovering the table schemas and relationships each time
-2. A `references/schema.md` file documenting the table schemas would be helpful to store in the skill
+2. A `${CLAUDE_SKILL_DIR}/skill-creator-references/schema.md` file documenting the table schemas would be helpful to store in the skill
 
 To establish the skill's contents, analyze each concrete example to create a list of the reusable resources to include: scripts, references, and assets.
 
@@ -147,7 +157,7 @@ The script:
 
 - Creates the skill directory at the specified path
 - Generates a SKILL.md template with proper frontmatter and TODO placeholders
-- Creates example resource directories: `scripts/`, `references/`, and `assets/`
+- Creates example resource directories: `scripts/`, `${CLAUDE_SKILL_DIR}/skill-creator-references/`, and `assets/`
 - Adds example files in each directory that can be customized or deleted
 
 After initialization, customize or remove the generated SKILL.md and example files as needed.
@@ -158,9 +168,9 @@ When editing the (newly-generated or existing) skill, remember that the skill is
 
 #### Start with Reusable Skill Contents
 
-To begin implementation, start with the reusable resources identified above: `scripts/`, `references/`, and `assets/` files. Note that this step may require user input. For example, when implementing a `brand-guidelines` skill, the user may need to provide brand assets or templates to store in `assets/`, or documentation to store in `references/`.
+To begin implementation, start with the reusable resources identified above: `scripts/`, `${CLAUDE_SKILL_DIR}/skill-creator-references/`, and `assets/` files. Note that this step may require user input. For example, when implementing a `brand-guidelines` skill, the user may need to provide brand assets or templates to store in `assets/`, or documentation to store in `${CLAUDE_SKILL_DIR}/skill-creator-references/`.
 
-Also, delete any example files and directories not needed for the skill. The initialization script creates example files in `scripts/`, `references/`, and `assets/` to demonstrate structure, but most skills won't need all of them.
+Also, delete any example files and directories not needed for the skill. The initialization script creates example files in `scripts/`, `${CLAUDE_SKILL_DIR}/skill-creator-references/`, and `assets/` to demonstrate structure, but most skills won't need all of them.
 
 #### Update SKILL.md
 

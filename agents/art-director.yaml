@@ -3,3 +3,8 @@ description: "美术设计：负责视觉资产的创建与编辑，包括角色
 mcpServers:
   - storage
   - image
+skills:
+  asset-gen:
+  image-create:
+  image-edit:
+  kling-video-prompt:

@@ -76,12 +76,11 @@ Optimizes prompts based on review results.
 **Input:** original prompt JSON, segment ID, review result
 **Output:** `*_optimized.json`
 
-## 6. gemini_adapter.py - Smart Adapter
+## 6. gemini_adapter.py - Analysis Adapter
 
-Three-level fallback for analysis:
+Two-level strategy for analysis:
 1. Read existing `*_analysis.json` (cache)
-2. Call gemini-video.skill
-3. Fall back to built-in gemini_analyzer.py
+2. Run built-in gemini_analyzer.py
 
 ## 7. final_selection.py - Final Selection Manager
 

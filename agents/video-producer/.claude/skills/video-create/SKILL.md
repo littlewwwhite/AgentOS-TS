@@ -1,6 +1,6 @@
 ---
 name: video-create
-description: "通过 anime-material-workbench API 生成视频，支持图生视频、文生视频等操作与异步任务管理。"
+description: 通过 anime-material-workbench API 生成视频，支持图生视频、文生视频等操作与异步任务管理。
 ---
 
 # Video Create Skill
@@ -19,6 +19,18 @@ description: "通过 anime-material-workbench API 生成视频，支持图生视
 |:-----|:-----|
 | `${CLAUDE_SKILL_DIR}/video-create-references/prompt-params-spec.md` | 参数类型解析规则（ENUM/INT/FLOAT/FileListType/FrameListType/multi_prompt）与 JSON 组装示例 |
 | `${CLAUDE_SKILL_DIR}/video-create-references/reference-video-mode.md` | 参考生视频模式协议（multi_param + richTaskPrompt 结构） |
+
+## Bundled Scripts
+
+Deterministic scripts in `${CLAUDE_SKILL_DIR}/scripts/`, via `Bash` tool调用。
+
+| Script | Purpose |
+|--------|---------|
+| `auth.py` | Token management module - auto-refresh JWT from refreshToken, print user info |
+| `login.py` | Initial login via phone + SMS code, team selection, persist session to config file |
+| `submit_video_create.py` | Submit video generation task with model code, prompt, and parameters |
+| `poll_video_create_task.py` | Poll video task status until SUCCESS/FAIL or timeout |
+| `upload_to_cos.py` | Upload local files to Tencent COS with public-read ACL, return accessible URL |
 
 ---
 

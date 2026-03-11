@@ -74,17 +74,17 @@ GEMINI_API_KEY="..." python3 -X utf8 \
   "style": "Dark fantasy aesthetic with cold blue-purple tones...",
   "actors": [
     {
-      "actor_id": "act_001",
-      "actor_name": "白行风",
+      "id": "act_001",
+      "name": "白行风",
       "states": [
-        {"state_id": "st_001", "state_name": "傻子"},
-        {"state_id": "st_002", "state_name": "重伤"},
-        {"state_id": "st_003", "state_name": "全盛"}
+        {"id": "st_001", "name": "傻子"},
+        {"id": "st_002", "name": "重伤"},
+        {"id": "st_003", "name": "全盛"}
       ]
     }
   ],
   "locations": [
-    {"location_id": "loc_001", "location_name": "万剑宗大殿"}
+    {"id": "loc_001", "name": "万剑宗大殿"}
   ],
   "episodes": [...]
 }
@@ -208,6 +208,29 @@ A: 直接运行对应的子脚本：
 **Q: 生成失败如何重试?**
 
 A: 删除对应的输出文件,重新运行编排器即可。断点续传机制会自动跳过已完成的部分。
+
+---
+
+## Bundled Scripts
+
+Deterministic scripts in `${CLAUDE_SKILL_DIR}/scripts/`, via `Bash` tool调用。
+
+| Script | Purpose |
+|--------|---------|
+| `auth.py` | Refresh JWT token from refreshToken (SID) stored in ~/.animeworkbench_auth.json |
+| `login.py` | Initialize login via phone verification code, select work group, save session to local config |
+| `generate_style.py` | Extract worldview visual style from script.json, generate style.json with render prefix/suffix |
+| `generate_prompts_from_script.py` | Auto-extract assets from script.json episodes, generate prompt JSONs for characters/scenes/props |
+| `generate_all_assets.py` | Orchestrator for parallel generation of characters, scenes, props with retry and checkpoint resume |
+| `generate_characters.py` | Generate character three-view images, split into front/side/back views, with Gemini review |
+| `generate_scenes.py` | Generate scene main image and reference sheet with Gemini review |
+| `generate_props.py` | Generate prop main image and detail reference sheet with Gemini review |
+| `char_review.py` | Gemini review for character images (front view or side/back view consistency check) |
+| `scene_review.py` | Gemini review for scene images (main image or reference sheet style consistency) |
+| `props_review.py` | Gemini review for prop images (worldview compliance and style consistency) |
+| `style_config.json` | Configuration for style generation (Gemini model, prompt template, retry settings) |
+| `generation_config.json` | Configuration for prompt generation (model selection, reference hints by worldview type) |
+| `review_config.json` | Configuration for review process (max rounds, pass rate threshold, Gemini models) |
 
 ---
 

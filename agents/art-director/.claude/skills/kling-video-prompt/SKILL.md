@@ -307,18 +307,29 @@ shot `description` 中的完整背景 → prompts 中精简为 5-15 字背景标
 
 ---
 
+## Bundled Scripts
+
+Deterministic scripts in `${CLAUDE_SKILL_DIR}/scripts/`, via `Bash` tool调用。
+
+| Script | Purpose |
+|--------|---------|
+| `generate_episode_json.py` | Generate `ep{XX}_shots.json` from `script.json` for a given episode |
+| `check_all.py` | Run all format checks (prompts + props) in one pass |
+| `check_prompts_format.py` | Validate prompts field format, type, length, and prefix rules |
+| `check_props_field.py` | Validate props field against forbidden scene-inherent keywords |
+| `check_a7_characters_v2.py` | Check A7: verify all characters mentioned in prompts exist in `characters` field |
+| `clean_json_files.py` | Delete temp/backup JSON files, keep only final `ep{XX}_shots.json` |
+| `login.py` | Authenticate via phone + SMS code, select team, save session to `~/.animeworkbench_auth.json` |
+| `auth.py` | Auth utility module — exchange refreshToken for a valid JWT (used by other scripts) |
+
+---
+
 ## References 索引
 
 | 文件 | 内容 |
 |------|------|
-| [`references/prompt-generation-rules.md`](references/prompt-generation-rules.md) | 完整提示词生成规则（元素清单、生成流程、质量检查） |
-| [`references/prompts-format.md`](references/prompts-format.md) | Prompts 格式规范总结（字段格式、props 规则、检查工具） |
-| [`references/visual-expansion.md`](references/visual-expansion.md) | 视觉描述扩展规则（动作/情绪扩展策略、标注规则） |
-| [`references/batch-generation.md`](references/batch-generation.md) | 批量视频生成流程（可灵 3.0 Omni 参考生视频模式） |
-| [`references/video-download.md`](references/video-download.md) | 视频下载和目录组织规范 |
-| `scripts/generate_episode_json.py` | 自动生成 ep{XX}_shots.json 的主脚本 |
-| `scripts/check_all.py` | 综合检查脚本 |
-| `scripts/check_prompts_format.py` | Prompts 格式检查 |
-| `scripts/check_props_field.py` | Props 字段检查 |
-| `scripts/check_a7_characters_v2.py` | Characters 字段完整性检查 |
-| `scripts/clean_json_files.py` | JSON 文件清理工具 |
+| [`${CLAUDE_SKILL_DIR}/kling-video-prompt-references/prompt-generation-rules.md`](${CLAUDE_SKILL_DIR}/kling-video-prompt-references/prompt-generation-rules.md) | 完整提示词生成规则（元素清单、生成流程、质量检查） |
+| [`${CLAUDE_SKILL_DIR}/kling-video-prompt-references/prompts-format.md`](${CLAUDE_SKILL_DIR}/kling-video-prompt-references/prompts-format.md) | Prompts 格式规范总结（字段格式、props 规则、检查工具） |
+| [`${CLAUDE_SKILL_DIR}/kling-video-prompt-references/visual-expansion.md`](${CLAUDE_SKILL_DIR}/kling-video-prompt-references/visual-expansion.md) | 视觉描述扩展规则（动作/情绪扩展策略、标注规则） |
+| [`${CLAUDE_SKILL_DIR}/kling-video-prompt-references/batch-generation.md`](${CLAUDE_SKILL_DIR}/kling-video-prompt-references/batch-generation.md) | 批量视频生成流程（可灵 3.0 Omni 参考生视频模式） |
+| [`${CLAUDE_SKILL_DIR}/kling-video-prompt-references/video-download.md`](${CLAUDE_SKILL_DIR}/kling-video-prompt-references/video-download.md) | 视频下载和目录组织规范 |

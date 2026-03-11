@@ -34,7 +34,7 @@ Generated videos are organized as follows:
 
 ```python
 import sys
-sys.path.insert(0, '${CLAUDE_SKILL_DIR}/../video-create/scripts')
+sys.path.insert(0, '${CLAUDE_SKILL_DIR}/scripts')
 import auth
 
 task_id = 'YOUR_TASK_ID'
@@ -88,8 +88,8 @@ with urllib.request.urlopen(req, timeout=300) as response:
 
 ```bash
 cd 03-video
-python ${CLAUDE_SKILL_DIR}/../video-create/scripts/login.py --phone PHONE --code CODE
-python ${CLAUDE_SKILL_DIR}/../video-create/scripts/login.py --select-group GROUP_ID
+python ${CLAUDE_SKILL_DIR}/scripts/login.py --phone PHONE --code CODE
+python ${CLAUDE_SKILL_DIR}/scripts/login.py --select-group GROUP_ID
 ```
 
 ### SSL error on download
