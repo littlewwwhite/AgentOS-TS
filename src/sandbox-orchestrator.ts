@@ -2,7 +2,6 @@
 // output: Manages agent sessions, routes commands, emits events
 // pos: Sole orchestration core — routes to per-agent .claude/ directories via SDK-native loading
 
-import fs from "node:fs";
 import path from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Query, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -64,6 +63,10 @@ export interface OrchestratorConfig {
   projectPath: string;
   agentsDir: string;
   model?: string;
+  sessionPersistence?: {
+    load(): Record<string, string>;
+    save(data: Record<string, string>): void;
+  };
 }
 
 // ---------- SandboxOrchestrator ----------
@@ -88,11 +91,9 @@ export class SandboxOrchestrator {
   // Signal-driven agent switching
   private signal: SwitchSignal = createSwitchSignal();
   private pendingSessionIds = new Map<string, string>();
-  private sessionsFile: string;
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
-    this.sessionsFile = path.join(config.projectPath, ".sessions.json");
   }
 
   get activeAgent(): string | null {
@@ -366,13 +367,15 @@ export class SandboxOrchestrator {
         includePartialMessages: true,
         stderr: (data: string) => {
           const trimmed = data.trim();
-          if (trimmed)
-            emit({
-              type: "error",
-              message: `[sdk-stderr] ${trimmed}`,
-              agent: agentField,
-              request_id: requestId,
-            });
+          // SDK skill-improvement hooks fire after session close, producing
+          // noisy "Error in hook callback" + "Stream closed" errors. Harmless.
+          if (!trimmed || trimmed.includes("Error in hook callback")) return;
+          emit({
+            type: "error",
+            message: `[sdk-stderr] ${trimmed}`,
+            agent: agentField,
+            request_id: requestId,
+          });
         },
       },
     });
@@ -629,37 +632,35 @@ export class SandboxOrchestrator {
   // -- Session persistence --
 
   private loadSessions(): void {
+    if (!this.config.sessionPersistence) return;
+
     try {
-      const data = JSON.parse(fs.readFileSync(this.sessionsFile, "utf-8")) as Record<
-        string,
-        string
-      >;
-      // Session IDs will be applied when sessions are created
+      const data = this.config.sessionPersistence.load();
       if (data.main && this.mainSession) {
         this.mainSession.sessionId = data.main;
         this.mainSession.options.resume = data.main;
         this.mainSession.options.continue = false;
       }
-      // Store agent session IDs for lazy application — sessions are created
-      // on first use via getOrCreateAgent(), which will pick up these IDs.
       for (const [name, sessionId] of Object.entries(data)) {
         if (name !== "main" && sessionId) {
           this.pendingSessionIds.set(name, sessionId);
         }
       }
     } catch {
-      // First run or corrupt file — start fresh
+      // First run or callback error — start fresh
     }
   }
 
   private saveSessions(): void {
+    if (!this.config.sessionPersistence) return;
+
     const data: Record<string, string> = {};
     if (this.mainSession?.sessionId) data.main = this.mainSession.sessionId;
     for (const [name, session] of this.agents) {
       if (session.sessionId) data[name] = session.sessionId;
     }
     try {
-      fs.writeFileSync(this.sessionsFile, JSON.stringify(data, null, 2));
+      this.config.sessionPersistence.save(data);
     } catch {
       // Non-critical — session restore is best-effort
     }

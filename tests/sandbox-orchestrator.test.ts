@@ -24,7 +24,6 @@ vi.mock("../src/tools/index.js", () => ({
 
 // ---------- Imports (after mocks) ----------
 
-import fs from "node:fs";
 import path from "node:path";
 import { getSessionMessages, query } from "@anthropic-ai/claude-agent-sdk";
 import { buildOptions } from "../src/options.js";
@@ -40,11 +39,17 @@ const mockQuery = query as ReturnType<typeof vi.fn>;
 const mockBuildOptions = buildOptions as ReturnType<typeof vi.fn>;
 const mockCreateToolServers = createToolServers as ReturnType<typeof vi.fn>;
 
+/** In-memory store for orchestrator session callbacks */
+let sessionData: Record<string, string> = {};
+
 const BASE_CONFIG: OrchestratorConfig = {
   projectPath: "/tmp/test",
   agentsDir: "agents",
+  sessionPersistence: {
+    load: () => ({ ...sessionData }),
+    save: (data) => { sessionData = { ...data }; },
+  },
 };
-const DEFAULT_SESSIONS_FILE = "/tmp/test/.sessions.json";
 
 function mockOptionsWithAgents(
   agents: Record<string, { description: string }> = {
@@ -134,11 +139,7 @@ describe("SandboxOrchestrator", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockQuery.mockReset();
-    try {
-      fs.unlinkSync(DEFAULT_SESSIONS_FILE);
-    } catch {
-      /* noop */
-    }
+    sessionData = {};
   });
 
   // -- init --
@@ -456,7 +457,7 @@ describe("SandboxOrchestrator", () => {
       mockOptionsWithAgents({
         "script-writer": {
           description: "Writes scripts",
-          mcpServers: ["storage", "script"],
+          mcpServers: ["script"],
         } as { description: string },
       });
       const orch = new SandboxOrchestrator(BASE_CONFIG);
@@ -477,7 +478,7 @@ describe("SandboxOrchestrator", () => {
       mockOptionsWithAgents({
         "script-writer": {
           description: "Writes scripts",
-          mcpServers: ["storage", "script"],
+          mcpServers: ["script"],
         } as { description: string },
       });
       const orch = new SandboxOrchestrator(BASE_CONFIG);
@@ -488,9 +489,9 @@ describe("SandboxOrchestrator", () => {
         orch as unknown as {
           freshMcpServers(isMain: boolean, names?: string[]): Record<string, unknown>;
         }
-      ).freshMcpServers(false, ["storage", "script"]);
+      ).freshMcpServers(false, ["script"]);
 
-      expect(mockCreateToolServers).toHaveBeenCalledWith(["storage", "script"]);
+      expect(mockCreateToolServers).toHaveBeenCalledWith(["script"]);
       expect(servers.switch).toBeDefined();
     });
   });
@@ -498,21 +499,9 @@ describe("SandboxOrchestrator", () => {
   // -- session history restore --
 
   describe("session history restore", () => {
-    const SESSIONS_FILE = "/tmp/test/.sessions.json";
-
-    afterEach(() => {
-      try {
-        fs.unlinkSync(SESSIONS_FILE);
-      } catch {
-        /* noop */
-      }
-    });
-
     it("emits history events before ready when sessions exist", async () => {
       mockOptionsWithAgents({});
-      // Write a .sessions.json with a main session ID
-      fs.mkdirSync("/tmp/test", { recursive: true });
-      fs.writeFileSync(SESSIONS_FILE, JSON.stringify({ main: "sess-abc" }));
+      sessionData = { main: "sess-abc" };
 
       mockGetSessionMessages.mockResolvedValue([
         {
@@ -554,8 +543,7 @@ describe("SandboxOrchestrator", () => {
 
     it("proceeds silently when getSessionMessages fails", async () => {
       mockOptionsWithAgents({});
-      fs.mkdirSync("/tmp/test", { recursive: true });
-      fs.writeFileSync(SESSIONS_FILE, JSON.stringify({ main: "sess-fail" }));
+      sessionData = { main: "sess-fail" };
 
       mockGetSessionMessages.mockRejectedValue(new Error("session not found"));
 
@@ -572,8 +560,7 @@ describe("SandboxOrchestrator", () => {
       mockOptionsWithAgents({
         "script-writer": { description: "Writes scripts" },
       });
-      fs.mkdirSync("/tmp/test", { recursive: true });
-      fs.writeFileSync(SESSIONS_FILE, JSON.stringify({ "script-writer": "sess-agent" }));
+      sessionData = { "script-writer": "sess-agent" };
 
       mockGetSessionMessages.mockResolvedValue([
         {
