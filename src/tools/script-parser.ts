@@ -140,25 +140,55 @@ interface CatalogMappings {
   locIds: Record<string, string>;
   actorStates: Record<string, string[]>;
   propIds: Record<string, string>;
+  descriptions: Record<string, string>; // assetId → description
+  stateDescriptions: Record<string, string>; // "assetId|stateName" → description
 }
 
 async function loadCatalogMappings(projectPath: string): Promise<CatalogMappings> {
-  const empty: CatalogMappings = { actorIds: {}, locIds: {}, actorStates: {}, propIds: {} };
+  const empty: CatalogMappings = { actorIds: {}, locIds: {}, actorStates: {}, propIds: {}, descriptions: {}, stateDescriptions: {} };
   const catalogPath = path.join(projectPath, "draft", "catalog.json");
   try {
     const raw = await fs.readFile(catalogPath, "utf-8");
     const data = JSON.parse(raw);
     const actorIds: Record<string, string> = {};
     const actorStates: Record<string, string[]> = {};
+    const descriptions: Record<string, string> = {};
+    const stateDescriptions: Record<string, string> = {};
+
+    // Helper: extract state names and descriptions from either format
+    // Old: ["战甲", "囚服"]  New: [{ name: "战甲", description: "..." }, ...]
+    function loadStates(assetId: string, states: unknown[]): string[] {
+      const names: string[] = [];
+      for (const s of states) {
+        if (typeof s === "string") {
+          names.push(s);
+        } else if (s && typeof s === "object" && "name" in s) {
+          const so = s as { name: string; description?: string };
+          names.push(so.name);
+          if (so.description) stateDescriptions[`${assetId}|${so.name}`] = so.description;
+        }
+      }
+      return names;
+    }
+
     for (const c of data.actors ?? []) {
       actorIds[c.name] = c.id;
-      if (c.states?.length) actorStates[c.name] = c.states;
+      if (c.states?.length) actorStates[c.name] = loadStates(c.id, c.states);
+      if (c.description) descriptions[c.id] = c.description;
     }
     const locIds: Record<string, string> = {};
-    for (const loc of data.locations ?? []) locIds[loc.name] = loc.id;
+    for (const loc of data.locations ?? []) {
+      locIds[loc.name] = loc.id;
+      if (loc.states?.length) loadStates(loc.id, loc.states);
+      if (loc.description) descriptions[loc.id] = loc.description;
+    }
     const propIds: Record<string, string> = {};
-    for (const p of data.props ?? []) propIds[p.name] = p.id;
-    return { actorIds, locIds, actorStates, propIds };
+    for (const p of data.props ?? []) {
+      propIds[p.name] = p.id;
+      if (p.states?.length) loadStates(p.id, p.states);
+      if (p.description) descriptions[p.id] = p.description;
+    }
+    return { actorIds, locIds, actorStates, propIds, descriptions, stateDescriptions };
   } catch {
     return empty;
   }
@@ -547,12 +577,16 @@ export async function parseEpisodes(
   for (const [name, aid] of actorEntries) {
     const statesForActor = actorStateNames[aid] ?? [];
     const entry: Record<string, unknown> = { actor_id: aid, actor_name: name };
+    if (catalog.descriptions[aid]) entry.description = catalog.descriptions[aid];
     if (statesForActor.length > 0) {
-      const statesList: Array<{ state_id: string; state_name: string }> = [];
+      const statesList: Array<Record<string, unknown>> = [];
       for (const stateName of statesForActor) {
         stateCounter++;
         const stateId = `st_${fmtId(stateCounter)}`;
-        statesList.push({ state_id: stateId, state_name: stateName });
+        const stateEntry: Record<string, unknown> = { state_id: stateId, state_name: stateName };
+        const stateDesc = catalog.stateDescriptions[`${aid}|${stateName}`];
+        if (stateDesc) stateEntry.description = stateDesc;
+        statesList.push(stateEntry);
         stateIdMap[`${aid}|${stateName}`] = stateId;
       }
       entry.states = statesList;
@@ -582,12 +616,16 @@ export async function parseEpisodes(
   for (const [name, lid] of locEntries) {
     const stateNamesForLoc = locStateNames[lid] ?? [];
     const entry: Record<string, unknown> = { location_id: lid, location_name: name };
+    if (catalog.descriptions[lid]) entry.description = catalog.descriptions[lid];
     if (stateNamesForLoc.length > 0) {
-      const statesList: Array<{ state_id: string; state_name: string }> = [];
+      const statesList: Array<Record<string, unknown>> = [];
       for (const stateName of stateNamesForLoc) {
         stateCounter++;
         const stateId = `st_${fmtId(stateCounter)}`;
-        statesList.push({ state_id: stateId, state_name: stateName });
+        const stateEntry: Record<string, unknown> = { state_id: stateId, state_name: stateName };
+        const stateDesc = catalog.stateDescriptions[`${lid}|${stateName}`];
+        if (stateDesc) stateEntry.description = stateDesc;
+        statesList.push(stateEntry);
         locStateIdMap[`${lid}|${stateName}`] = stateId;
       }
       entry.states = statesList;
@@ -598,7 +636,11 @@ export async function parseEpisodes(
   // Build props list (no states from parser — props states are for asset stage)
   const propEntries = Object.entries(props);
   propEntries.sort((a, b) => a[1].localeCompare(b[1]));
-  const propsList = propEntries.map(([name, pid]) => ({ prop_id: pid, prop_name: name }));
+  const propsList = propEntries.map(([name, pid]) => {
+    const entry: Record<string, unknown> = { prop_id: pid, prop_name: name };
+    if (catalog.descriptions[pid]) entry.description = catalog.descriptions[pid];
+    return entry;
+  });
 
   // Resolve scene.locations[*].state_id and scene.props
   for (const ep of episodes) {
