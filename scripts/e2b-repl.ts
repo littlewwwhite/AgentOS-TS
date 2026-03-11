@@ -311,7 +311,7 @@ async function main() {
       rl.question(prompt, (a) => (a === undefined ? reject(new Error("EOF")) : resolve(a)));
     });
 
-  // -- Graceful exit: sync workspace, disconnect (sandbox stays alive for reconnect) --
+  // -- Graceful exit: sync workspace, then destroy sandbox to avoid leaking --
   const syncAndDisconnect = async () => {
     console.log(dim("\n  Syncing workspace ← sandbox..."));
     try {
@@ -324,10 +324,8 @@ async function main() {
     } catch (err) {
       console.log(red(`  ✗ Sync failed: ${err instanceof Error ? err.message : String(err)}`));
     }
-    const id = client.sandboxId;
-    await client.disconnect();
-    console.log(dim(`  Disconnected. Sandbox ${id} is still alive.`));
-    console.log(dim(`  Reconnect: bun scripts/e2b-repl.ts --sandbox ${id}`));
+    await client.destroy();
+    console.log(dim("  Sandbox destroyed."));
   };
 
   let ctrlC = 0;
