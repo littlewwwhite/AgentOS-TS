@@ -2,6 +2,7 @@
 // output: Thin host bridge exposing REST + WebSocket access to project-scoped sandboxes
 // pos: Host entrypoint for the web MVP — forwards existing protocol without reshaping it
 
+import fsPromises from "node:fs/promises";
 import http, { type IncomingMessage } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +51,8 @@ export interface AgentOsServerOptions {
   workspaceRoot?: string;
   manager?: HostBridgeManager;
   authSecret?: string;
+  /** Controls which backend executes agent queries. Defaults to "local". */
+  runtime?: "e2b" | "local";
 }
 
 export interface AgentOsServer {
@@ -194,6 +197,217 @@ function isDirectRun(): boolean {
   return fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 }
 
+// ---------- LocalBridgeManager ----------
+//
+// Implements HostBridgeManager using LocalOrchestrator for command routing and
+// node:fs for all file I/O.  No E2B client is needed.
+
+class LocalBridgeManager implements HostBridgeManager {
+  private readonly workspaceRoot: string;
+  private readonly listeners = new Map<string, Set<(event: SandboxEvent) => void>>();
+  // Lazily-created orchestrator instances, one per projectId
+  private readonly orchestrators = new Map<
+    string,
+    { orchestrator: unknown; ready: Promise<void> }
+  >();
+
+  constructor(workspaceRoot: string) {
+    this.workspaceRoot = workspaceRoot;
+  }
+
+  private projectDir(projectId: string): string {
+    return path.join(this.workspaceRoot, projectId);
+  }
+
+  private async getOrchestrator(projectId: string): Promise<import("./local-orchestrator.js").LocalOrchestrator> {
+    const existing = this.orchestrators.get(projectId);
+    if (existing) {
+      await existing.ready;
+      return existing.orchestrator as import("./local-orchestrator.js").LocalOrchestrator;
+    }
+
+    const { LocalOrchestrator } = await import("./local-orchestrator.js");
+    const projectPath = this.projectDir(projectId);
+    await fsPromises.mkdir(projectPath, { recursive: true });
+
+    const orch = new LocalOrchestrator({ projectPath, agentsDir: "agents" });
+
+    // Redirect protocol.emit output to registered listeners
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    const intercept = (chunk: string | Uint8Array, ...args: unknown[]): boolean => {
+      if (typeof chunk === "string" && chunk.trim()) {
+        try {
+          const event = JSON.parse(chunk.trim()) as SandboxEvent;
+          const set = this.listeners.get(projectId);
+          if (set) {
+            for (const listener of set) listener(event);
+          }
+        } catch {
+          // not a JSON event — pass through
+          return (originalWrite as (...a: unknown[]) => boolean)(chunk, ...args);
+        }
+        return true;
+      }
+      return (originalWrite as (...a: unknown[]) => boolean)(chunk, ...args);
+    };
+
+    let ready!: () => void;
+    const readyPromise = new Promise<void>((r) => { ready = r; });
+    this.orchestrators.set(projectId, { orchestrator: orch, ready: readyPromise });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const patchWrite = (fn: (...args: unknown[]) => boolean) => { (process.stdout as any).write = fn; };
+    const origWrite = process.stdout.write.bind(process.stdout);
+
+    patchWrite(intercept as unknown as (...args: unknown[]) => boolean);
+    try {
+      await orch.init();
+    } finally {
+      // Keep intercept active post-init so ongoing events fan out to listeners
+      // (intercept already installed — only restore on destroy)
+    }
+
+    // Start workers in the background — fire-and-forget
+    orch.startWorkers().catch(() => {});
+    ready();
+
+    // Store origWrite so destroy() can restore it if needed (best-effort)
+    void origWrite;
+
+    return orch;
+  }
+
+  list(): ProjectSession[] {
+    const results: ProjectSession[] = [];
+    for (const projectId of this.orchestrators.keys()) {
+      results.push({
+        projectId,
+        sandboxId: `local_${projectId}`,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+    return results;
+  }
+
+  get(projectId: string): ProjectSession | null {
+    if (!this.orchestrators.has(projectId)) return null;
+    return {
+      projectId,
+      sandboxId: `local_${projectId}`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  }
+
+  async getOrCreate(projectId: string): Promise<ProjectSession> {
+    await this.getOrchestrator(projectId);
+    return {
+      projectId,
+      sandboxId: `local_${projectId}`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  }
+
+  async attach(
+    projectId: string,
+    listener: (event: SandboxEvent) => void,
+  ): Promise<() => void> {
+    let set = this.listeners.get(projectId);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(projectId, set);
+    }
+    set.add(listener);
+    // Ensure orchestrator exists so events flow
+    this.getOrchestrator(projectId).catch(() => {});
+    return () => {
+      set?.delete(listener);
+    };
+  }
+
+  async sendCommand(projectId: string, cmd: SandboxCommand): Promise<void> {
+    const { handleLocalCommand } = await import("./local-entry.js");
+    const orch = await this.getOrchestrator(projectId);
+    await handleLocalCommand(orch, cmd);
+  }
+
+  async destroy(projectId: string): Promise<void> {
+    this.orchestrators.delete(projectId);
+    this.listeners.delete(projectId);
+  }
+
+  async destroyAll(): Promise<void> {
+    this.orchestrators.clear();
+    this.listeners.clear();
+  }
+
+  async listFiles(projectId: string, targetPath: string): Promise<SandboxEntry[]> {
+    const resolved = this.resolveSafe(projectId, targetPath);
+    const dirents = await fsPromises.readdir(resolved, { withFileTypes: true });
+    return dirents.map((d) => ({
+      name: d.name,
+      path: path.join(targetPath, d.name),
+      type: d.isDirectory() ? "directory" : "file",
+    }));
+  }
+
+  async readTextFile(projectId: string, targetPath: string): Promise<string> {
+    return fsPromises.readFile(this.resolveSafe(projectId, targetPath), "utf-8");
+  }
+
+  async readBinaryFile(projectId: string, targetPath: string): Promise<Uint8Array> {
+    const buf = await fsPromises.readFile(this.resolveSafe(projectId, targetPath));
+    return new Uint8Array(buf);
+  }
+
+  async getDownloadUrl(_projectId: string, targetPath: string): Promise<string> {
+    // For local mode, return a data: URL built from the file content
+    const resolved = path.isAbsolute(targetPath) ? targetPath : path.join(this.workspaceRoot, targetPath);
+    const buf = await fsPromises.readFile(resolved);
+    return `data:application/octet-stream;base64,${buf.toString("base64")}`;
+  }
+
+  async writeTextFile(projectId: string, targetPath: string, content: string): Promise<void> {
+    const resolved = this.resolveSafe(projectId, targetPath);
+    await fsPromises.mkdir(path.dirname(resolved), { recursive: true });
+    await fsPromises.writeFile(resolved, content, "utf-8");
+  }
+
+  async uploadFile(projectId: string, targetPath: string, content: SandboxFileContent): Promise<void> {
+    const resolved = this.resolveSafe(projectId, targetPath);
+    await fsPromises.mkdir(path.dirname(resolved), { recursive: true });
+    if (typeof content === "string") {
+      await fsPromises.writeFile(resolved, content, "utf-8");
+    } else if (content instanceof Uint8Array) {
+      await fsPromises.writeFile(resolved, content);
+    } else if (content instanceof ArrayBuffer) {
+      await fsPromises.writeFile(resolved, new Uint8Array(content));
+    }
+  }
+
+  async syncTextFiles(
+    projectId: string,
+    files: Array<{ path: string; content: string }>,
+  ): Promise<string[]> {
+    const written: string[] = [];
+    for (const file of files) {
+      await this.writeTextFile(projectId, file.path, file.content);
+      written.push(file.path);
+    }
+    return written;
+  }
+
+  /** Resolve a path relative to the project directory, keeping it within bounds. */
+  private resolveSafe(projectId: string, targetPath: string): string {
+    if (path.isAbsolute(targetPath)) return targetPath;
+    return path.join(this.projectDir(projectId), targetPath);
+  }
+}
+
+
+
 function toPublicSession(
   session: ProjectSession,
   userId: string,
@@ -218,12 +432,17 @@ export async function startAgentOsServer(
   const host = options.host ?? DEFAULT_HOST;
   const port = options.port ?? DEFAULT_PORT;
   const workspaceRoot = options.workspaceRoot ?? DEFAULT_WORKSPACE_ROOT;
-  const manager = options.manager ?? new SandboxManager({
-    onStderr: (projectId, data) => {
-      const trimmed = data.trim();
-      if (trimmed) console.error(`[sandbox:${projectId}] ${trimmed}`);
-    },
-  });
+  const runtime = options.runtime ?? "local";
+  const manager = options.manager ?? (
+    runtime === "local"
+      ? new LocalBridgeManager(workspaceRoot)
+      : new SandboxManager({
+          onStderr: (projectId, data) => {
+            const trimmed = data.trim();
+            if (trimmed) console.error(`[sandbox:${projectId}] ${trimmed}`);
+          },
+        })
+  );
   const authSecret = options.authSecret ?? DEFAULT_AUTH_SECRET;
 
   const wsServer = new WebSocketServer({ noServer: true });

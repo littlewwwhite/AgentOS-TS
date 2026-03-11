@@ -4,6 +4,8 @@
 
 import { Database } from "bun:sqlite";
 
+import path from "node:path";
+
 export interface ProjectSession {
   projectId: string;
   sandboxId: string | null;
@@ -49,6 +51,14 @@ type AgentSessionRow = {
 export class SessionStore {
   private db: Database;
   private lastTimestamp = 0;
+
+  /**
+   * Returns the default on-disk session database path for local mode.
+   * The directory is created lazily by SQLite; callers need not mkdir first.
+   */
+  static defaultPath(workspaceRoot: string): string {
+    return path.join(workspaceRoot, ".agentos", "sessions.db");
+  }
 
   // Cached prepared statements
   private readonly stmtGetSession;

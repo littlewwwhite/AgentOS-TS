@@ -23,6 +23,9 @@
 - **分层权限模型** — 编排器以 `dontAsk` 模式运行，仅允许 TodoWrite + switch_to_agent；子智能体以 `bypassPermissions` 运行，配合 settings.json 的 deny-list 控制。
 - **惰性智能体创建** — 智能体会话在首次分派时按需创建，而非启动时全部初始化。
 - **E2B 沙箱隔离** — 智能体在云端沙箱中执行；宿主机通过 stdin/stdout JSON Lines 协议通信。
+- **本地运行时** — `runtime: "local"` 模式下智能体直接在主机侧运行，无需 E2B 沙箱，文件 I/O 直接操作本地文件系统。
+- **异步任务队列** — 长耗时任务（图片/视频生成）通过 MCP tool 提交到独立队列，SQLite 持久化，支持重试和并发限制。
+- **项目引擎** — Project / Phase / Checkpoint DAG 调度器，支持审阅-打回-修改循环和项目记忆注入。
 
 ## 项目结构
 
@@ -51,10 +54,29 @@ src/
 │   ├── source.ts            # 原始素材准备与结构检测
 │   ├── workspace.ts         # 工作区检查工具
 │   └── index.ts             # 工具服务器注册表
+├── local-orchestrator.ts    # 本地模式编排器（无 E2B 依赖）
+├── local-runtime.ts         # 主机侧 SDK query() 封装
+├── local-entry.ts           # 本地模式 CLI 入口
+├── task-queue/              # 异步任务队列（SQLite 持久化 + API 轮询）
+│   ├── store.ts             # 任务存储与状态机
+│   ├── queue.ts             # 核心队列引擎（提交/轮询/重试）
+│   ├── executor.ts          # API 调用执行器
+│   ├── registry.ts          # YAML API 配置加载
+│   └── tools.ts             # MCP tool 定义
+├── engine/                  # 项目引擎（DAG 调度 + 审阅循环）
+│   ├── schema.ts            # Project / Phase / Checkpoint 类型
+│   ├── store.ts             # SQLite 持久化
+│   ├── scheduler.ts         # DAG 依赖推进
+│   ├── checkpoint.ts        # 审阅 MCP tool
+│   └── memory.ts            # 项目记忆
 ├── hooks/                   # SDK 钩子：Schema 验证 + 工具调用日志
 ├── schemas/                 # Zod Schema：剧本、设计、目录、资产、时间线
 ├── parallel/                # 并行执行配置与执行器
 └── repl-*.ts                # REPL 渲染与交互（Markdown、Spinner）
+
+apis/                              # API 配置注册表（YAML 声明式）
+├── animeworkbench-image.yaml      # 图片生成 API 配置
+└── animeworkbench-video.yaml      # 视频生成 API 配置
 
 agents/
 ├── screenwriter/
@@ -126,10 +148,13 @@ bun install
 # 启动 CLI REPL（本地沙箱模式）
 bun start
 
+# 启动本地模式 CLI（无 E2B，直接主机侧运行）
+bun src/local-entry.ts workspace/my-project --agents agents/
+
 # 启动 E2B 云端 REPL
 bun run start:e2b
 
-# 启动 HTTP/WebSocket 服务（供 Web 前端连接）
+# 启动 HTTP/WebSocket 服务（供 Web 前端连接，默认 local 模式）
 bun run server
 
 # 启动 Web 前端

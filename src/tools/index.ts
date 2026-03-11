@@ -2,30 +2,83 @@
 // output: toolServers record for Options.mcpServers
 // pos: Registry — packages all custom tools as in-process MCP servers
 
+import path from "node:path";
+
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 
+import { TaskQueue, TaskQueueStore, ApiRegistry, createTaskTools } from "../task-queue/index.js";
+import { EngineStore, ProjectScheduler, createCheckpointTools } from "../engine/index.js";
 import { generateMusic, generateSfx, generateTts } from "./audio.js";
 import { generateImage, upscaleImage } from "./image.js";
 import { parseScript } from "./script-parser.js";
 import { detectSourceStructure, prepareSourceProject } from "./source.js";
-import { listAssets, readJson, saveAsset, writeJson } from "./storage.js";
 import { checkVideoStatus, generateVideo } from "./video.js";
 import { checkWorkspace } from "./workspace.js";
+
+// -- Task Queue singleton --
+
+let taskQueue: TaskQueue | null = null;
+
+export function initTaskQueue(storePath: string, apisDir: string): TaskQueue {
+  if (taskQueue) return taskQueue;
+  const store = new TaskQueueStore(storePath);
+  const registry = new ApiRegistry(apisDir);
+  taskQueue = new TaskQueue({ store, registry });
+  taskQueue.resumeInFlight();
+  return taskQueue;
+}
+
+export function getTaskQueue(): TaskQueue | null {
+  return taskQueue;
+}
+
+function ensureTaskQueue(): TaskQueue {
+  if (!taskQueue) {
+    // Lazy init with defaults
+    const storePath = path.join(process.cwd(), ".agentos", "tasks.db");
+    const apisDir = path.resolve(import.meta.dir, "../../apis");
+    initTaskQueue(storePath, apisDir);
+  }
+  return taskQueue!;
+}
+
+// -- Engine singleton --
+
+let engineStore: EngineStore | null = null;
+let scheduler: ProjectScheduler | null = null;
+
+export function initEngine(storePath: string): { store: EngineStore; scheduler: ProjectScheduler } {
+  if (engineStore && scheduler) return { store: engineStore, scheduler };
+  engineStore = new EngineStore(storePath);
+  scheduler = new ProjectScheduler(engineStore);
+  return { store: engineStore, scheduler };
+}
+
+function ensureEngine(): { store: EngineStore; scheduler: ProjectScheduler } {
+  if (!engineStore || !scheduler) {
+    const storePath = path.join(process.cwd(), ".agentos", "engine.db");
+    initEngine(storePath);
+  }
+  return { store: engineStore!, scheduler: scheduler! };
+}
+
+// -- Tool server builders --
 
 const TOOL_SERVER_BUILDERS = {
   source: () => createSdkMcpServer({
     name: "source",
     tools: [prepareSourceProject, detectSourceStructure],
   }),
-  storage: () => createSdkMcpServer({
-    name: "storage",
-    tools: [writeJson, readJson, saveAsset, listAssets],
-  }),
   image: () => createSdkMcpServer({ name: "image", tools: [generateImage, upscaleImage] }),
   video: () => createSdkMcpServer({ name: "video", tools: [generateVideo, checkVideoStatus] }),
   audio: () => createSdkMcpServer({ name: "audio", tools: [generateTts, generateSfx, generateMusic] }),
   script: () => createSdkMcpServer({ name: "script", tools: [parseScript] }),
   workspace: () => createSdkMcpServer({ name: "workspace", tools: [checkWorkspace] }),
+  tasks: () => createSdkMcpServer({ name: "tasks", tools: createTaskTools(ensureTaskQueue()) }),
+  engine: () => {
+    const { store, scheduler } = ensureEngine();
+    return createSdkMcpServer({ name: "engine", tools: createCheckpointTools(store, scheduler) });
+  },
 } satisfies Record<string, () => unknown>;
 
 export type ToolServerName = keyof typeof TOOL_SERVER_BUILDERS;
