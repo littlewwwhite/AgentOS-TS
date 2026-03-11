@@ -467,7 +467,7 @@ ELSE IF 第一推动力 = 剧情推动力:
 
 ### 第零步：原文结构检测（改编模式专用）
 
-开始分析前，先调用 `mcp__source__detect_source_structure(project_path)` 对 novel.txt 进行确定性分段。
+开始分析前，先调用 `python3 ${CLAUDE_SKILL_DIR}/scripts/detect_source_structure.py --project-path {project_path}` 对 novel.txt 进行确定性分段。
 
 读取生成的 `draft/source-structure.json`，确认原文采用的分段策略：
 

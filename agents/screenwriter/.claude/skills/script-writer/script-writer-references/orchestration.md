@@ -101,7 +101,7 @@
 1. 创建 `ntsv2-workspace/` 工作区（含 `draft/` 子目录），同时在 `ntsv2-workspace/memory-banks/` 目录下基于 `memory-bank-template.md` 初始化记忆库文件
 2. 将原文保存至 `ntsv2-workspace/novel.txt`
 3. 展示流水线架构概览
-4. 调用 `mcp__source__detect_source_structure(project_path)` 执行原文结构检测，生成 `draft/source-structure.json`
+4. 调用 `python3 ${CLAUDE_SKILL_DIR}/scripts/detect_source_structure.py --project-path {project_path}` 执行原文结构检测，生成 `draft/source-structure.json`
 5. 读取 S1 reference 文件（`s1-analysis-extraction.md`），开始原文分析与灵感提取
 
 ## 阶段流转
