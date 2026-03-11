@@ -216,7 +216,7 @@ async function main() {
   const client = new SandboxClient({
     templateId: "agentos-sandbox",
     apiKey: E2B_KEY,
-    timeoutMs: 900_000,
+    timeoutMs: 1_800_000,
     envs: {
       ANTHROPIC_API_KEY: dotEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
       ANTHROPIC_BASE_URL: dotEnv.ANTHROPIC_BASE_URL ?? process.env.ANTHROPIC_BASE_URL ?? "",
@@ -454,8 +454,8 @@ async function main() {
           } else {
             const remotePath = parts[2] ?? getDefaultUploadRemotePath(localPath, false);
             try {
-              const content = fs.readFileSync(localPath, "utf-8");
-              await client.writeFile(remotePath, content);
+              const buf = fs.readFileSync(localPath);
+              await client.writeFile(remotePath, buf);
               console.log(green(`  ✓ ${localPath} → ${remotePath}`));
             } catch (err) {
               console.log(red(`  ✗ ${err instanceof Error ? err.message : String(err)}`));
@@ -472,8 +472,8 @@ async function main() {
         } else {
           const localPath = parts[2] ?? path.basename(remotePath);
           try {
-            const content = await client.readFile(remotePath);
-            fs.writeFileSync(localPath, content);
+            const bytes = await client.readFile(remotePath, { format: "bytes" });
+            fs.writeFileSync(localPath, Buffer.from(bytes));
             console.log(green(`  ✓ ${remotePath} → ${localPath}`));
           } catch (err) {
             console.log(red(`  ✗ ${err instanceof Error ? err.message : String(err)}`));

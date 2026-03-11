@@ -180,7 +180,7 @@ export class SandboxClient {
   /**
    * Recursively sync a local directory into the sandbox.
    * Walks localDir, uploads every file preserving relative paths.
-   * Binary files are skipped (only text content supported by E2B files.write).
+   * Reads files as binary (Buffer) to correctly handle both text and binary content.
    */
   async syncDir(localDir: string, sandboxDir: string): Promise<string[]> {
     if (!this._sandbox) throw new Error("Sandbox not started");
@@ -199,8 +199,8 @@ export class SandboxClient {
         if (entry.isDirectory()) {
           await walk(localPath);
         } else if (entry.isFile()) {
-          const content = await fs.readFile(localPath, "utf-8");
-          await this._sandbox!.files.write(remotePath, content);
+          const buf = await fs.readFile(localPath);
+          await this._sandbox!.files.write(remotePath, buf.buffer as ArrayBuffer);
           uploaded.push(rel);
         }
       }
@@ -212,7 +212,7 @@ export class SandboxClient {
 
   /**
    * Recursively pull files from sandbox to local directory.
-   * Mirrors sandbox directory structure locally. Only text files are pulled.
+   * Mirrors sandbox directory structure locally. Reads as binary to preserve all file types.
    */
   async pullDir(sandboxDir: string, localDir: string): Promise<string[]> {
     if (!this._sandbox) throw new Error("Sandbox not started");
@@ -239,12 +239,12 @@ export class SandboxClient {
           await walk(remoteFilePath, localFilePath);
         } else {
           try {
-            const content = await this._sandbox!.files.read(remoteFilePath);
-            await fs.writeFile(localFilePath, content);
+            const bytes = await this._sandbox!.files.read(remoteFilePath, { format: "bytes" });
+            await fs.writeFile(localFilePath, Buffer.from(bytes));
             const rel = nodePath.relative(localDir, localFilePath);
             downloaded.push(rel);
           } catch {
-            // Skip unreadable files (binary, permissions, etc.)
+            // Skip unreadable files (permissions, etc.)
           }
         }
       }
