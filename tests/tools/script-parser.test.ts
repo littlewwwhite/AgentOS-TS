@@ -92,11 +92,11 @@ describe("parseEpisodes", () => {
 
     // Episode structure
     const ep0 = script.episodes[0];
-    expect(ep0.episode_id).toBe("ep_001");
+    expect(ep0.episode_id).toBe("ep_1");
 
     // Scene structure
     const scene = ep0.scenes[0];
-    expect(scene.scene_id).toBe("ep001_scn_001");
+    expect(scene.scene_id).toBe("scn_1");
     expect(scene.environment).toEqual({ space: "interior", time: "day" });
     expect(scene.locations).toHaveLength(1);
     expect(scene.locations[0].location_id).toBeDefined();
@@ -141,11 +141,11 @@ describe("parseEpisodes", () => {
     // Verify scene IDs have episode prefix and reset per episode
     const scriptPath = result.script_path as string;
     const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
-    expect(script.episodes[0].episode_id).toBe("ep_001");
-    expect(script.episodes[0].scenes[0].scene_id).toBe("ep001_scn_001");
-    expect(script.episodes[0].scenes[1].scene_id).toBe("ep001_scn_002");
-    expect(script.episodes[1].episode_id).toBe("ep_002");
-    expect(script.episodes[1].scenes[0].scene_id).toBe("ep002_scn_001");
+    expect(script.episodes[0].episode_id).toBe("ep_1");
+    expect(script.episodes[0].scenes[0].scene_id).toBe("scn_1");
+    expect(script.episodes[0].scenes[1].scene_id).toBe("scn_2");
+    expect(script.episodes[1].episode_id).toBe("ep_2");
+    expect(script.episodes[1].scenes[0].scene_id).toBe("scn_1");
   });
 
   it("handles time words correctly", async () => {

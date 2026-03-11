@@ -61,7 +61,7 @@ describe("ScriptSchema", () => {
           episode_id: "ep_001",
           scenes: [
             {
-              scene_id: "ep001_scn_001",
+              scene_id: "scn_001",
               environment: { space: "interior", time: "day" },
               actions: [{ type: "dialogue", content: "Hello" }],
             },
@@ -101,7 +101,7 @@ describe("ScriptSchema", () => {
           title: "Ep 1",
           scenes: [
             {
-              scene_id: "ep001_scn_001",
+              scene_id: "scn_001",
               environment: { space: "interior", time: "dawn" },
               locations: [{ location_id: "loc_001", state_id: "st_002" }],
               actors: [{ actor_id: "act_001", state_id: "st_001" }],
@@ -169,7 +169,7 @@ describe("ProductionPlanSchema", () => {
       shots: [
         {
           id: "shot_001",
-          scene_id: "ep001_scn_001",
+          scene_id: "scn_001",
           sequence: 1,
           description: "Hero enters",
           actor_ids: ["act_001"],

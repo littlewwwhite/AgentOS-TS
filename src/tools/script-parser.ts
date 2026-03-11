@@ -22,6 +22,9 @@ const CHAR_LINE_RE = /^人物[：:](.+)$/;
 // Prop line: "道具：断剑、玉佩"
 const PROP_LINE_RE = /^道具[：:](.+)$/;
 
+// State line: "状态：角色A【战甲】、角色B【婚纱】"
+const STATE_LINE_RE = /^状态[：:](.+)$/;
+
 // Action line: ▲动作描述
 const ACTION_LINE_RE = /^▲(.+)$/;
 
@@ -126,8 +129,8 @@ function parsePropLine(raw: string): string[] {
   return props;
 }
 
-function pad3(n: number): string {
-  return String(n).padStart(3, "0");
+function fmtId(n: number): string {
+  return String(n);
 }
 
 // ---------- Catalog / Design loaders ----------
@@ -251,7 +254,7 @@ export async function parseEpisodes(
   function registerLocation(name: string): string {
     if (locations[name]) return locations[name];
     locCounter++;
-    const lid = `loc_${pad3(locCounter)}`;
+    const lid = `loc_${fmtId(locCounter)}`;
     locations[name] = lid;
     return lid;
   }
@@ -260,7 +263,7 @@ export async function parseEpisodes(
     if (!name || isGroup(name) || NON_CHARACTER.has(name)) return null;
     if (actors[name]) return actors[name];
     actorCounter++;
-    const aid = `act_${pad3(actorCounter)}`;
+    const aid = `act_${fmtId(actorCounter)}`;
     actors[name] = aid;
     return aid;
   }
@@ -270,7 +273,7 @@ export async function parseEpisodes(
     if (!propName) return null;
     if (props[propName]) return props[propName];
     propCounter++;
-    const pid = `prp_${pad3(propCounter)}`;
+    const pid = `prp_${fmtId(propCounter)}`;
     props[propName] = pid;
     return pid;
   }
@@ -346,7 +349,7 @@ export async function parseEpisodes(
         flushEpisode();
         currentEpNum = Number.parseInt(m[1], 10);
         currentEpisode = {
-          episode_id: `ep_${pad3(currentEpNum)}`,
+          episode_id: `ep_${fmtId(currentEpNum)}`,
           episode_num: currentEpNum,
           title: m[2]?.trim() ?? null,
           scenes: [],
@@ -370,7 +373,7 @@ export async function parseEpisodes(
         if (!currentEpisode) {
           currentEpNum = Number.parseInt(m[1], 10);
           currentEpisode = {
-            episode_id: `ep_${pad3(currentEpNum)}`,
+            episode_id: `ep_${fmtId(currentEpNum)}`,
             episode_num: currentEpNum,
             title: null,
             scenes: [],
@@ -378,7 +381,7 @@ export async function parseEpisodes(
           epScnCounter = 1;
         }
 
-        const sceneId = `ep${pad3(currentEpNum)}_scn_${pad3(epScnCounter)}`;
+        const sceneId = `scn_${fmtId(epScnCounter)}`;
 
         currentScene = {
           scene_id: sceneId,
@@ -442,6 +445,30 @@ export async function parseEpisodes(
           const pid = registerProp(propName);
           if (pid && !propIds.includes(pid)) {
             propIds.push(pid);
+          }
+        }
+        continue;
+      }
+
+      // 3.5 State line: "状态：角色A【战甲】、道具B【碎裂】"
+      m = STATE_LINE_RE.exec(stripped);
+      if (m) {
+        for (const entry of m[1].split(/[、，,;；]/)) {
+          const [name, state] = extractState(entry);
+          if (!name || !state) continue;
+
+          // Try actor first
+          const cid = actors[name] ?? registerActor(name);
+          if (cid) {
+            if (name in catalog.actorStates) {
+              if (!catalog.actorStates[name].includes(state)) {
+                console.warn(
+                  `⚠️  Warning: Actor '${name}' state '${state}' not in catalog.json states: ${JSON.stringify(catalog.actorStates[name])}`,
+                );
+              }
+            }
+            sceneActorStates[scnCounter].push([cid, state]);
+            registerSceneActor(scnCounter, cid, state);
           }
         }
         continue;
@@ -524,7 +551,7 @@ export async function parseEpisodes(
       const statesList: Array<{ state_id: string; state_name: string }> = [];
       for (const stateName of statesForActor) {
         stateCounter++;
-        const stateId = `st_${pad3(stateCounter)}`;
+        const stateId = `st_${fmtId(stateCounter)}`;
         statesList.push({ state_id: stateId, state_name: stateName });
         stateIdMap[`${aid}|${stateName}`] = stateId;
       }
@@ -559,7 +586,7 @@ export async function parseEpisodes(
       const statesList: Array<{ state_id: string; state_name: string }> = [];
       for (const stateName of stateNamesForLoc) {
         stateCounter++;
-        const stateId = `st_${pad3(stateCounter)}`;
+        const stateId = `st_${fmtId(stateCounter)}`;
         statesList.push({ state_id: stateId, state_name: stateName });
         locStateIdMap[`${lid}|${stateName}`] = stateId;
       }

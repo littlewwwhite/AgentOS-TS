@@ -145,7 +145,7 @@ describe("ScriptSchema", () => {
         title: "Ep1",
         scenes: [
           {
-            scene_id: "ep001_scn_001",
+            scene_id: "scn_001",
             environment: { space: "interior", time: "day" },
             locations: [{ location_id: "loc_001", state_id: null }],
             actors: [{ actor_id: "act_001", state_id: null }],
