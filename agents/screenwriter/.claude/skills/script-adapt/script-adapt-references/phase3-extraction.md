@@ -2,7 +2,7 @@
 
 ## 概述
 
-Phase 3 是**纯确定性解析**，不需要 LLM。调用 `mcp__script__parse_script` 工具，从 `draft/episodes/*.md` 中提取结构化剧本数据。
+Phase 3 是**纯确定性解析**，不需要 LLM。调用 `python3 ${CLAUDE_SKILL_DIR}/scripts/parse_script.py` 脚本，从 `draft/episodes/*.md` 中提取结构化剧本数据。
 
 ## 输入
 
@@ -96,7 +96,7 @@ Phase 3 是**纯确定性解析**，不需要 LLM。调用 `mcp__script__parse_s
 Phase 2 完成后，直接调用工具：
 
 ```
-mcp__script__parse_script(project_path="{project_path}")
+python3 ${CLAUDE_SKILL_DIR}/scripts/parse_script.py --project-path "{project_path}"
 ```
 
 - `{project_path}`：项目工作区的**完整绝对路径**（如 `/Users/xxx/workspace/傻子`）
@@ -108,7 +108,7 @@ mcp__script__parse_script(project_path="{project_path}")
 
 Phase 3 是**纯工具阶段**，LLM **严禁**手写或手动拼装 script.json。
 
-- 必须且仅通过 `mcp__script__parse_script` 生成 script.json
+- 必须且仅通过 `python3 ${CLAUDE_SKILL_DIR}/scripts/parse_script.py` 生成 script.json
 - 如果工具调用失败，**不得降级为 LLM 读取源码/手写 JSON**，应报告错误并引导用户排查
 
 **失败排查清单**：

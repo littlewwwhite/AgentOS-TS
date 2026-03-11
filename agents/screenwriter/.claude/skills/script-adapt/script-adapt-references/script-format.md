@@ -110,7 +110,7 @@ N 为阿拉伯数字。集标记行独占一行，前后空行分隔。
 
 ## 三、Phase 3 解析规则
 
-Phase 3 使用确定性解析器（`mcp__script__parse_script`）从剧本中提取结构化数据。
+Phase 3 使用确定性解析器（`python3 ${CLAUDE_SKILL_DIR}/scripts/parse_script.py`）从剧本中提取结构化数据。
 
 ### 3.1 行类型识别
 

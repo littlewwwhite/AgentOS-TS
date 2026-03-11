@@ -1,12 +1,10 @@
 ---
 name: script-adapt
-description: "小说直转剧本流水线：将小说或原创概念通过三阶段（分析设计 → 写作 → 结构解析）转化为结构化 AI 漫剧剧本。当用户提到小说转剧本、简单改编、3阶段剧本、Phase 1/2/3 时使用。"
+description: 小说直转剧本流水线：将小说或原创概念通过三阶段（分析设计 → 写作 → 结构解析）转化为结构化 AI 漫剧剧本。当用户提到小说转剧本、简单改编、3阶段剧本、Phase 1/2/3 时使用。
 allowed-tools:
   - Read
   - Write
-  - mcp__source__prepare_source_project
-  - mcp__source__detect_source_structure
-  - mcp__script__parse_script
+  - Bash
 model: sonnet
 ---
 
@@ -30,6 +28,20 @@ Phase 1A 分析推荐 → CP1（用户确认） → Phase 1B 设计生成 → CP
 ### 自动执行模式（默认）
 
 除非用户明确要求"分步确认"或"需要确认"，否则跳过 CP1/CP2 检查点，用你的最佳判断自动完成所有阶段。每个 Phase 完成后直接进入下一个 Phase，不要停下来等待用户输入。
+
+---
+
+## Bundled Scripts
+
+Deterministic Python scripts in `${CLAUDE_SKILL_DIR}/scripts/`, via `Bash` tool调用，零外部依赖（仅 Python 标准库）。
+
+| Script | Purpose | CLI |
+|--------|---------|-----|
+| `prepare_source_project.py` | 将上传的小说文件规范化为 `<workspace>/<novel-name>/source.txt` | `python3 ${CLAUDE_SKILL_DIR}/scripts/prepare_source_project.py --source-path <file>` |
+| `detect_source_structure.py` | 检测原文章节/分集边界，写入 `draft/source-structure.json` | `python3 ${CLAUDE_SKILL_DIR}/scripts/detect_source_structure.py --project-path <dir> [--max-chars 8000]` |
+| `parse_script.py` | 解析 `draft/episodes/ep*.md` 为结构化 `output/script.json` | `python3 ${CLAUDE_SKILL_DIR}/scripts/parse_script.py --project-path <dir>` |
+
+所有脚本结果输出到 stdout（JSON），warnings 输出到 stderr。
 
 ---
 
@@ -113,7 +125,7 @@ Use `Read` to load the files listed for each phase when entering it.
 
 1. 以小说文件名（去掉扩展名）创建工作区文件夹
 2. 将原文保存至工作区的 `source.txt`
-3. 调用 `mcp__source__detect_source_structure` 生成 `draft/source-structure.json`
+3. 调用 `python3 ${CLAUDE_SKILL_DIR}/scripts/detect_source_structure.py --project-path {project_path}` 生成 `draft/source-structure.json`
 4. 展示流水线架构概览
 5. Read Phase 1 的 reference 文件，开始分析设计
 
@@ -165,4 +177,4 @@ Use `Read` to load the files listed for each phase when entering it.
 - `draft/source-structure.json` 仅作为 Phase 1/2 的中间规划输入，**不参与** Phase 3 解析
 - `draft/episodes/ep*.md` 必须继续使用现有场记格式，不得添加额外 metadata block
 - `output/script.json` 的 schema 不变
-- `mcp__script__parse_script` 的调用方式与 Phase 3 行为不变
+- Phase 3 通过 `python3 ${CLAUDE_SKILL_DIR}/scripts/parse_script.py --project-path {project_path}` 执行解析
