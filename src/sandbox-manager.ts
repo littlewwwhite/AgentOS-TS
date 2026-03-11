@@ -2,6 +2,7 @@
 // output: Project-scoped sandbox lifecycle management and file/event access
 // pos: Host bridge core — keeps the current sandbox protocol as the only source of truth
 
+import { loadDotEnv } from "./env.js";
 import { SandboxClient } from "./e2b-client.js";
 import type { SandboxCommand, SandboxEvent } from "./protocol.js";
 import { ProjectSession, SessionStore } from "./session-store.js";
@@ -13,9 +14,12 @@ export interface SandboxEntry {
   size?: number;
 }
 
+export type SandboxFileContent = string | Uint8Array | ArrayBuffer;
+
 export interface SandboxClientLike {
   sandboxId: string | null;
   start(): Promise<void>;
+  connect(sandboxId: string): Promise<void>;
   destroy(): Promise<void>;
   sendCommand(cmd: SandboxCommand): Promise<void>;
   listFiles(path: string): Promise<SandboxEntry[]>;
@@ -24,6 +28,7 @@ export interface SandboxClientLike {
     opts?: { format?: "text" | "bytes" },
   ): Promise<string | Uint8Array>;
   downloadUrl(path: string): Promise<string>;
+  writeFile(path: string, content: SandboxFileContent): Promise<unknown>;
 }
 
 export interface SandboxClientFactoryArgs {
@@ -53,7 +58,17 @@ function createDefaultClient({
   onEvent,
   onStderr,
 }: SandboxClientFactoryArgs): SandboxClientLike {
-  return new SandboxClient({ onEvent, onStderr });
+  // Prefer .env values over process.env — Claude Code sets ANTHROPIC_BASE_URL
+  // to a local proxy unreachable from inside E2B sandbox.
+  const dotEnv = loadDotEnv();
+  return new SandboxClient({
+    onEvent,
+    onStderr,
+    envs: {
+      ANTHROPIC_API_KEY: dotEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
+      ANTHROPIC_BASE_URL: dotEnv.ANTHROPIC_BASE_URL ?? process.env.ANTHROPIC_BASE_URL ?? "",
+    },
+  }) as unknown as SandboxClientLike;
 }
 
 export class SandboxManager {
@@ -135,6 +150,36 @@ export class SandboxManager {
     return runtime.client.downloadUrl(path);
   }
 
+  async writeTextFile(
+    projectId: string,
+    path: string,
+    content: string,
+  ): Promise<void> {
+    await this.uploadFile(projectId, path, content);
+  }
+
+  async uploadFile(
+    projectId: string,
+    path: string,
+    content: SandboxFileContent,
+  ): Promise<void> {
+    const runtime = await this.loadRuntime(projectId);
+    await runtime.client.writeFile(path, content);
+    this.sessions.upsert(projectId, { sandboxId: runtime.client.sandboxId });
+  }
+
+  async syncTextFiles(
+    projectId: string,
+    files: Array<{ path: string; content: string }>,
+  ): Promise<string[]> {
+    const runtime = await this.loadRuntime(projectId);
+    for (const file of files) {
+      await runtime.client.writeFile(file.path, file.content);
+    }
+    this.sessions.upsert(projectId, { sandboxId: runtime.client.sandboxId });
+    return files.map((file) => file.path);
+  }
+
   async destroy(projectId: string): Promise<void> {
     const runtime = this.runtimes.get(projectId);
     if (!runtime) {
@@ -145,6 +190,12 @@ export class SandboxManager {
     this.runtimes.delete(projectId);
     this.sessions.delete(projectId);
     await runtime.client.destroy();
+  }
+
+  /** Destroy all active sandboxes — call on server shutdown */
+  async destroyAll(): Promise<void> {
+    const ids = [...this.runtimes.keys()];
+    await Promise.allSettled(ids.map((id) => this.destroy(id)));
   }
 
   private ensureRuntime(projectId: string): SandboxRuntime {
@@ -199,9 +250,21 @@ export class SandboxManager {
     runtime: SandboxRuntime,
   ): Promise<void> {
     if (!runtime.startPromise) {
-      runtime.startPromise = runtime.client.start().then(() => {
+      runtime.startPromise = (async () => {
+        const persistedSandboxId = this.sessions.get(projectId)?.sandboxId;
+
+        if (persistedSandboxId) {
+          try {
+            await runtime.client.connect(persistedSandboxId);
+          } catch {
+            await runtime.client.start();
+          }
+        } else {
+          await runtime.client.start();
+        }
+
         this.sessions.upsert(projectId, { sandboxId: runtime.client.sandboxId });
-      }).catch((error) => {
+      })().catch((error) => {
         runtime.startPromise = null;
         this.runtimes.delete(projectId);
         throw error;
@@ -217,7 +280,26 @@ export class SandboxManager {
       return;
     }
 
-    this.sessions.upsert(projectId, { sandboxId: runtime.client.sandboxId });
+    const existing = this.sessions.get(projectId);
+    const agentSessionIds = { ...(existing?.agentSessionIds ?? {}) };
+    let activeAgent = existing?.activeAgent;
+
+    if ("session_id" in event && typeof event.session_id === "string" && event.session_id) {
+      const agentKey = event.agent ?? "main";
+      agentSessionIds[agentKey] = event.session_id;
+    }
+
+    if (event.type === "agent_entered") {
+      activeAgent = event.agent;
+    } else if (event.type === "agent_exited") {
+      activeAgent = null;
+    }
+
+    this.sessions.upsert(projectId, {
+      sandboxId: runtime.client.sandboxId,
+      agentSessionIds,
+      activeAgent,
+    });
     for (const listener of runtime.listeners) {
       listener(event);
     }
