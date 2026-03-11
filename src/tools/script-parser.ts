@@ -130,7 +130,7 @@ function parsePropLine(raw: string): string[] {
 }
 
 function fmtId(n: number): string {
-  return String(n);
+  return String(n).padStart(3, "0");
 }
 
 // ---------- Catalog / Design loaders ----------
