@@ -8,6 +8,7 @@ Phase 3 是**纯确定性解析**，不需要 LLM。调用 `mcp__script__parse_s
 
 - `draft/episodes/ep*.md`：所有集的场记格式剧本
 - `draft/catalog.json`：资产清单（用于角色和地点 ID 映射，以及状态验证）
+  - catalog 中的 `id` 字段可选——省略时解析器按数组顺序自动分配（`act_001`, `loc_001`, `prp_001`...）
   - 解析器使用 `catalog.actors[*].states` 验证剧本中的状态标注是否合法
   - 如果剧本中出现 catalog 未定义的状态，解析器会输出警告（但不中断解析）
 - `draft/design.json`：设计文件（用于读取 title / style / worldview）
@@ -18,7 +19,7 @@ Phase 3 是**纯确定性解析**，不需要 LLM。调用 `mcp__script__parse_s
 
 ### script.json
 
-结构化剧本，嵌套 episodes > scenes > actions。解析器从 `draft/catalog.json` 映射角色名/地点名到已有 ID，未在 catalog 中的角色/地点/道具自动生成新 ID。
+结构化剧本，嵌套 episodes > scenes > actions。解析器从 `draft/catalog.json` 映射角色名/地点名到已有 ID（支持 `aliases` 别名匹配）。有 catalog 时采用 catalog-only 模式：未在 catalog 中注册的角色/地点/道具**不会**自动生成 ID，而是产出 `warnings` 数组；无 catalog 时才回退为自动生成 ID。
 
 ```json
 {
@@ -28,35 +29,37 @@ Phase 3 是**纯确定性解析**，不需要 LLM。调用 `mcp__script__parse_s
   "actors": [
     {
       "actor_id": "act_001", "actor_name": "楚凡",
-      "states": [{"state_id": "st_001", "state_name": "幼年"}]
+      "description": "20岁，男，废柴觉醒者；外表沉默内心不甘",
+      "states": [{"state_id": "st_001", "state_name": "战甲", "description": "银色鎏金重甲，肩甲雕龙纹"}]
     },
     {"actor_id": "act_002", "actor_name": "林雪"}
   ],
   "locations": [
     {
       "location_id": "loc_001", "location_name": "觉醒大厅",
-      "states": [{"state_id": "st_002", "state_name": "废墟"}]
+      "description": "宏大的圆形测试场，穹顶悬浮水晶",
+      "states": [{"state_id": "st_002", "state_name": "废墟", "description": "半面墙体坍塌，碎砖瓦砾"}]
     },
     {"location_id": "loc_002", "location_name": "学院街道"}
   ],
   "props": [
-    {"prop_id": "prp_001", "prop_name": "断剑"},
-    {"prop_id": "prp_002", "prop_name": "玉佩"}
+    {"prop_id": "prp_001", "prop_name": "断剑", "description": "锈迹斑斑的古剑，剑身断裂"},
+    {"prop_id": "prp_002", "prop_name": "凡字玉佩"}
   ],
   "episodes": [
     {
       "episode_id": "ep_001",
-      "title": "觉醒",
+      "title": null,
       "scenes": [
         {
-          "scene_id": "ep001_scn_001",
+          "scene_id": "scn_001",
           "environment": {"space": "interior", "time": "day"},
           "locations": [{"location_id": "loc_001", "state_id": "st_002"}],
           "actors": [
             {"actor_id": "act_001", "state_id": "st_001"},
             {"actor_id": "act_002", "state_id": null}
           ],
-          "props": [{"prop_id": "prp_001", "state_id": null}],
+          "props": [{"prop_id": "prp_002", "state_id": null}],
           "actions": [
             {"type": "sfx", "content": "异能觉醒时代"},
             {"type": "action", "content": "聚光灯下，巨大的能量水晶闪烁着耀眼的光芒。"},
@@ -72,21 +75,20 @@ Phase 3 是**纯确定性解析**，不需要 LLM。调用 `mcp__script__parse_s
 
 **结构说明**：
 - `title` / `worldview` / `style`：从 `draft/design.json` 读取，`worldview` 和 `style` 可为 `null`
-- `actors`：角色清单（`act_` 前缀 ID + actor_name），优先使用 catalog.json 中的 ID
-- `actors[*].states`：可选，角色状态数组 `[{state_id: "st_NNN", state_name}]`，仅当剧本中出现状态标注时才有
-- `locations`：地点清单（`loc_` 前缀 ID + location_name），优先使用 catalog.json 中的 ID
-- `locations[*].states`：可选，地点状态数组 `[{state_id: "st_NNN", state_name}]`，仅当场景头标注了地点状态时才有
-- `props`：道具清单（`prp_` 前缀 ID + prop_name），从剧本 `道具：` 行提取
-- `episodes`：按集嵌套，每集有 `episode_id`（如 `"ep_001"`）
-- `scenes[*].scene_id`：带集前缀的场景 ID（如 `"ep001_scn_001"`），集内计数，跨集不冲突
-- `scenes[*].environment`：`{space: "interior"|"exterior", time: "day"|"night"|"dawn"|"dusk"|"noon"}`
-- `scenes[*].locations`：该场地点引用数组 `[{location_id, state_id}]`，支持多地点；`state_id` 为 `null` 表示默认状态
+- `actors`：角色列表，字段为 `actor_id`（`act_` 前缀）+ `actor_name` + 可选 `description`（从 catalog 透传）
+- `actors[*].states`：可选，角色状态数组 `[{state_id, state_name, description?}]`，仅当剧本中出现状态标注时才有此字段
+- `locations`：地点列表，字段为 `location_id`（`loc_` 前缀）+ `location_name` + 可选 `description`
+- `locations[*].states`：可选，地点状态数组 `[{state_id, state_name, description?}]`
+- `props`：道具列表，字段为 `prop_id`（`prp_` 前缀）+ `prop_name` + 可选 `description`，从剧本 `道具：` 行提取
+- `episodes`：按集嵌套，`episode_id` 格式为 `ep_001`，`title` 可为 `null`
+- `scenes[*].scene_id`：格式为 `scn_{NNN}`（如 `scn_001`），全局递增
+- `scenes[*].environment`：`{space: "interior"|"exterior", time: "day"|"night"}`（中文自动翻译为英文：内→interior，外→exterior，日→day，夜→night）
+- `scenes[*].locations`：该场地点数组 `[{location_id, state_id}]`，`state_id` 为 `null` 表示默认状态
 - `scenes[*].actors`：该场出场角色数组 `[{actor_id, state_id}]`，`state_id` 为 `null` 表示默认状态
-- `scenes[*].props`：该场涉及道具数组 `[{prop_id, state_id}]`，`state_id` 为 `null`（道具状态由资产阶段设计）
-- `actions` 无 `sequence` 字段 — 数组顺序即执行顺序
-- `actions.type`：action | dialogue | inner_thought | sfx
-- State ID 统一使用 `st_` 前缀，全局唯一递增（跨 actor / location / prop 不重复）
-- ID 前缀规则：角色 `act_`，地点 `loc_`，道具 `prp_`，场景 `ep{NNN}_scn_`，集 `ep_`，状态 `st_`
+- `scenes[*].props`：该场涉及道具数组 `[{prop_id, state_id}]`，`state_id` 始终为 `null`（parser 不从剧本解析道具状态）
+- `actions[*].type`：`action` | `dialogue` | `inner_thought` | `sfx`
+- `actions[*]` dialogue/inner_thought 额外字段：`actor_id`；dialogue 还有 `emotion`（可选）
+- ID 前缀规则：角色 `act_`，地点 `loc_`，道具 `prp_`，场景 `scn_`，状态 `st_`（角色和地点共享同一状态计数器），编号均为三位数零填充（如 `act_001`）
 - 排除群演描述（"同学若干""路人×3""众人"等匹配 `×N / 若干 / 众人 / 们` 模式的名称）
 
 ## 执行

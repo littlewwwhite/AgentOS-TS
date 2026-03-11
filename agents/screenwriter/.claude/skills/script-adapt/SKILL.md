@@ -6,9 +6,6 @@ allowed-tools:
   - Write
   - mcp__source__prepare_source_project
   - mcp__source__detect_source_structure
-  - mcp__storage__write_json
-  - mcp__storage__read_json
-  - mcp__storage__list_assets
   - mcp__script__parse_script
 model: sonnet
 ---
@@ -25,7 +22,7 @@ model: sonnet
 
 ```
 Phase 1A 分析推荐 → CP1（用户确认） → Phase 1B 设计生成 → CP2（用户确认） → Phase 2 写作 → Phase 3 结构解析
-  (改编分析报告)    (参数确认)    (design.json+catalog.json)  (大纲确认)    (ep*.md)    (script.json)
+  (改编分析报告)    (参数确认)    (design.json+catalog.json+connectivity.md) (大纲确认) (ep*.md) (script.json)
 ```
 
 每个阶段产物写入工作区，CP1/CP2 为用户确认检查点，实现阶段间数据流转与质量追溯。
@@ -43,7 +40,7 @@ Use `Read` to load the files listed for each phase when entering it.
 
 | Phase | Files to Read | Deliverables |
 |-------|--------------|--------------|
-| **Phase 1** | `phase1-design.md`, `shared-domain.md`, `style-options.md` | design.json + catalog.json |
+| **Phase 1** | `phase1-design.md`, `shared-domain.md`, `style-options.md` | design.json + catalog.json + connectivity.md |
 | **Phase 2** | `phase2-writing.md`, `writing-rules.md`, `script-format.md` | episodes/ep\*.md |
 | **Phase 3** | `phase3-extraction.md` | script.json |
 
@@ -64,7 +61,7 @@ Use `Read` to load the files listed for each phase when entering it.
 │   ├── source-structure.json         <- Phase 1 前置（原文分段与边界检测）
 │   ├── design.json                   <- Phase 1（世界观 + 分集大纲 + 视觉风格）
 │   ├── catalog.json                  <- Phase 1（资产清单）
-│   ├── connectivity.md               <- Phase 2（跨集连贯性地图，下游 Phase 3 及其他 agent 共用）
+│   ├── connectivity.md               <- Phase 1（跨集连贯性地图，下游 Phase 2/其他 agent 共用）
 │   └── episodes/
 │       └── ep{NN}.md                 <- Phase 2（场记格式）
 └── output/                           <- 最终产物（工具写入）
@@ -82,10 +79,9 @@ Use `Read` to load the files listed for each phase when entering it.
 当用户清理上下文（`/clear`）后继续时，按以下顺序检查工作区文件以恢复流水线状态：
 
 1. 检查 `draft/source-structure.json` → 存在则原文结构检测已完成
-2. 检查 `draft/design.json` + `draft/catalog.json` → 存在则 Phase 1 完成
-3. 检查 `draft/connectivity.md` → 存在则连贯性地图已生成
-4. 检查 `draft/episodes/` 目录（至少一个 ep*.md）→ 存在则 Phase 2 进行中/完成
-5. 检查 `output/script.json` → 存在则 Phase 3 完成（NTS 完成）
+2. 检查 `draft/design.json` + `draft/catalog.json` + `draft/connectivity.md` → 全部存在则 Phase 1 完成
+3. 检查 `draft/episodes/` 目录（至少一个 ep*.md）→ 存在则 Phase 2 进行中/完成
+4. 检查 `output/script.json` → 存在则 Phase 3 完成（NTS 完成）
 
 根据恢复结果，提示用户进入下一阶段。Phase 2 恢复时额外读取 source-structure.json + connectivity.md + 扫描已完成集数，从断点继续。
 
@@ -95,17 +91,17 @@ Use `Read` to load the files listed for each phase when entering it.
 
 | 阶段 | 输入 | 输出 | 工作区文件 |
 |------|------|------|-----------|
-| Phase 1 分析设计 | source.txt | source-structure.json + design.json + catalog.json | draft/source-structure.json + draft/*.json |
-| Phase 2 写作 | draft/source-structure.json + draft/design.json + draft/catalog.json | connectivity.md + ep\*.md | draft/connectivity.md + draft/episodes/\*.md |
-| Phase 3 结构解析 | draft/episodes/ep\*.md + draft/catalog.json + draft/connectivity.md | script.json | output/script.json |
+| Phase 1 分析设计 | source.txt | source-structure.json + design.json + catalog.json + connectivity.md | draft/source-structure.json + draft/*.json + draft/connectivity.md |
+| Phase 2 写作 | draft/source-structure.json + draft/design.json + draft/catalog.json + draft/connectivity.md | ep\*.md | draft/episodes/\*.md |
+| Phase 3 结构解析 | draft/episodes/ep\*.md + draft/catalog.json | script.json | output/script.json |
 
 ### 依赖矩阵
 
 | 目标阶段 | 前置文件 |
 |---------|---------|
 | Phase 1 | source.txt |
-| Phase 2 | draft/source-structure.json + draft/design.json + draft/catalog.json |
-| Phase 3 | draft/episodes/（至少 1 个 ep\*.md） + draft/connectivity.md |
+| Phase 2 | draft/source-structure.json + draft/design.json + draft/catalog.json + draft/connectivity.md |
+| Phase 3 | draft/episodes/（至少 1 个 ep\*.md） |
 
 ---
 
