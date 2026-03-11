@@ -2,11 +2,12 @@ import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { PYTHON_RUNTIME_INPUT_DIRS } from "./e2b-python-runtime.js";
 
 const TEMPLATE_STATE_VERSION = 1;
 const TEMPLATE_STATE_FILE = path.join(".e2b", "template-state.json");
 const TEMPLATE_INPUT_FILES = ["package.json", "tsconfig.json", "e2b/build.ts"];
-const TEMPLATE_INPUT_DIRS = ["src", "skills", "agents"];
+const TEMPLATE_INPUT_DIRS = ["src", "skills", "agents", ...PYTHON_RUNTIME_INPUT_DIRS];
 
 export interface TemplateBuildState {
   version: number;
