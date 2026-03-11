@@ -9,7 +9,7 @@ import readline from "node:readline";
 import { SandboxOrchestrator } from "./sandbox-orchestrator.js";
 import { emit, parseCommand } from "./protocol.js";
 import { loadEnvToProcess } from "./env.js";
-import type { SandboxEvent } from "./protocol.js";
+import type { SandboxCommand, SandboxEvent } from "./protocol.js";
 
 // ---------- Global crash handlers ----------
 
@@ -59,6 +59,86 @@ function parseArgs(argv: string[]): {
   };
 }
 
+type ResumableSession = {
+  sessionId: string | null;
+  historyLoaded: boolean;
+  options: Record<string, unknown>;
+};
+
+type ResumeInternals = {
+  mainSession: ResumableSession | null;
+  emitHistoryForSession(session: ResumableSession): Promise<void>;
+  saveSessions(): void;
+};
+
+async function resumeMainSession(
+  orchestrator: SandboxOrchestrator,
+  sessionId: string,
+): Promise<void> {
+  const internals = orchestrator as unknown as ResumeInternals;
+  const session = internals.mainSession;
+
+  if (!session) {
+    emit({ type: "error", message: "No main session available to resume" });
+    return;
+  }
+
+  session.sessionId = sessionId;
+  session.options.resume = sessionId;
+  session.options.continue = false;
+  session.historyLoaded = false;
+
+  internals.saveSessions();
+  await internals.emitHistoryForSession(session);
+
+  const status = orchestrator.getStatus(null);
+  emit({
+    type: "status",
+    state: status.busy ? "busy" : "idle",
+    session_id: sessionId,
+  });
+}
+
+export async function handleSandboxCommand(
+  orchestrator: SandboxOrchestrator,
+  cmd: SandboxCommand,
+): Promise<void> {
+  switch (cmd.cmd) {
+    case "chat": {
+      const target = orchestrator.resolveTarget(cmd);
+      await orchestrator.chat(cmd.message, target, cmd.request_id);
+      break;
+    }
+    case "interrupt":
+      orchestrator.interrupt(orchestrator.activeAgent);
+      break;
+    case "status": {
+      const status = orchestrator.getStatus(orchestrator.activeAgent);
+      emit({
+        type: "status",
+        state: status.busy ? "busy" : "idle",
+        ...(status.sessionId ? { session_id: status.sessionId } : {}),
+      } as SandboxEvent);
+      break;
+    }
+    case "list_skills":
+      emit({ type: "skills", skills: orchestrator.getSkillMap() });
+      break;
+    case "enter_agent":
+      await orchestrator.enterAgent(cmd.agent);
+      break;
+    case "exit_agent":
+      orchestrator.exitAgent();
+      break;
+    case "set_model":
+      orchestrator.setModel(cmd.model);
+      break;
+    case "resume":
+      await resumeMainSession(orchestrator, cmd.session_id);
+      break;
+  }
+}
+
 // ---------- stdin command loop ----------
 
 function stdinLoop(orchestrator: SandboxOrchestrator): Promise<void> {
@@ -71,38 +151,7 @@ function stdinLoop(orchestrator: SandboxOrchestrator): Promise<void> {
     rl.on("line", (line) => {
       const cmd = parseCommand(line);
       if (!cmd) return;
-
-      switch (cmd.cmd) {
-        case "chat": {
-          const target = orchestrator.resolveTarget(cmd);
-          orchestrator.chat(cmd.message, target, cmd.request_id).catch(() => {});
-          break;
-        }
-        case "interrupt":
-          orchestrator.interrupt(orchestrator.activeAgent);
-          break;
-        case "status": {
-          const status = orchestrator.getStatus(orchestrator.activeAgent);
-          emit({
-            type: "status",
-            state: status.busy ? "busy" : "idle",
-            ...(status.sessionId ? { session_id: status.sessionId } : {}),
-          } as SandboxEvent);
-          break;
-        }
-        case "list_skills":
-          emit({ type: "skills", skills: orchestrator.getSkillMap() });
-          break;
-        case "enter_agent":
-          orchestrator.enterAgent(cmd.agent).catch(() => {});
-          break;
-        case "exit_agent":
-          orchestrator.exitAgent();
-          break;
-        case "resume":
-          emit({ type: "error", message: "Resume not yet implemented" });
-          break;
-      }
+      handleSandboxCommand(orchestrator, cmd).catch(() => {});
     });
 
     rl.on("close", resolve);
@@ -136,6 +185,13 @@ async function main(): Promise<void> {
     model,
   });
   await orchestrator.init();
+
+  // Stdout heartbeat: emit a lightweight ping every 30s to keep the
+  // E2B RPC stream alive and prevent gateway-level idle timeouts.
+  const heartbeat = setInterval(() => {
+    emit({ type: "heartbeat", ts: Date.now() } as SandboxEvent);
+  }, 30_000);
+  if (heartbeat.unref) heartbeat.unref();
 
   await Promise.race([stdinLoop(orchestrator), orchestrator.startWorkers()]);
 }

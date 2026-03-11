@@ -17,6 +17,7 @@ export type ListSkillsCommand = { cmd: "list_skills" };
 export type EnterAgentCommand = { cmd: "enter_agent"; agent: string };
 export type ExitAgentCommand = { cmd: "exit_agent" };
 export type ResumeCommand = { cmd: "resume"; session_id: string };
+export type SetModelCommand = { cmd: "set_model"; model: string };
 
 export type SandboxCommand =
   | ChatCommand
@@ -25,7 +26,8 @@ export type SandboxCommand =
   | ListSkillsCommand
   | EnterAgentCommand
   | ExitAgentCommand
-  | ResumeCommand;
+  | ResumeCommand
+  | SetModelCommand;
 
 // ---------- Events (sandbox → stdout) ----------
 
@@ -108,6 +110,7 @@ export type TodoEvent = EventBase & {
   type: "todo";
   todos: TodoItem[];
 };
+export type HeartbeatEvent = EventBase & { type: "heartbeat"; ts: number };
 
 export type SandboxEvent =
   | ReadyEvent
@@ -123,7 +126,8 @@ export type SandboxEvent =
   | AgentEnteredEvent
   | AgentExitedEvent
   | HistoryEvent
-  | TodoEvent;
+  | TodoEvent
+  | HeartbeatEvent;
 
 // ---------- Natural language agent entry ----------
 
@@ -147,6 +151,7 @@ const VALID_CMDS = new Set([
   "enter_agent",
   "exit_agent",
   "resume",
+  "set_model",
 ]);
 
 export function emit(event: SandboxEvent): void {
@@ -193,6 +198,10 @@ export function parseCommand(line: string): SandboxCommand | null {
       return { cmd: "list_skills" };
     case "exit_agent":
       return { cmd: "exit_agent" };
+    case "set_model": {
+      if (typeof obj.model !== "string" || !obj.model) return null;
+      return { cmd: "set_model", model: obj.model };
+    }
     default:
       return null;
   }

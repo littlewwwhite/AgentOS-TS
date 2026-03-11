@@ -5,6 +5,8 @@
 import { Sandbox } from "e2b";
 import type { SandboxCommand, SandboxEvent } from "./protocol.js";
 
+type SandboxWritableContent = string | Uint8Array | ArrayBuffer;
+
 // ---------- Types ----------
 
 export interface SandboxClientOptions {
@@ -12,7 +14,7 @@ export interface SandboxClientOptions {
   templateId?: string;
   /** E2B API key (defaults to E2B_API_KEY env var) */
   apiKey?: string;
-  /** Sandbox timeout in ms (default: 10 min) */
+  /** Sandbox timeout in ms (default: 30 min) */
   timeoutMs?: number;
   /** Event callback — receives every parsed JSON line from sandbox stdout */
   onEvent?: (event: SandboxEvent) => void;
@@ -22,7 +24,7 @@ export interface SandboxClientOptions {
   startCommand?: string;
   /** Environment variables passed to the sandbox process */
   envs?: Record<string, string>;
-  /** Heartbeat interval in ms (default: 60_000). Set 0 to disable. */
+  /** Heartbeat interval in ms (default: 30_000). Set 0 to disable. */
   heartbeatMs?: number;
   /** Max consecutive reconnect attempts (default: 3). Set 0 to disable auto-reconnect. */
   maxReconnects?: number;
@@ -66,7 +68,7 @@ export class SandboxClient {
       this.opts.templateId ?? "agentos-sandbox",
       {
         apiKey: this.opts.apiKey,
-        timeoutMs: this.opts.timeoutMs ?? 600_000,
+        timeoutMs: this.opts.timeoutMs ?? 1_800_000,
       },
     );
 
@@ -164,9 +166,15 @@ export class SandboxClient {
     return this._sandbox.downloadUrl(filePath);
   }
 
-  async writeFile(filePath: string, content: string) {
+  async writeFile(filePath: string, content: SandboxWritableContent) {
     if (!this._sandbox) throw new Error("Sandbox not started");
-    return this._sandbox.files.write(filePath, content);
+    const normalizedContent =
+      typeof content === "string"
+        ? content
+        : content instanceof ArrayBuffer
+          ? content
+          : Uint8Array.from(content).buffer;
+    return this._sandbox.files.write(filePath, normalizedContent);
   }
 
   /**
@@ -357,7 +365,7 @@ export class SandboxClient {
             this.opts.templateId ?? "agentos-sandbox",
             {
               apiKey: this.opts.apiKey,
-              timeoutMs: this.opts.timeoutMs ?? 600_000,
+              timeoutMs: this.opts.timeoutMs ?? 1_800_000,
             },
           );
           await this.opts.onSandboxRecreated?.(this);
@@ -384,14 +392,14 @@ export class SandboxClient {
 
   /** Periodic heartbeat to keep E2B sandbox alive */
   private startHeartbeat(): void {
-    const interval = this.opts.heartbeatMs ?? 60_000;
+    const interval = this.opts.heartbeatMs ?? 30_000;
     if (interval <= 0) return;
 
     this.stopHeartbeat();
     this.heartbeatTimer = setInterval(() => {
       if (!this._sandbox || this.reconnecting) return;
       // Extend sandbox lifetime so E2B platform doesn't reclaim it
-      const timeout = this.opts.timeoutMs ?? 600_000;
+      const timeout = this.opts.timeoutMs ?? 1_800_000;
       this._sandbox.setTimeout(timeout)
         .then(() => { this.heartbeatFailCount = 0; })
         .catch((err: unknown) => {
@@ -428,6 +436,7 @@ export class SandboxClient {
       if (!line.trim()) continue;
       try {
         const event = JSON.parse(line) as SandboxEvent;
+        if (event.type === "heartbeat") continue; // internal keepalive, don't propagate
         this.eventCb?.(event);
       } catch {
         // Non-JSON output — skip
