@@ -19,7 +19,7 @@
 ### 核心设计决策
 
 - **信号驱动分派** — 自定义 `switch_to_agent` / `return_to_main` MCP 工具写入共享的 `SwitchSignal`；编排器在每次 query 结束后轮询信号并执行上下文切换。这实现了 SDK 原生 Agent 工具不支持的**粘性多轮会话**。
-- **文件系统驱动的智能体配置** — 每个智能体的身份定义在 `agents/<name>/.claude/`（CLAUDE.md、settings.json、skills/*.md）中，SDK 通过 `settingSources: ["project"]` + 独立 `cwd` 原生加载。
+- **文件系统驱动的智能体配置** — 每个智能体的身份定义在 `agents/<name>/.claude/`（CLAUDE.md、settings.json、skills/）中，SDK 通过 `settingSources: ["project"]` + 独立 `cwd` 原生加载。
 - **分层权限模型** — 编排器以 `dontAsk` 模式运行，仅允许 TodoWrite + switch_to_agent；子智能体以 `bypassPermissions` 运行，配合 settings.json 的 deny-list 控制。
 - **惰性智能体创建** — 智能体会话在首次分派时按需创建，而非启动时全部初始化。
 - **E2B 沙箱隔离** — 智能体在云端沙箱中执行；宿主机通过 stdin/stdout JSON Lines 协议通信。
@@ -36,19 +36,25 @@ src/
 ├── session-specs.ts         # 系统提示词与权限规格（main/worker）
 ├── agent-manifest.ts        # 智能体 YAML + 技能发现
 ├── protocol.ts              # 沙箱 ↔ 宿主 JSON Lines 协议
+├── auth.ts                  # Session 签发与验证
+├── fixed-model.ts           # 固定模型常量
+├── loader.ts                # 智能体配置加载
+├── session-store.ts         # Session 持久化
+├── session-history.ts       # 会话历史回放（用于恢复）
+├── e2b-client.ts            # E2B 沙箱客户端
 ├── tools/
 │   ├── agent-switch.ts      # switch_to_agent / return_to_main MCP 工具
-│   ├── storage.ts           # JSON 与资产持久化
 │   ├── image.ts             # AI 图片生成
 │   ├── video.ts             # AI 视频生成
 │   ├── audio.ts             # TTS、音效、配乐生成
 │   ├── script-parser.ts     # 基于正则的剧本解析器
+│   ├── source.ts            # 原始素材准备与结构检测
+│   ├── workspace.ts         # 工作区检查工具
 │   └── index.ts             # 工具服务器注册表
 ├── hooks/                   # SDK 钩子：Schema 验证 + 工具调用日志
-├── schemas/                 # Zod Schema：剧本、设计、目录、资产
-├── e2b-*.ts                 # E2B 沙箱客户端、CLI REPL、模板管理
-├── session-history.ts       # 会话历史回放（用于恢复）
-└── parallel/                # 并行执行配置
+├── schemas/                 # Zod Schema：剧本、设计、目录、资产、时间线
+├── parallel/                # 并行执行配置与执行器
+└── repl-*.ts                # REPL 渲染与交互（Markdown、Spinner）
 
 agents/
 ├── screenwriter/
@@ -56,18 +62,38 @@ agents/
 │   └── .claude/
 │       ├── CLAUDE.md              # 智能体系统提示词
 │       ├── settings.json          # 工具权限 (allow/deny)
-│       └── skills/                # 领域技能 (script-writer.md, script-adapt.md)
-├── art-director/                  # 同构 — image-create, asset-gen 技能
+│       └── skills/                # 领域技能 (script-writer/, script-adapt/)
+├── art-director/                  # 同构 — image-create, asset-gen, image-edit 技能
 ├── video-producer/                # video-create, video-review 技能
 ├── post-production/               # music-matcher 技能
 └── skill-creator/                 # skill-creator 技能
 
-web/                               # Next.js 16 + shadcn/ui 前端
-├── app/                           # App Router：布局、页面、运行时状态
-├── components/                    # 聊天界面、工作台（文件树、预览、活动日志）
-├── hooks/                         # WebSocket 连接、文件树状态
-└── lib/                           # 协议、事件归约、消息转换
+skills/                            # 全局技能注册目录（与 agents 技能同步）
+
+web/                               # Next.js + shadcn/ui 前端
+├── app/                           # App Router：布局、页面、API 路由
+│   ├── api/                       # chat/, morph-chat/, sandbox/ 路由
+│   └── actions/                   # Server Actions
+├── components/                    # UI 组件
+│   ├── agentos-*.tsx              # 核心组件（工作台、文件浏览、状态面板）
+│   ├── chat*.tsx                  # 聊天界面
+│   ├── fragment-*.tsx             # 代码/预览/解释器片段
+│   └── ui/                        # shadcn/ui 基础组件
+├── hooks/                         # AgentOS Bridge、文件树状态
+└── lib/                           # AgentOS 协议、聊天逻辑、工具函数
+
+workspace/                         # 运行时工作区（按项目隔离）
 ```
+
+## 智能体与技能
+
+| 智能体 | MCP 服务 | 领域技能 |
+|--------|---------|---------|
+| screenwriter | source, script | script-adapt, script-writer |
+| art-director | image | asset-gen, image-create, image-edit, kling-video-prompt |
+| video-producer | video | video-create, video-review |
+| post-production | audio | music-matcher |
+| skill-creator | — | skill-creator |
 
 ## SDK 集成
 
@@ -78,7 +104,7 @@ web/                               # Next.js 16 + shadcn/ui 前端
 | systemPrompt | `preset: "claude_code"` + 分派规则 | `preset: "claude_code"` + 工作区上下文 |
 | tools | `preset: "claude_code"`（大部分被禁用） | `preset: "claude_code"`（完整工具集 + 技能发现） |
 | permissionMode | `dontAsk` — 仅白名单工具可用 | `bypassPermissions` + settings.json deny-list |
-| mcpServers | `switch`（仅 switch_to_agent） | 领域服务器 (storage, image 等) + `switch`（含 return_to_main） |
+| mcpServers | `switch`（仅 switch_to_agent） | 领域服务器 (image, video 等) + `switch`（含 return_to_main） |
 | maxTurns | 30（仅做分派） | 200（安全上限） |
 | settingSources | `["project"]` → 项目根 `.claude/` | `["project"]` → `agents/<name>/.claude/` |
 | 会话 | 持久化，可恢复 | 持久化，惰性创建，可恢复 |
@@ -100,6 +126,9 @@ bun install
 # 启动 CLI REPL（本地沙箱模式）
 bun start
 
+# 启动 E2B 云端 REPL
+bun run start:e2b
+
 # 启动 HTTP/WebSocket 服务（供 Web 前端连接）
 bun run server
 
@@ -107,10 +136,13 @@ bun run server
 cd web && bun dev
 ```
 
-### 运行测试
+### 常用命令
 
 ```bash
-bun test
+bun test              # 运行测试
+bun run lint          # Biome 代码检查
+bun run build         # TypeScript 编译
+bun run build:e2b     # 构建 E2B 沙箱镜像
 ```
 
 ## 工作流程
