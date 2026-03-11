@@ -208,6 +208,16 @@ export class SandboxOrchestrator {
     emit({ type: "agent_exited", agent: exited, reason: "manual" });
   }
 
+  /** Update model for future sessions. Existing sessions keep their model. */
+  setModel(model: string): void {
+    this.baseOptions.model = model;
+    emit({
+      type: "system",
+      subtype: "model_changed",
+      detail: { model },
+    });
+  }
+
   // -- Routing --
 
   resolveTarget(cmd: ChatCommand): string | null {
@@ -250,10 +260,14 @@ export class SandboxOrchestrator {
     };
   }
 
-  getSkillMap(): Record<string, string> {
-    const map: Record<string, string> = {};
+  getSkillMap(): Record<string, import("./protocol.js").AgentDetail> {
+    const map: Record<string, import("./protocol.js").AgentDetail> = {};
     for (const [name, defn] of Object.entries(this.agentDefinitions)) {
-      map[name] = defn.description;
+      map[name] = {
+        description: defn.description,
+        ...(defn.configuredSkills?.length ? { skills: defn.configuredSkills } : {}),
+        ...(defn.mcpServers?.length ? { mcpServers: defn.mcpServers } : {}),
+      };
     }
     return map;
   }

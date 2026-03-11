@@ -73,7 +73,13 @@ export type StatusEvent = EventBase & {
   state: "idle" | "busy" | "disconnected";
   session_id?: string;
 };
-export type SkillsEvent = EventBase & { type: "skills"; skills: Record<string, string> };
+export type AgentDetail = {
+  description: string;
+  skills?: string[];
+  mcpServers?: string[];
+};
+
+export type SkillsEvent = EventBase & { type: "skills"; skills: Record<string, AgentDetail> };
 export type AgentEnteredEvent = EventBase & {
   type: "agent_entered";
   agent: string; // required — override EventBase's optional

@@ -208,8 +208,9 @@ export function renderSandboxEvent(
     case "skills": {
       const flushed = flushActiveStream(state, palette);
       const output = [...flushed.output, `${palette.dim("  Skills:")}\n`];
-      for (const [name, description] of Object.entries(event.skills)) {
-        const short = description.length > 60 ? `${description.slice(0, 60)}…` : description;
+      for (const [name, detail] of Object.entries(event.skills)) {
+        const desc = typeof detail === "string" ? detail : detail.description;
+        const short = desc.length > 60 ? `${desc.slice(0, 60)}…` : desc;
         output.push(`    ${palette.cyan(name.padEnd(18))} ${palette.dim(short)}\n`);
       }
       return {
