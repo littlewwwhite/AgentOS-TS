@@ -47,7 +47,14 @@ const ANNOTATION_RE = /[（(][^）)]*[）)]/g;
 const STATE_RE = /【(.+?)】/;
 
 // Group / extra patterns — never get individual actor IDs
-const GROUP_RE = /[×x]\d+|若干|众人$|等人$|们$|群$|大军$|大队$|弟子$/;
+const GROUP_RE =
+  /[×x]\d+|若干|众人$|等人$|们$|群$|大军$|大队$|弟子$|双胞胎|三胞胎|兄弟俩|姐妹俩/;
+
+// Non-actor tokens that should never become actors
+const JUNK_NAMES = new Set(["无", "暂无", "略", "无人", "—", "/"]);
+
+// Chinese conjunctions to split multi-actor names like "女主和弟弟"
+const CONJUNCTION_RE = /和|及|与/;
 
 // NPC layer label
 const NPC_LAYER_RE = /NPC[：:]/;
@@ -93,7 +100,7 @@ function extractState(name: string): [string, string | null] {
 }
 
 function isGroup(name: string): boolean {
-  return GROUP_RE.test(name);
+  return GROUP_RE.test(name) || JUNK_NAMES.has(name);
 }
 
 function parseActorLine(raw: string): Array<[string, string | null]> {
@@ -106,10 +113,14 @@ function parseActorLine(raw: string): Array<[string, string | null]> {
       if (!layer) continue;
     }
     layer = layer.replace(LAYER_LABEL_RE, "");
-    for (const name of layer.split(/[、，,;；]/)) {
-      const [cleaned, state] = extractState(name);
-      if (cleaned && !isGroup(cleaned)) {
-        results.push([cleaned, state]);
+    for (const segment of layer.split(/[、，,;；]/)) {
+      // Split Chinese conjunctions: "女主和弟弟" → ["女主", "弟弟"]
+      const subNames = segment.split(CONJUNCTION_RE);
+      for (const name of subNames) {
+        const [cleaned, state] = extractState(name);
+        if (cleaned && !isGroup(cleaned)) {
+          results.push([cleaned, state]);
+        }
       }
     }
   }
@@ -136,16 +147,17 @@ function fmtId(n: number): string {
 // ---------- Catalog / Design loaders ----------
 
 interface CatalogMappings {
-  actorIds: Record<string, string>;
-  locIds: Record<string, string>;
+  actorIds: Record<string, string>; // name|alias → id
+  locIds: Record<string, string>; // name|alias → id
   actorStates: Record<string, string[]>;
-  propIds: Record<string, string>;
+  propIds: Record<string, string>; // name|alias → id
   descriptions: Record<string, string>; // assetId → description
   stateDescriptions: Record<string, string>; // "assetId|stateName" → description
+  hasCatalog: boolean; // whether catalog.json was loaded
 }
 
 async function loadCatalogMappings(projectPath: string): Promise<CatalogMappings> {
-  const empty: CatalogMappings = { actorIds: {}, locIds: {}, actorStates: {}, propIds: {}, descriptions: {}, stateDescriptions: {} };
+  const empty: CatalogMappings = { actorIds: {}, locIds: {}, actorStates: {}, propIds: {}, descriptions: {}, stateDescriptions: {}, hasCatalog: false };
   const catalogPath = path.join(projectPath, "draft", "catalog.json");
   try {
     const raw = await fs.readFile(catalogPath, "utf-8");
@@ -171,24 +183,43 @@ async function loadCatalogMappings(projectPath: string): Promise<CatalogMappings
       return names;
     }
 
-    for (const c of data.actors ?? []) {
-      actorIds[c.name] = c.id;
-      if (c.states?.length) actorStates[c.name] = loadStates(c.id, c.states);
-      if (c.description) descriptions[c.id] = c.description;
+    // Helper: register primary name + aliases for an asset
+    function registerNames(
+      registry: Record<string, string>,
+      entry: { id: string; name: string; aliases?: string[] },
+    ): void {
+      registry[entry.name] = entry.id;
+      for (const alias of entry.aliases ?? []) {
+        if (alias && !registry[alias]) {
+          registry[alias] = entry.id;
+        }
+      }
+    }
+
+    for (let i = 0; i < (data.actors ?? []).length; i++) {
+      const c = data.actors[i];
+      const id = c.id ?? `act_${fmtId(i + 1)}`;
+      registerNames(actorIds, { ...c, id });
+      if (c.states?.length) actorStates[c.name] = loadStates(id, c.states);
+      if (c.description) descriptions[id] = c.description;
     }
     const locIds: Record<string, string> = {};
-    for (const loc of data.locations ?? []) {
-      locIds[loc.name] = loc.id;
-      if (loc.states?.length) loadStates(loc.id, loc.states);
-      if (loc.description) descriptions[loc.id] = loc.description;
+    for (let i = 0; i < (data.locations ?? []).length; i++) {
+      const loc = data.locations[i];
+      const id = loc.id ?? `loc_${fmtId(i + 1)}`;
+      registerNames(locIds, { ...loc, id });
+      if (loc.states?.length) loadStates(id, loc.states);
+      if (loc.description) descriptions[id] = loc.description;
     }
     const propIds: Record<string, string> = {};
-    for (const p of data.props ?? []) {
-      propIds[p.name] = p.id;
-      if (p.states?.length) loadStates(p.id, p.states);
-      if (p.description) descriptions[p.id] = p.description;
+    for (let i = 0; i < (data.props ?? []).length; i++) {
+      const p = data.props[i];
+      const id = p.id ?? `prp_${fmtId(i + 1)}`;
+      registerNames(propIds, { ...p, id });
+      if (p.states?.length) loadStates(id, p.states);
+      if (p.description) descriptions[id] = p.description;
     }
-    return { actorIds, locIds, actorStates, propIds, descriptions, stateDescriptions };
+    return { actorIds, locIds, actorStates, propIds, descriptions, stateDescriptions, hasCatalog: true };
   } catch {
     return empty;
   }
@@ -265,24 +296,31 @@ export async function parseEpisodes(
   const catalog = await loadCatalogMappings(projectPath);
   const design = await loadDesignFields(projectPath);
 
-  // Actor registry
+  // Catalog-only registries — no auto-creation when catalog exists
   const actors: Record<string, string> = { ...catalog.actorIds };
-  let actorCounter = Object.keys(catalog.actorIds).length;
-
-  // Location registry
   const locations: Record<string, string> = { ...catalog.locIds };
-  let locCounter = Object.keys(catalog.locIds).length;
-
-  // Prop registry
   const props: Record<string, string> = { ...catalog.propIds };
+
+  // Fallback counters — only used when no catalog.json exists
+  let actorCounter = Object.keys(catalog.actorIds).length;
+  let locCounter = Object.keys(catalog.locIds).length;
   let propCounter = Object.keys(catalog.propIds).length;
+
+  // Track names that couldn't be resolved to catalog entries
+  const unresolvedActors = new Set<string>();
+  const unresolvedLocations = new Set<string>();
+  const unresolvedProps = new Set<string>();
 
   // Location state tracking (per location)
   const locStateNames: Record<string, string[]> = {};
   const sceneLocStates: Record<number, [string, string] | null> = {};
 
-  function registerLocation(name: string): string {
+  function registerLocation(name: string): string | null {
     if (locations[name]) return locations[name];
+    if (catalog.hasCatalog) {
+      unresolvedLocations.add(name);
+      return null;
+    }
     locCounter++;
     const lid = `loc_${fmtId(locCounter)}`;
     locations[name] = lid;
@@ -292,6 +330,10 @@ export async function parseEpisodes(
   function registerActor(name: string): string | null {
     if (!name || isGroup(name) || NON_CHARACTER.has(name)) return null;
     if (actors[name]) return actors[name];
+    if (catalog.hasCatalog) {
+      unresolvedActors.add(name);
+      return null;
+    }
     actorCounter++;
     const aid = `act_${fmtId(actorCounter)}`;
     actors[name] = aid;
@@ -302,6 +344,10 @@ export async function parseEpisodes(
     const propName = name.trim();
     if (!propName) return null;
     if (props[propName]) return props[propName];
+    if (catalog.hasCatalog) {
+      unresolvedProps.add(propName);
+      return null;
+    }
     propCounter++;
     const pid = `prp_${fmtId(propCounter)}`;
     props[propName] = pid;
@@ -416,7 +462,7 @@ export async function parseEpisodes(
         currentScene = {
           scene_id: sceneId,
           environment: { space, time },
-          locations: [{ location_id: locId, state_id: null }],
+          locations: locId ? [{ location_id: locId, state_id: null }] : [],
           actors: [],
           props: [],
           actions: [],
@@ -425,7 +471,7 @@ export async function parseEpisodes(
         sceneGlobalIdx.set(currentScene, scnCounter);
         scenePropIds[scnCounter] = [];
 
-        if (locStateName) {
+        if (locStateName && locId) {
           sceneLocStates[scnCounter] = [locId, locStateName];
           if (!locStateNames[locId]) locStateNames[locId] = [];
           if (!locStateNames[locId].includes(locStateName)) {
@@ -567,14 +613,18 @@ export async function parseEpisodes(
   }
 
   // Build actors list with globally unique state IDs
+  // Deduplicate: aliases map multiple names to the same ID, only emit each ID once
   let stateCounter = 0;
   const stateIdMap: Record<string, string> = {}; // "aid|stateName" → stateId
 
-  const actorEntries = Object.entries(actors);
-  actorEntries.sort((a, b) => a[1].localeCompare(b[1]));
+  // Collect canonical name per ID (first registered name wins — that's the catalog primary name)
+  const actorCanonical = buildCanonical(actors);
+
+  const actorIdsSorted = Object.keys(actorCanonical).sort();
   const actorsList: Array<Record<string, unknown>> = [];
 
-  for (const [name, aid] of actorEntries) {
+  for (const aid of actorIdsSorted) {
+    const name = actorCanonical[aid];
     const statesForActor = actorStateNames[aid] ?? [];
     const entry: Record<string, unknown> = { actor_id: aid, actor_name: name };
     if (catalog.descriptions[aid]) entry.description = catalog.descriptions[aid];
@@ -608,12 +658,14 @@ export async function parseEpisodes(
   }
 
   // Build locations list with state IDs (continue global stateCounter)
+  // Deduplicate aliases
   const locStateIdMap: Record<string, string> = {};
-  const locEntries = Object.entries(locations);
-  locEntries.sort((a, b) => a[1].localeCompare(b[1]));
+  const locCanonical = buildCanonical(locations);
+  const locIdsSorted = Object.keys(locCanonical).sort();
   const locationsList: Array<Record<string, unknown>> = [];
 
-  for (const [name, lid] of locEntries) {
+  for (const lid of locIdsSorted) {
+    const name = locCanonical[lid];
     const stateNamesForLoc = locStateNames[lid] ?? [];
     const entry: Record<string, unknown> = { location_id: lid, location_name: name };
     if (catalog.descriptions[lid]) entry.description = catalog.descriptions[lid];
@@ -633,10 +685,11 @@ export async function parseEpisodes(
     locationsList.push(entry);
   }
 
-  // Build props list (no states from parser — props states are for asset stage)
-  const propEntries = Object.entries(props);
-  propEntries.sort((a, b) => a[1].localeCompare(b[1]));
-  const propsList = propEntries.map(([name, pid]) => {
+  // Build props list — deduplicate aliases
+  const propCanonical = buildCanonical(props);
+  const propIdsSorted = Object.keys(propCanonical).sort();
+  const propsList = propIdsSorted.map((pid) => {
+    const name = propCanonical[pid];
     const entry: Record<string, unknown> = { prop_id: pid, prop_name: name };
     if (catalog.descriptions[pid]) entry.description = catalog.descriptions[pid];
     return entry;
@@ -685,6 +738,26 @@ export async function parseEpisodes(
 
   const totalScenes = episodes.reduce((sum, ep) => sum + ep.scenes.length, 0);
 
+  // Build unresolved warnings
+  const warnings: string[] = [];
+  if (unresolvedActors.size > 0) {
+    warnings.push(
+      `Unresolved actors (not in catalog.json, skipped): ${[...unresolvedActors].join(", ")}. Add them to catalog.json actors[] or as aliases.`,
+    );
+  }
+  if (unresolvedLocations.size > 0) {
+    warnings.push(
+      `Unresolved locations (not in catalog.json, skipped): ${[...unresolvedLocations].join(", ")}. Add them to catalog.json locations[] or as aliases.`,
+    );
+  }
+  if (unresolvedProps.size > 0) {
+    warnings.push(
+      `Unresolved props (not in catalog.json, skipped): ${[...unresolvedProps].join(", ")}. Add them to catalog.json props[] or as aliases.`,
+    );
+  }
+
+  for (const w of warnings) console.warn(`⚠️  ${w}`);
+
   return {
     script_path: scriptPath,
     stats: {
@@ -694,7 +767,17 @@ export async function parseEpisodes(
       total_episodes: episodes.length,
       episodes_parsed: epFiles.length,
     },
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
+}
+
+/** Map name→id registry to id→name, keeping first registered name per ID. */
+function buildCanonical(registry: Record<string, string>): Record<string, string> {
+  const canonical: Record<string, string> = {};
+  for (const [name, id] of Object.entries(registry)) {
+    if (!(id in canonical)) canonical[id] = name;
+  }
+  return canonical;
 }
 
 // ---------- MCP tool wrapper ----------
