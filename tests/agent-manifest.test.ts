@@ -25,7 +25,6 @@ describe("loadAgentManifests", () => {
         "skills:",
         "  - legacy-yaml-skill",
         "mcpServers:",
-        "  - workspace",
         "  - script",
       ].join("\n"),
       "utf-8",
@@ -43,7 +42,7 @@ describe("loadAgentManifests", () => {
       name: "screenwriter",
       description: "Writes scripts",
       skills: ["script-adapt", "script-writer"],
-      mcpServers: ["workspace", "script"],
+      mcpServers: ["script"],
     });
   });
 
