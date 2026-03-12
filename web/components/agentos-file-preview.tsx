@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FragmentCode } from '@/components/fragment-code'
 import { agentOsFetch, getAgentOsServerBaseUrl } from '@/lib/agentos'
 import {
+  PreviewKind,
   getLeafName,
   getPreviewKind,
   hasRenderedPreview,
@@ -105,49 +106,67 @@ export function AgentOsFilePreview({
 
   if (!selectedPath) {
     return (
-      <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        Select a workspace file to inspect it.
+      <div className="flex h-full items-center justify-center px-6 text-center text-xs text-muted-foreground">
+        Select a file to view
       </div>
     )
   }
 
   if (loading) {
     return (
-      <div className="px-5 py-8 text-sm text-muted-foreground">
-        Loading {mode === 'code' ? 'code' : 'preview'}...
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+        Loading...
       </div>
     )
   }
 
   if (error) {
-    return <div className="px-5 py-8 text-sm text-red-400">{error}</div>
+    return (
+      <div className="flex h-full items-center justify-center px-6 text-xs text-red-400">
+        {error}
+      </div>
+    )
   }
 
+  // --- Code mode ---
   if (mode === 'code') {
+    // For non-text files (image/video), fall back to preview rendering
     if (!shouldUseFragmentCode(previewKind)) {
-      return (
-        <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
-          Code view is available for text, markdown, and JSON files.
-        </div>
-      )
+      return renderPreview(previewKind, content, downloadUrl, selectedPath)
     }
 
-    return <FragmentCode files={codeFiles} />
+    return (
+      <div className="h-full overflow-auto">
+        <FragmentCode files={codeFiles} />
+      </div>
+    )
   }
 
+  // --- Preview mode ---
+  return renderPreview(previewKind, content, downloadUrl, selectedPath)
+}
+
+function renderPreview(
+  previewKind: PreviewKind,
+  content: string,
+  downloadUrl: string | null,
+  selectedPath: string,
+) {
   if (previewKind === 'markdown') {
     return (
-      <article className="h-full overflow-y-auto px-5 py-5 text-sm leading-7 text-foreground">
-        <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-foreground">
-          {content}
-        </pre>
+      <article className="h-full overflow-y-auto px-5 py-4">
+        <div className="prose prose-sm prose-invert max-w-none text-foreground">
+          <pre className="whitespace-pre-wrap border-none bg-transparent p-0 font-sans text-sm leading-7 text-foreground">
+            {content}
+          </pre>
+        </div>
       </article>
     )
   }
 
   if (previewKind === 'image' && downloadUrl) {
     return (
-      <div className="flex h-full items-center justify-center overflow-auto p-4">
+      <div className="flex h-full items-center justify-center overflow-auto bg-muted/20 p-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={downloadUrl}
@@ -160,21 +179,47 @@ export function AgentOsFilePreview({
 
   if (previewKind === 'video' && downloadUrl) {
     return (
-      <div className="h-full overflow-auto p-4">
+      <div className="flex h-full items-center justify-center overflow-auto p-4">
         <video
           src={downloadUrl}
           controls
-          className="mx-auto max-h-full w-full rounded-lg"
+          className="max-h-full max-w-full rounded-lg"
         />
       </div>
     )
   }
 
+  if (previewKind === 'json') {
+    try {
+      const pretty = JSON.stringify(JSON.parse(content), null, 2)
+      return (
+        <div className="h-full overflow-y-auto px-4 py-3">
+          <pre className="font-mono text-xs leading-5 text-foreground whitespace-pre-wrap">
+            {pretty}
+          </pre>
+        </div>
+      )
+    } catch {
+      // fall through
+    }
+  }
+
+  // Text fallback for preview mode
+  if (content) {
+    return (
+      <div className="h-full overflow-y-auto px-4 py-3">
+        <pre className="font-mono text-xs leading-5 text-foreground whitespace-pre-wrap">
+          {content}
+        </pre>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
+    <div className="flex h-full items-center justify-center px-6 text-center text-xs text-muted-foreground">
       {hasRenderedPreview(previewKind)
-        ? 'Preview is not available yet.'
-        : 'Preview is only available for markdown, image, and video files.'}
+        ? 'Preview not available.'
+        : 'No preview for this file type.'}
     </div>
   )
 }

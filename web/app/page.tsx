@@ -17,6 +17,7 @@ import {
   applyAgentOsEvent,
   appendAgentOsUserMessage,
   createInitialAgentOsChatState,
+  type AgentOsChatState,
 } from '@/lib/agentos-chat'
 import { uploadFiles } from '@/lib/agentos-file-upload'
 import { AgentOsCommand } from '@/lib/agentos-protocol'
@@ -29,6 +30,11 @@ import { Message, toAISDKMessages, toMessageImage } from '@/lib/messages'
 import { LLMModelConfig } from '@/lib/models'
 import modelsList from '@/lib/models.json'
 import { FragmentSchema, fragmentSchema as schema } from '@/lib/schema'
+import {
+  interpretPrompt,
+  SLASH_COMMANDS,
+  shouldAppendLocalNotice,
+} from '@/lib/slash-commands'
 import { supabase } from '@/lib/supabase'
 import templates from '@/lib/templates'
 import { ExecutionResult } from '@/lib/types'
@@ -39,6 +45,29 @@ import { experimental_useObject as useObject } from 'ai/react'
 import { usePostHog } from 'posthog-js/react'
 import { SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocalStorage } from 'usehooks-ts'
+
+function appendAgentOsLocalNotice(
+  current: AgentOsChatState,
+  input: string,
+  notice: string,
+): AgentOsChatState {
+  const status: AgentOsChatState['status'] =
+    current.status === 'disconnected' ? 'disconnected' : 'idle'
+
+  return {
+    ...current,
+    messages: [
+      ...current.messages,
+      { role: 'user' as const, content: [{ type: 'text' as const, text: input }] },
+      { role: 'assistant' as const, content: [{ type: 'text' as const, text: notice }] },
+    ],
+    isLoading: false,
+    errorMessage: '',
+    status,
+    streamingAssistantIndex: null,
+    lastStreamEventType: null,
+  }
+}
 
 export default function Home() {
   const agentOsProjectId = useMemo(() => getAgentOsProjectId(), [])
@@ -250,40 +279,50 @@ export default function Home() {
         return
       }
 
-      // Parse slash commands into AgentOS protocol commands
-      const slashCommand = parseSlashCommand(nextText)
+      const interpretation = interpretPrompt(nextText, {
+        selectedAgent: agentOsChat.activeAgent ?? 'main',
+        availableAgents: ['main', ...Object.keys(agentOsChat.agents)],
+      })
 
-      if (slashCommand === 'help') {
-        // Local-only: inject a help message without hitting the bridge
-        setAgentOsChat((current) => ({
-          ...appendAgentOsUserMessage(current, nextText),
-          messages: [
-            ...current.messages,
-            { role: 'user', content: [{ type: 'text', text: nextText }] },
-            {
-              role: 'assistant',
-              content: [
-                {
-                  type: 'text',
-                  text: [
-                    '**Available commands:**',
-                    '`/enter <agent>` — switch to a specific agent',
-                    '`/exit` — return to the default agent',
-                    '`/status` — show bridge & agent status',
-                    '`/skills` — list available skills',
-                    '`/resume <session_id>` — resume a previous session',
-                    '`/help` — show this help',
-                    '',
-                    'Any other input is sent as a chat message.',
-                  ].join('\n'),
-                },
-              ],
-            },
-          ],
-          isLoading: false,
-          status: current.status === 'disconnected' ? 'disconnected' : 'idle',
-        }))
+      if (interpretation.kind === 'error') {
+        setAgentOsChat((current) =>
+          appendAgentOsLocalNotice(current, nextText, interpretation.notice),
+        )
         setChatInput('')
+        return
+      }
+
+      if (interpretation.kind === 'local') {
+        if (nextText.toLowerCase() === '/clear') {
+          handleClearChat()
+          setChatInput('')
+          return
+        }
+
+        if (shouldAppendLocalNotice(interpretation)) {
+          setAgentOsChat((current) =>
+            appendAgentOsLocalNotice(current, nextText, interpretation.notice),
+          )
+        }
+        setChatInput('')
+        setFiles([])
+        setWorkspaceOpen(false)
+
+        if (interpretation.command) {
+          try {
+            await agentOsBridge.sendCommand(interpretation.command)
+          } catch (submitError) {
+            setAgentOsChat((current) =>
+              applyAgentOsEvent(current, {
+                type: 'error',
+                message:
+                  submitError instanceof Error
+                    ? submitError.message
+                    : String(submitError),
+              }),
+            )
+          }
+        }
         return
       }
 
@@ -303,17 +342,16 @@ export default function Home() {
           })
           if (uploadedPaths.length > 0) {
             const pathList = uploadedPaths.map((p) => `\`${p}\``).join(', ')
-            const command: AgentOsCommand = slashCommand ?? {
-              cmd: 'chat',
-              message: `${nextText}\n\n[Uploaded files: ${pathList}]`,
+            const command: AgentOsCommand = {
+              ...interpretation.command,
+              message: `${interpretation.command.message}\n\n[Uploaded files: ${pathList}]`,
             }
             await agentOsBridge.sendCommand(command)
             return
           }
         }
 
-        const command: AgentOsCommand = slashCommand ?? { cmd: 'chat', message: nextText }
-        await agentOsBridge.sendCommand(command)
+        await agentOsBridge.sendCommand(interpretation.command)
       } catch (submitError) {
         setAgentOsChat((current) =>
           applyAgentOsEvent(current, {
@@ -654,52 +692,10 @@ export default function Home() {
   )
 }
 
-/**
- * Parse user input for slash commands.
- * Returns an AgentOsCommand if matched, 'help' for the /help command,
- * or null if the input is a regular chat message.
- */
-function parseSlashCommand(
-  input: string,
-): AgentOsCommand | 'help' | null {
-  if (!input.startsWith('/')) return null
-
-  const parts = input.split(/\s+/)
-  const cmd = parts[0].toLowerCase()
-  const arg = parts.slice(1).join(' ').trim()
-
-  switch (cmd) {
-    case '/enter':
-      return arg ? { cmd: 'enter_agent', agent: arg } : null
-    case '/exit':
-      return { cmd: 'exit_agent' }
-    case '/status':
-      return { cmd: 'status' }
-    case '/skills':
-      return { cmd: 'list_skills' }
-    case '/resume':
-      return arg ? { cmd: 'resume', session_id: arg } : null
-    case '/help':
-      return 'help'
-    default:
-      // Unknown slash command — send as regular chat so the agent can handle it
-      return null
-  }
-}
-
 const AGENTOS_MODELS = [
   { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
   { id: 'claude-opus-4-6', label: 'Opus 4.6' },
-] as const
-
-const SLASH_COMMANDS = [
-  { cmd: '/enter ', label: '/enter <agent>', desc: 'Switch to a specific agent' },
-  { cmd: '/exit', label: '/exit', desc: 'Return to the main agent' },
-  { cmd: '/status', label: '/status', desc: 'Show bridge & agent status' },
-  { cmd: '/skills', label: '/skills', desc: 'List available skills' },
-  { cmd: '/resume ', label: '/resume <session_id>', desc: 'Resume a previous session' },
-  { cmd: '/help', label: '/help', desc: 'Show help' },
 ] as const
 
 function SlashSuggestions({

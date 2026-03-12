@@ -47,20 +47,41 @@ export function getAgentOsWebSocketUrl(projectId: string): string {
 
 // --- Guest token cache ---
 
+const TOKEN_KEY = 'agentos_token'
 let cachedToken: string | null = null
 let tokenPromise: Promise<string | null> | null = null
 
 export async function getAgentOsToken(): Promise<string | null> {
   if (cachedToken) return cachedToken
+
+  // Restore from localStorage on first call
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem(TOKEN_KEY)
+    if (stored) {
+      cachedToken = stored
+      return stored
+    }
+  }
+
   if (tokenPromise) return tokenPromise
+
+  // Build request — send existing token (if any) so server can reuse the user
+  const headers: Record<string, string> = {}
+  if (cachedToken) {
+    headers['Authorization'] = `Bearer ${cachedToken}`
+  }
 
   tokenPromise = fetch(`${getAgentOsServerBaseUrl()}/api/auth/session`, {
     method: 'POST',
+    headers,
   })
     .then(async (res) => {
       if (!res.ok) return null
       const data = (await res.json()) as { token?: string }
       cachedToken = data.token ?? null
+      if (cachedToken && typeof window !== 'undefined') {
+        localStorage.setItem(TOKEN_KEY, cachedToken)
+      }
       return cachedToken
     })
     .catch(() => null)
@@ -73,6 +94,9 @@ export async function getAgentOsToken(): Promise<string | null> {
 
 export function setAgentOsToken(token: string): void {
   cachedToken = token
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(TOKEN_KEY, token)
+  }
 }
 
 export async function agentOsFetch(
