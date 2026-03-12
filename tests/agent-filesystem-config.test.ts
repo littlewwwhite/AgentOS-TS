@@ -13,7 +13,7 @@ const AGENTS_DIR = path.resolve("agents");
 async function listAgentNames(): Promise<string[]> {
   const entries = await fs.readdir(AGENTS_DIR, { withFileTypes: true });
   return entries
-    .filter((entry) => entry.isDirectory())
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
     .map((entry) => entry.name)
     .sort();
 }

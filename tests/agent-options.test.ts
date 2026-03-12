@@ -14,7 +14,6 @@ const BASE_OPTIONS = {
     append: "Orchestrator prompt content",
   },
   mcpServers: {
-    storage: { name: "storage" },
     image: { name: "image" },
     switch: { name: "switch" },
   },

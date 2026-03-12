@@ -70,10 +70,13 @@ describe("script-parser", () => {
         },
         {
           actors: [
-            { id: "act_1", name: "楚凡" },
-            { id: "act_2", name: "林雪" },
+            { id: "act_001", name: "楚凡" },
+            { id: "act_002", name: "林雪" },
           ],
-          locations: [],
+          locations: [
+            { id: "loc_001", name: "觉醒大厅" },
+            { id: "loc_002", name: "学院街道" },
+          ],
           props: [],
         },
         { title: "测试剧本", style: "现代都市", worldview: "异能世界" },
@@ -91,30 +94,27 @@ describe("script-parser", () => {
       expect(result).not.toHaveProperty("error");
     });
 
-    test("actor IDs use catalog values (act_1 not act_001)", async () => {
+    test("actor IDs use catalog values", async () => {
       const scriptPath = path.join(projectPath, "output", "script.json");
       const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
       const actorIds = script.actors.map((a: any) => a.actor_id);
-      expect(actorIds).toContain("act_1");
-      expect(actorIds).toContain("act_2");
-      // No zero-padded IDs
-      expect(actorIds).not.toContain("act_001");
+      expect(actorIds).toContain("act_001");
+      expect(actorIds).toContain("act_002");
     });
 
-    test("scene IDs use epN_scn_N format", async () => {
+    test("scene IDs use scn_NNN format", async () => {
       const scriptPath = path.join(projectPath, "output", "script.json");
       const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
       const sceneIds = script.episodes[0].scenes.map((s: any) => s.scene_id);
-      expect(sceneIds[0]).toBe("scn_1");
-      expect(sceneIds[1]).toBe("scn_2");
+      expect(sceneIds[0]).toBe("scn_001");
+      expect(sceneIds[1]).toBe("scn_002");
     });
 
-    test("location IDs have no zero-padding", async () => {
+    test("location IDs from catalog", async () => {
       const scriptPath = path.join(projectPath, "output", "script.json");
       const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
       for (const loc of script.locations) {
         expect(loc.location_id).toMatch(/^loc_\d+$/);
-        expect(loc.location_id).not.toMatch(/^loc_0/);
       }
     });
   });
@@ -140,13 +140,16 @@ describe("script-parser", () => {
         },
         {
           actors: [
-            { id: "act_1", name: "楚凡" },
-            { id: "act_2", name: "林雪" },
+            { id: "act_001", name: "楚凡" },
+            { id: "act_002", name: "林雪" },
           ],
-          locations: [],
+          locations: [
+            { id: "loc_001", name: "觉醒大厅" },
+            { id: "loc_002", name: "学院街道" },
+          ],
           props: [
-            { id: "prp_1", name: "凡字玉佩" },
-            { id: "prp_2", name: "断剑" },
+            { id: "prp_001", name: "凡字玉佩" },
+            { id: "prp_002", name: "断剑" },
           ],
         },
         { title: "测试", style: "", worldview: "" },
@@ -164,20 +167,20 @@ describe("script-parser", () => {
 
       // Global props list
       const propIds = script.props.map((p: any) => p.prop_id);
-      expect(propIds).toContain("prp_1");
-      expect(propIds).toContain("prp_2");
+      expect(propIds).toContain("prp_001");
+      expect(propIds).toContain("prp_002");
 
       // Scene 1-1 has both props
       const scene1 = script.episodes[0].scenes[0];
       const scene1PropIds = scene1.props.map((p: any) => p.prop_id);
-      expect(scene1PropIds).toContain("prp_1");
-      expect(scene1PropIds).toContain("prp_2");
+      expect(scene1PropIds).toContain("prp_001");
+      expect(scene1PropIds).toContain("prp_002");
 
       // Scene 1-2 has only 凡字玉佩
       const scene2 = script.episodes[0].scenes[1];
       const scene2PropIds = scene2.props.map((p: any) => p.prop_id);
-      expect(scene2PropIds).toContain("prp_1");
-      expect(scene2PropIds).not.toContain("prp_2");
+      expect(scene2PropIds).toContain("prp_001");
+      expect(scene2PropIds).not.toContain("prp_002");
     });
 
     test("props use catalog IDs when available", async () => {
@@ -189,8 +192,8 @@ describe("script-parser", () => {
       for (const p of script.props) {
         propsMap[p.prop_name] = p.prop_id;
       }
-      expect(propsMap["凡字玉佩"]).toBe("prp_1");
-      expect(propsMap["断剑"]).toBe("prp_2");
+      expect(propsMap["凡字玉佩"]).toBe("prp_001");
+      expect(propsMap["断剑"]).toBe("prp_002");
     });
   });
 
@@ -219,10 +222,14 @@ describe("script-parser", () => {
         },
         {
           actors: [
-            { id: "act_1", name: "楚凡", states: ["战甲", "便服"] },
-            { id: "act_2", name: "林雪", states: ["婚纱"] },
+            { id: "act_001", name: "楚凡", states: ["战甲", "便服"] },
+            { id: "act_002", name: "林雪", states: ["婚纱"] },
           ],
-          locations: [],
+          locations: [
+            { id: "loc_001", name: "觉醒大厅" },
+            { id: "loc_002", name: "大殿" },
+            { id: "loc_003", name: "街道" },
+          ],
           props: [],
         },
         { title: "状态测试", style: "", worldview: "" },
@@ -249,13 +256,13 @@ describe("script-parser", () => {
       // Scene 1-1: 楚凡 has 战甲 state, 林雪 has null
       const scene1 = script.episodes[0].scenes[0];
       const chuFanInScene1 = scene1.actors.find(
-        (a: any) => a.actor_id === "act_1",
+        (a: any) => a.actor_id === "act_001",
       );
       expect(chuFanInScene1.state_id).not.toBeNull();
       expect(stateMap[chuFanInScene1.state_id]).toBe("楚凡|战甲");
 
       const linXueInScene1 = scene1.actors.find(
-        (a: any) => a.actor_id === "act_2",
+        (a: any) => a.actor_id === "act_002",
       );
       expect(linXueInScene1.state_id).toBeNull();
     });
@@ -267,8 +274,8 @@ describe("script-parser", () => {
 
       // Scene 1-2: both have states
       const scene2 = script.episodes[0].scenes[1];
-      const chuFan = scene2.actors.find((a: any) => a.actor_id === "act_1");
-      const linXue = scene2.actors.find((a: any) => a.actor_id === "act_2");
+      const chuFan = scene2.actors.find((a: any) => a.actor_id === "act_001");
+      const linXue = scene2.actors.find((a: any) => a.actor_id === "act_002");
 
       expect(chuFan.state_id).not.toBeNull();
       expect(linXue.state_id).not.toBeNull();
@@ -281,7 +288,7 @@ describe("script-parser", () => {
 
       // Scene 1-3: no state line, 楚凡 should have null state
       const scene3 = script.episodes[0].scenes[2];
-      const chuFan = scene3.actors.find((a: any) => a.actor_id === "act_1");
+      const chuFan = scene3.actors.find((a: any) => a.actor_id === "act_001");
       expect(chuFan.state_id).toBeNull();
     });
   });
@@ -300,10 +307,12 @@ describe("script-parser", () => {
         },
         {
           actors: [
-            { id: "act_1", name: "楚凡", states: ["战甲"] },
-            { id: "act_2", name: "林雪" },
+            { id: "act_001", name: "楚凡", states: ["战甲"] },
+            { id: "act_002", name: "林雪" },
           ],
-          locations: [],
+          locations: [
+            { id: "loc_001", name: "觉醒大厅" },
+          ],
           props: [],
         },
         { title: "兼容测试", style: "", worldview: "" },
@@ -320,7 +329,7 @@ describe("script-parser", () => {
       const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
 
       const scene = script.episodes[0].scenes[0];
-      const chuFan = scene.actors.find((a: any) => a.actor_id === "act_1");
+      const chuFan = scene.actors.find((a: any) => a.actor_id === "act_001");
       expect(chuFan.state_id).not.toBeNull();
     });
   });
@@ -349,28 +358,23 @@ describe("script-parser", () => {
       await cleanup(projectPath);
     });
 
-    test("auto-generates IDs starting from 1", async () => {
+    test("auto-generates zero-padded IDs when no catalog", async () => {
       await parseEpisodes(projectPath);
       const scriptPath = path.join(projectPath, "output", "script.json");
       const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
 
       // Actors
       const actorIds = script.actors.map((a: any) => a.actor_id);
-      expect(actorIds).toContain("act_1");
-      expect(actorIds).toContain("act_2");
+      expect(actorIds).toContain("act_001");
+      expect(actorIds).toContain("act_002");
 
       // Locations
       const locIds = script.locations.map((l: any) => l.location_id);
-      expect(locIds).toContain("loc_1");
+      expect(locIds).toContain("loc_001");
 
       // Props
       const propIds = script.props.map((p: any) => p.prop_id);
-      expect(propIds).toContain("prp_1");
-
-      // No zero-padded IDs anywhere
-      for (const id of [...actorIds, ...locIds, ...propIds]) {
-        expect(id).not.toMatch(/_0\d/);
-      }
+      expect(propIds).toContain("prp_001");
     });
   });
 
@@ -387,8 +391,8 @@ describe("script-parser", () => {
 `,
         },
         {
-          actors: [{ id: "act_1", name: "楚凡" }],
-          locations: [{ id: "loc_1", name: "觉醒大厅" }],
+          actors: [{ id: "act_001", name: "楚凡" }],
+          locations: [{ id: "loc_001", name: "觉醒大厅" }],
           props: [],
         },
         { title: "地点状态测试", style: "", worldview: "" },
@@ -406,7 +410,7 @@ describe("script-parser", () => {
 
       // Location has state
       const loc = script.locations.find(
-        (l: any) => l.location_id === "loc_1",
+        (l: any) => l.location_id === "loc_001",
       );
       expect(loc.states).toBeDefined();
       expect(loc.states.length).toBe(1);
@@ -416,6 +420,261 @@ describe("script-parser", () => {
       // Scene references location state
       const scene = script.episodes[0].scenes[0];
       expect(scene.locations[0].state_id).not.toBeNull();
+    });
+  });
+
+  describe("catalog-only mode: aliases and unresolved", () => {
+    let projectPath: string;
+
+    beforeAll(async () => {
+      projectPath = await setupProject(
+        {
+          "ep01.md": `第1集
+1-1 日 内 家中客厅
+人物：女主、弟弟
+道具：应急包
+▲女主紧张地打开应急包。
+弟弟（焦急）：姐，外面已经开始下雪了！
+女主（OS）：文文说得没错……
+`,
+        },
+        {
+          actors: [
+            { id: "act_001", name: "许瑶", aliases: ["女主", "姐", "我"] },
+            { id: "act_002", name: "许正希", aliases: ["弟弟", "正希"] },
+          ],
+          locations: [
+            { id: "loc_001", name: "家中客厅" },
+          ],
+          props: [
+            { id: "prp_001", name: "应急包" },
+          ],
+        },
+        { title: "别名测试", style: "", worldview: "" },
+      );
+    });
+
+    afterAll(async () => {
+      await cleanup(projectPath);
+    });
+
+    test("aliases resolve to catalog IDs", async () => {
+      const result = await parseEpisodes(projectPath);
+      const scriptPath = path.join(projectPath, "output", "script.json");
+      const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+
+      // Only 2 actors from catalog, no duplicates
+      expect(script.actors.length).toBe(2);
+      const actorNames = script.actors.map((a: any) => a.actor_name);
+      expect(actorNames).toContain("许瑶");
+      expect(actorNames).toContain("许正希");
+      // "女主" and "弟弟" should NOT appear as separate actors
+      expect(actorNames).not.toContain("女主");
+      expect(actorNames).not.toContain("弟弟");
+
+      // No warnings
+      expect(result).not.toHaveProperty("warnings");
+    });
+
+    test("scene actors use canonical catalog IDs via aliases", async () => {
+      await parseEpisodes(projectPath);
+      const scriptPath = path.join(projectPath, "output", "script.json");
+      const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+
+      const scene = script.episodes[0].scenes[0];
+      const actorIds = scene.actors.map((a: any) => a.actor_id);
+      expect(actorIds).toContain("act_001"); // 女主 → 许瑶
+      expect(actorIds).toContain("act_002"); // 弟弟 → 许正希
+    });
+  });
+
+  describe("unresolved names produce warnings", () => {
+    let projectPath: string;
+
+    beforeAll(async () => {
+      projectPath = await setupProject(
+        {
+          "ep01.md": `第1集
+1-1 日 内 客厅
+人物：张三、未知路人
+▲张三看向窗外。
+未知路人（紧张）：快跑！
+`,
+        },
+        {
+          actors: [
+            { id: "act_001", name: "张三" },
+          ],
+          locations: [
+            { id: "loc_001", name: "客厅" },
+          ],
+          props: [],
+        },
+        { title: "警告测试", style: "", worldview: "" },
+      );
+    });
+
+    afterAll(async () => {
+      await cleanup(projectPath);
+    });
+
+    test("unresolved actors appear in warnings", async () => {
+      const result = await parseEpisodes(projectPath) as any;
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings.length).toBe(1);
+      expect(result.warnings[0]).toContain("未知路人");
+    });
+
+    test("unresolved actors are NOT in script.json actors list", async () => {
+      await parseEpisodes(projectPath);
+      const scriptPath = path.join(projectPath, "output", "script.json");
+      const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+
+      expect(script.actors.length).toBe(1);
+      expect(script.actors[0].actor_name).toBe("张三");
+    });
+  });
+
+  describe("Chinese conjunction splitting", () => {
+    let projectPath: string;
+
+    beforeAll(async () => {
+      projectPath = await setupProject(
+        {
+          "ep01.md": `第1集
+1-1 日 内 客厅
+人物：女主和弟弟
+▲两人对视。
+`,
+        },
+        {
+          actors: [
+            { id: "act_001", name: "女主" },
+            { id: "act_002", name: "弟弟" },
+          ],
+          locations: [
+            { id: "loc_001", name: "客厅" },
+          ],
+          props: [],
+        },
+        { title: "连词拆分测试", style: "", worldview: "" },
+      );
+    });
+
+    afterAll(async () => {
+      await cleanup(projectPath);
+    });
+
+    test("splits '和' in actor lines into separate actors", async () => {
+      const result = await parseEpisodes(projectPath);
+      const scriptPath = path.join(projectPath, "output", "script.json");
+      const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+
+      const scene = script.episodes[0].scenes[0];
+      const actorIds = scene.actors.map((a: any) => a.actor_id);
+      expect(actorIds).toContain("act_001");
+      expect(actorIds).toContain("act_002");
+      // No warnings — both resolved
+      expect(result).not.toHaveProperty("warnings");
+    });
+  });
+
+  describe("catalog without id fields (auto-assign)", () => {
+    let projectPath: string;
+
+    beforeAll(async () => {
+      projectPath = await setupProject(
+        {
+          "ep01.md": `第1集
+
+1-1 日 内 客厅
+人物：许瑶
+道具：玉佩
+
+许瑶打量着手中的玉佩。
+
+许瑶：这是哪里来的？
+
+1-2 夜 外 街道
+人物：许正希
+
+许正希独自走在空旷的街头。
+
+许正希：(OS) 姐姐还好吗……`,
+        },
+        {
+          actors: [
+            { name: "许瑶", description: "28岁，女", aliases: ["女主", "姐姐"] },
+            { name: "许正希", description: "25岁，男", aliases: ["弟弟"] },
+          ],
+          locations: [
+            { name: "客厅", description: "老旧小区一居室" },
+            { name: "街道", description: "空旷的夜间街道" },
+          ],
+          props: [{ name: "玉佩", description: "翠绿色古玉佩" }],
+        },
+        { title: "无ID测试", style: "", worldview: "" },
+      );
+    });
+
+    afterAll(async () => {
+      await cleanup(projectPath);
+    });
+
+    test("parser auto-generates act_001/loc_001/prp_001 by array order", async () => {
+      await parseEpisodes(projectPath);
+      const scriptPath = path.join(projectPath, "output", "script.json");
+      const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+
+      // Actors get auto-assigned IDs by array position
+      expect(script.actors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ actor_id: "act_001", actor_name: "许瑶" }),
+          expect.objectContaining({ actor_id: "act_002", actor_name: "许正希" }),
+        ]),
+      );
+      // Locations
+      expect(script.locations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ location_id: "loc_001", location_name: "客厅" }),
+          expect.objectContaining({ location_id: "loc_002", location_name: "街道" }),
+        ]),
+      );
+      // Props
+      expect(script.props).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ prop_id: "prp_001", prop_name: "玉佩" }),
+        ]),
+      );
+    });
+
+    test("alias resolution works without id fields", async () => {
+      // ep01 uses canonical names; add ep02 that uses alias "女主" for 许瑶
+      const epDir = path.join(projectPath, "draft", "episodes");
+      await fs.writeFile(
+        path.join(epDir, "ep02.md"),
+        [
+          "第2集",
+          "",
+          "2-1 日 内 客厅",
+          "人物：女主",
+          "",
+          "女主：我回来了。",
+        ].join("\n"),
+        "utf-8",
+      );
+      // Remove previous output to force clean re-parse
+      await fs.rm(path.join(projectPath, "output"), { recursive: true, force: true });
+      await parseEpisodes(projectPath);
+      const scriptPath = path.join(projectPath, "output", "script.json");
+      const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+
+      // Find ep_002 and check alias resolved to act_001
+      const ep2 = script.episodes.find((e: any) => e.episode_id === "ep_002");
+      expect(ep2).toBeDefined();
+      expect(ep2.scenes.length).toBeGreaterThan(0);
+      const actorIds = ep2.scenes[0].actors.map((a: any) => a.actor_id);
+      expect(actorIds).toContain("act_001");
     });
   });
 });

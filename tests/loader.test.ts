@@ -19,7 +19,7 @@ describe("loadAgentConfigs", () => {
         "name: test-agent",
         'description: "A test agent"',
         "mcpServers:",
-        "  - storage",
+        "  - source",
         "  - script",
       ].join("\n"),
       "utf-8",
@@ -29,7 +29,7 @@ describe("loadAgentConfigs", () => {
 
     expect(configs["test-agent"]).toBeDefined();
     expect(configs["test-agent"].description).toBe("A test agent");
-    expect(configs["test-agent"].mcpServers).toEqual(["storage", "script"]);
+    expect(configs["test-agent"].mcpServers).toEqual(["source", "script"]);
 
     await fs.rm(tmpDir, { recursive: true });
   });
@@ -58,7 +58,7 @@ describe("loadAgentConfigs", () => {
         "name: test-agent",
         'description: "A test agent"',
         "mcpServers:",
-        "  - storage",
+        "  - source",
         "  - not-a-real-server",
         "  - script",
       ].join("\n"),
@@ -67,7 +67,7 @@ describe("loadAgentConfigs", () => {
 
     const configs = await loadAgentConfigs(tmpDir);
 
-    expect(configs["test-agent"].mcpServers).toEqual(["storage", "script"]);
+    expect(configs["test-agent"].mcpServers).toEqual(["source", "script"]);
 
     await fs.rm(tmpDir, { recursive: true });
   });

@@ -30,7 +30,7 @@ describe("loadAgentConfigs extended", () => {
 
   it("screenwriter declares scoped mcp servers in yaml", async () => {
     const agents = await loadAgentConfigs(path.resolve("agents"));
-    expect(agents.screenwriter.mcpServers).toEqual(["storage", "script"]);
+    expect(agents.screenwriter.mcpServers).toEqual(["source", "script"]);
   });
 
   it("supports optional mcp server metadata in yaml", async () => {
@@ -41,13 +41,13 @@ describe("loadAgentConfigs extended", () => {
         "name: with-mcp",
         'description: "Has scoped servers"',
         "mcpServers:",
-        "  - storage",
+        "  - source",
         "  - image",
       ].join("\n"),
     );
 
     const agents = await loadAgentConfigs(tmpDir);
-    expect(agents["with-mcp"].mcpServers).toEqual(["storage", "image"]);
+    expect(agents["with-mcp"].mcpServers).toEqual(["source", "image"]);
   });
 
   it("returns empty for non-existent directory", async () => {

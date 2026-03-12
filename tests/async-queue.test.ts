@@ -1,9 +1,9 @@
-// input: AsyncQueue from sandbox-orchestrator
+// input: AsyncQueue from local-orchestrator
 // output: Tests for queue push/pull, FIFO ordering, async waiter semantics
 // pos: Unit test — validates core concurrency primitive
 
 import { describe, it, expect } from "vitest";
-import { AsyncQueue } from "../src/sandbox-orchestrator.js";
+import { AsyncQueue } from "../src/local-orchestrator.js";
 
 describe("AsyncQueue", () => {
   it("push then pull returns item immediately", async () => {
