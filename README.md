@@ -22,8 +22,7 @@
 - **文件系统驱动的智能体配置** — 每个智能体的身份定义在 `agents/<name>/.claude/`（CLAUDE.md、settings.json、skills/）中，SDK 通过 `settingSources: ["project"]` + 独立 `cwd` 原生加载。
 - **分层权限模型** — 编排器以 `dontAsk` 模式运行，仅允许 TodoWrite + switch_to_agent；子智能体以 `bypassPermissions` 运行，配合 settings.json 的 deny-list 控制。
 - **惰性智能体创建** — 智能体会话在首次分派时按需创建，而非启动时全部初始化。
-- **E2B 沙箱隔离** — 智能体在云端沙箱中执行；宿主机通过 stdin/stdout JSON Lines 协议通信。
-- **本地运行时** — `runtime: "local"` 模式下智能体直接在主机侧运行，无需 E2B 沙箱，文件 I/O 直接操作本地文件系统。
+- **本地运行时** — `LocalOrchestrator` 在主机侧直接运行智能体，文件 I/O 直接操作本地文件系统，无外部沙箱依赖。
 - **异步任务队列** — 长耗时任务（图片/视频生成）通过 MCP tool 提交到独立队列，SQLite 持久化，支持重试和并发限制。
 - **项目引擎** — Project / Phase / Checkpoint DAG 调度器，支持审阅-打回-修改循环和项目记忆注入。
 
@@ -31,20 +30,20 @@
 
 ```
 src/
-├── sandbox-orchestrator.ts  # 核心：信号驱动分派循环、会话管理
-├── sandbox.ts               # CLI 入口 (bun start)
+├── local-orchestrator.ts    # 核心：信号驱动分派循环、会话管理
+├── local-entry.ts           # CLI 入口 (bun start)
+├── local-runtime.ts         # 主机侧 SDK query() 封装
 ├── server.ts                # HTTP + WebSocket 桥接（供 Web 前端）
 ├── options.ts               # 编排器 SDK 选项构建
 ├── agent-options.ts         # 子智能体 SDK 选项工厂
 ├── session-specs.ts         # 系统提示词与权限规格（main/worker）
 ├── agent-manifest.ts        # 智能体 YAML + 技能发现
-├── protocol.ts              # 沙箱 ↔ 宿主 JSON Lines 协议
+├── protocol.ts              # 宿主 ↔ 前端 JSON Lines 协议
 ├── auth.ts                  # Session 签发与验证
 ├── fixed-model.ts           # 固定模型常量
 ├── loader.ts                # 智能体配置加载
 ├── session-store.ts         # Session 持久化
 ├── session-history.ts       # 会话历史回放（用于恢复）
-├── e2b-client.ts            # E2B 沙箱客户端
 ├── tools/
 │   ├── agent-switch.ts      # switch_to_agent / return_to_main MCP 工具
 │   ├── image.ts             # AI 图片生成
@@ -54,9 +53,6 @@ src/
 │   ├── source.ts            # 原始素材准备与结构检测
 │   ├── workspace.ts         # 工作区检查工具
 │   └── index.ts             # 工具服务器注册表
-├── local-orchestrator.ts    # 本地模式编排器（无 E2B 依赖）
-├── local-runtime.ts         # 主机侧 SDK query() 封装
-├── local-entry.ts           # 本地模式 CLI 入口
 ├── task-queue/              # 异步任务队列（SQLite 持久化 + API 轮询）
 │   ├── store.ts             # 任务存储与状态机
 │   ├── queue.ts             # 核心队列引擎（提交/轮询/重试）
@@ -71,8 +67,7 @@ src/
 │   └── memory.ts            # 项目记忆
 ├── hooks/                   # SDK 钩子：Schema 验证 + 工具调用日志
 ├── schemas/                 # Zod Schema：剧本、设计、目录、资产、时间线
-├── parallel/                # 并行执行配置与执行器
-└── repl-*.ts                # REPL 渲染与交互（Markdown、Spinner）
+└── parallel/                # 并行执行配置与执行器
 
 apis/                              # API 配置注册表（YAML 声明式）
 ├── animeworkbench-image.yaml      # 图片生成 API 配置
@@ -145,16 +140,13 @@ workspace/                         # 运行时工作区（按项目隔离）
 # 安装依赖
 bun install
 
-# 启动 CLI REPL（本地沙箱模式）
+# 启动 CLI REPL（本地模式）
 bun start
 
-# 启动本地模式 CLI（无 E2B，直接主机侧运行）
+# 指定项目路径和智能体目录
 bun src/local-entry.ts workspace/my-project --agents agents/
 
-# 启动 E2B 云端 REPL
-bun run start:e2b
-
-# 启动 HTTP/WebSocket 服务（供 Web 前端连接，默认 local 模式）
+# 启动 HTTP/WebSocket 服务（供 Web 前端连接）
 bun run server
 
 # 启动 Web 前端
@@ -167,7 +159,6 @@ cd web && bun dev
 bun test              # 运行测试
 bun run lint          # Biome 代码检查
 bun run build         # TypeScript 编译
-bun run build:e2b     # 构建 E2B 沙箱镜像
 ```
 
 ## 工作流程
