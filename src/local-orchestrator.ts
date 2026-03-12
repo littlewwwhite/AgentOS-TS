@@ -1,6 +1,6 @@
-// input: Project path, agent configs, SDK options (host filesystem, no E2B)
+// input: Project path, agent configs, SDK options (host filesystem)
 // output: Manages agent sessions, routes commands, emits events via protocol
-// pos: Host-native orchestration core — equivalent to SandboxOrchestrator without E2B dependencies
+// pos: Host-native orchestration core — manages signal-driven agent dispatch loop
 
 import fs from "node:fs";
 import path from "node:path";

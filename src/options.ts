@@ -55,7 +55,7 @@ export async function buildOptions(
   // Internal orchestrator routing map — NOT consumed by the SDK.
   // SDK's AgentDefinition requires `prompt` and is used for its built-in Agent tool,
   // which we don't enable (not in allowedTools). We use our own switch_to_agent MCP
-  // tool instead. sandbox-orchestrator.ts reads this from the returned options to
+  // tool instead. local-orchestrator.ts reads this from the returned options to
   // enumerate agent names and descriptions.
   // Agent role prompt and permissions live in agents/<name>/.claude/ and are loaded
   // by SDK when cwd points to the agent directory. Project-local skill markdown is

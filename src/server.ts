@@ -1,7 +1,8 @@
-// input: HTTP requests, websocket frames, sandbox protocol commands
-// output: Thin host bridge exposing REST + WebSocket access to project-scoped sandboxes
+// input: HTTP requests, websocket frames, protocol commands
+// output: Thin host bridge exposing REST + WebSocket access to project-scoped local workspaces
 // pos: Host entrypoint for the web MVP — forwards existing protocol without reshaping it
 
+import fsPromises from "node:fs/promises";
 import http, { type IncomingMessage } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,11 +16,15 @@ import {
 import { SessionStore, type ProjectSession } from "./session-store.js";
 import { loadEnvToProcess } from "./env.js";
 import { parseCommand, type SandboxCommand, type SandboxEvent } from "./protocol.js";
-import {
-  SandboxManager,
-  type SandboxEntry,
-  type SandboxFileContent,
-} from "./sandbox-manager.js";
+
+export interface SandboxEntry {
+  name: string;
+  path: string;
+  type?: string;
+  size?: number;
+}
+
+export type SandboxFileContent = string | Uint8Array | ArrayBuffer;
 
 export interface HostBridgeManager {
   list(): ProjectSession[];
@@ -42,6 +47,127 @@ export interface HostBridgeManager {
     projectId: string,
     files: Array<{ path: string; content: string }>,
   ): Promise<string[]>;
+}
+
+// ---------- LocalBridgeManager ----------
+
+class LocalBridgeManager implements HostBridgeManager {
+  private readonly root: string;
+  private readonly sessions: SessionStore;
+  private readonly listeners = new Map<string, Set<(event: SandboxEvent) => void>>();
+
+  constructor(root: string, sessions?: SessionStore) {
+    this.root = root;
+    this.sessions = sessions ?? new SessionStore();
+  }
+
+  list(): ProjectSession[] {
+    return this.sessions.list();
+  }
+
+  get(projectId: string): ProjectSession | null {
+    return this.sessions.get(projectId);
+  }
+
+  async getOrCreate(projectId: string): Promise<ProjectSession> {
+    const projectDir = path.join(this.root, projectId);
+    await fsPromises.mkdir(projectDir, { recursive: true });
+    return this.sessions.upsert(projectId, { sandboxId: `local_${projectId}` });
+  }
+
+  async attach(
+    projectId: string,
+    listener: (event: SandboxEvent) => void,
+  ): Promise<() => void> {
+    await this.getOrCreate(projectId);
+    let set = this.listeners.get(projectId);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(projectId, set);
+    }
+    set.add(listener);
+    return () => {
+      set!.delete(listener);
+    };
+  }
+
+  async sendCommand(_projectId: string, _cmd: SandboxCommand): Promise<void> {
+    // Local mode: commands are no-ops — agents run host-side via LocalOrchestrator
+  }
+
+  async destroy(projectId: string): Promise<void> {
+    this.sessions.delete(projectId);
+    this.listeners.delete(projectId);
+  }
+
+  async destroyAll(): Promise<void> {
+    const ids = this.sessions.list().map((s) => s.projectId);
+    for (const id of ids) await this.destroy(id);
+  }
+
+  async listFiles(projectId: string, filePath: string): Promise<SandboxEntry[]> {
+    const projectDir = path.join(this.root, projectId);
+    const targetDir = path.isAbsolute(filePath) ? filePath : path.join(projectDir, filePath);
+    const entries: SandboxEntry[] = [];
+    const dirents = await fsPromises.readdir(targetDir, { withFileTypes: true });
+    for (const d of dirents) {
+      const fullPath = path.join(targetDir, d.name);
+      if (d.isDirectory()) {
+        entries.push({ name: d.name, path: fullPath, type: "dir" });
+        const children = await this.listFiles(projectId, fullPath);
+        entries.push(...children);
+      } else {
+        const stat = await fsPromises.stat(fullPath);
+        entries.push({ name: d.name, path: fullPath, type: "file", size: stat.size });
+      }
+    }
+    return entries;
+  }
+
+  async readTextFile(_projectId: string, filePath: string): Promise<string> {
+    return fsPromises.readFile(filePath, "utf-8");
+  }
+
+  async readBinaryFile(_projectId: string, filePath: string): Promise<Uint8Array> {
+    const buf = await fsPromises.readFile(filePath);
+    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  }
+
+  async getDownloadUrl(_projectId: string, filePath: string): Promise<string> {
+    return `file://${filePath}`;
+  }
+
+  async writeTextFile(projectId: string, filePath: string, content: string): Promise<void> {
+    const projectDir = path.join(this.root, projectId);
+    const target = path.isAbsolute(filePath) ? filePath : path.join(projectDir, filePath);
+    await fsPromises.mkdir(path.dirname(target), { recursive: true });
+    await fsPromises.writeFile(target, content, "utf-8");
+  }
+
+  async uploadFile(
+    projectId: string,
+    filePath: string,
+    content: SandboxFileContent,
+  ): Promise<void> {
+    const projectDir = path.join(this.root, projectId);
+    const target = path.isAbsolute(filePath) ? filePath : path.join(projectDir, filePath);
+    await fsPromises.mkdir(path.dirname(target), { recursive: true });
+    if (typeof content === "string") {
+      await fsPromises.writeFile(target, content, "utf-8");
+    } else {
+      await fsPromises.writeFile(target, Buffer.from(content));
+    }
+  }
+
+  async syncTextFiles(
+    projectId: string,
+    files: Array<{ path: string; content: string }>,
+  ): Promise<string[]> {
+    for (const file of files) {
+      await this.writeTextFile(projectId, file.path, file.content);
+    }
+    return files.map((f) => f.path);
+  }
 }
 
 export interface AgentOsServerOptions {
@@ -219,12 +345,7 @@ export async function startAgentOsServer(
   const host = options.host ?? DEFAULT_HOST;
   const port = options.port ?? DEFAULT_PORT;
   const workspaceRoot = options.workspaceRoot ?? DEFAULT_WORKSPACE_ROOT;
-  const manager = options.manager ?? new SandboxManager({
-    onStderr: (projectId, data) => {
-      const trimmed = data.trim();
-      if (trimmed) console.error(`[sandbox:${projectId}] ${trimmed}`);
-    },
-  });
+  const manager = options.manager ?? new LocalBridgeManager(workspaceRoot);
   const authSecret = options.authSecret ?? DEFAULT_AUTH_SECRET;
   const sessionStore = options.sessionStore ?? new SessionStore();
 
@@ -538,7 +659,7 @@ export async function startAgentOsServer(
     host,
     port: address.port,
     close: async () => {
-      // Destroy all active sandboxes before shutting down
+      // Destroy all active sessions before shutting down
       await manager.destroyAll?.();
       await new Promise<void>((resolve, reject) => {
         wsServer.close((error?: Error) => {
@@ -566,7 +687,7 @@ if (isDirectRun()) {
   startAgentOsServer().then((server) => {
     console.log(`AgentOS web host listening on http://${server.host}:${server.port}`);
 
-    // Graceful shutdown: destroy all sandboxes before exiting
+    // Graceful shutdown: destroy all sessions before exiting
     const shutdown = () => {
       console.log("\nShutting down...");
       server.close().then(() => process.exit(0)).catch(() => process.exit(1));
