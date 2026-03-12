@@ -1,6 +1,6 @@
-// input: stdin JSON commands, CLI args (workspace-path, --agents)
-// output: stdout JSON events via protocol (same wire format as sandbox.ts)
-// pos: Local mode entry point — runs agents directly on host without E2B sandbox
+// input: stdin JSON commands or plain text, CLI args (workspace-path, --agents)
+// output: stdout JSON events (piped) or ANSI-rendered terminal (TTY)
+// pos: Local mode entry point — runs agents directly on host, with interactive REPL when in TTY
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -18,6 +18,9 @@ import { LocalOrchestrator } from "./local-orchestrator.js";
 import { emit, parseCommand } from "./protocol.js";
 import { loadEnvToProcess } from "./env.js";
 import type { SandboxCommand, SandboxEvent } from "./protocol.js";
+import { createInitialReplState, applyReplEvent } from "./repl-state.js";
+import { renderSandboxEvent, type ReplPalette } from "./repl-render.js";
+import { TerminalSpinner } from "./repl-spinner.js";
 
 // ---------- Global crash handlers ----------
 
@@ -40,6 +43,46 @@ process.on("unhandledRejection", (reason) => {
   });
   process.exit(1);
 });
+
+// ---------- REPL renderer ----------
+
+function enableReplMode(): void {
+  const raw = process.stdout.write.bind(process.stdout);
+
+  (process.stdout as { write: typeof process.stdout.write }).write = function (
+    chunk: string | Uint8Array,
+    ...args: unknown[]
+  ): boolean {
+    const str = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+    for (const line of str.split("\n")) {
+      if (!line) continue;
+      let ev: Record<string, unknown>;
+      try { ev = JSON.parse(line); } catch { return raw(chunk, ...(args as [any])); }
+      switch (ev.type) {
+        case "text":
+          raw(ev.text as string);
+          break;
+        case "ready":
+          raw(`AgentOS ready | agents: ${(ev.skills as string[]).join(", ")}\n`);
+          break;
+        case "result":
+          raw(`\n[cost $${(ev.cost as number)?.toFixed(4) ?? "?"}]\n`);
+          break;
+        case "error":
+          raw(`[error] ${ev.message}\n`);
+          break;
+        case "agent_entered":
+          raw(`[=> ${ev.agent}]\n`);
+          break;
+        case "agent_exited":
+          raw(`[<= ${ev.agent}]\n`);
+          break;
+        // thinking, heartbeat, system, tool_use, tool_log — suppress
+      }
+    }
+    return true;
+  } as typeof process.stdout.write;
+}
 
 // ---------- CLI args ----------
 
@@ -160,8 +203,11 @@ function stdinLoop(orchestrator: LocalOrchestrator): Promise<void> {
     });
 
     rl.on("line", (line) => {
-      const cmd = parseCommand(line);
-      if (!cmd) return;
+      const trimmed = line.trim();
+      if (!trimmed) return;
+
+      // Try structured JSON command first; fall back to plain-text chat
+      const cmd = parseCommand(trimmed) ?? { cmd: "chat" as const, message: trimmed };
       handleLocalCommand(orchestrator, cmd).catch(() => {});
     });
 
@@ -175,6 +221,9 @@ async function main(): Promise<void> {
   loadEnvToProcess(path.resolve(".env"));
 
   const { projectPath: rawPath, agentsDir, model } = parseArgs(process.argv.slice(2));
+
+  // TTY → human-readable rendering; piped → raw JSON protocol
+  if (process.stdin.isTTY) enableReplMode();
   const projectPath = path.resolve(rawPath);
   await fs.mkdir(projectPath, { recursive: true });
 
