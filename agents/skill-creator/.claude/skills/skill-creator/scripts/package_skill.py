@@ -13,7 +13,15 @@ Example:
 import sys
 import zipfile
 from pathlib import Path
-from quick_validate import validate_skill
+import importlib.util
+import pathlib
+_spec = importlib.util.spec_from_file_location(
+    "quick_validate",
+    pathlib.Path(__file__).parent / "quick_validate.py"
+)
+_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+validate_skill = _mod.validate_skill
 
 
 def package_skill(skill_path, output_dir=None):

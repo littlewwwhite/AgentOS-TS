@@ -1,6 +1,6 @@
 // input: stdin JSON commands or plain text, CLI args (workspace-path, --agents)
 // output: stdout JSON events (piped) or ANSI-rendered terminal (TTY)
-// pos: Local mode entry point — runs agents directly on host, with interactive REPL when in TTY
+// pos: Local mode entry point — dispatches to REPL (TTY) or JSON protocol (piped)
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -18,9 +18,7 @@ import { LocalOrchestrator } from "./local-orchestrator.js";
 import { emit, parseCommand } from "./protocol.js";
 import { loadEnvToProcess } from "./env.js";
 import type { SandboxCommand, SandboxEvent } from "./protocol.js";
-import { createInitialReplState, applyReplEvent } from "./repl-state.js";
-import { renderSandboxEvent, type ReplPalette } from "./repl-render.js";
-import { TerminalSpinner } from "./repl-spinner.js";
+import { enableReplMode, handleSlashCommand, setPromptCallback } from "./repl/index.js";
 
 // ---------- Global crash handlers ----------
 
@@ -43,46 +41,6 @@ process.on("unhandledRejection", (reason) => {
   });
   process.exit(1);
 });
-
-// ---------- REPL renderer ----------
-
-function enableReplMode(): void {
-  const raw = process.stdout.write.bind(process.stdout);
-
-  (process.stdout as { write: typeof process.stdout.write }).write = function (
-    chunk: string | Uint8Array,
-    ...args: unknown[]
-  ): boolean {
-    const str = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
-    for (const line of str.split("\n")) {
-      if (!line) continue;
-      let ev: Record<string, unknown>;
-      try { ev = JSON.parse(line); } catch { return raw(chunk, ...(args as [any])); }
-      switch (ev.type) {
-        case "text":
-          raw(ev.text as string);
-          break;
-        case "ready":
-          raw(`AgentOS ready | agents: ${(ev.skills as string[]).join(", ")}\n`);
-          break;
-        case "result":
-          raw(`\n[cost $${(ev.cost as number)?.toFixed(4) ?? "?"}]\n`);
-          break;
-        case "error":
-          raw(`[error] ${ev.message}\n`);
-          break;
-        case "agent_entered":
-          raw(`[=> ${ev.agent}]\n`);
-          break;
-        case "agent_exited":
-          raw(`[<= ${ev.agent}]\n`);
-          break;
-        // thinking, heartbeat, system, tool_use, tool_log — suppress
-      }
-    }
-    return true;
-  } as typeof process.stdout.write;
-}
 
 // ---------- CLI args ----------
 
@@ -107,48 +65,6 @@ function parseArgs(argv: string[]): {
     agentsDir,
     model: model ?? process.env.AGENTOS_MODEL,
   };
-}
-
-// ---------- Resume helper ----------
-
-type ResumableSession = {
-  sessionId: string | null;
-  historyLoaded: boolean;
-  options: Record<string, unknown>;
-};
-
-type ResumeInternals = {
-  mainSession: ResumableSession | null;
-  emitHistoryForSession(session: ResumableSession): Promise<void>;
-  saveSessions(): void;
-};
-
-async function resumeMainSession(
-  orchestrator: LocalOrchestrator,
-  sessionId: string,
-): Promise<void> {
-  const internals = orchestrator as unknown as ResumeInternals;
-  const session = internals.mainSession;
-
-  if (!session) {
-    emit({ type: "error", message: "No main session available to resume" });
-    return;
-  }
-
-  session.sessionId = sessionId;
-  session.options.resume = sessionId;
-  session.options.continue = false;
-  session.historyLoaded = false;
-
-  internals.saveSessions();
-  await internals.emitHistoryForSession(session);
-
-  const status = orchestrator.getStatus(null);
-  emit({
-    type: "status",
-    state: status.busy ? "busy" : "idle",
-    session_id: sessionId,
-  });
 }
 
 // ---------- Command dispatch ----------
@@ -188,30 +104,79 @@ export async function handleLocalCommand(
       orchestrator.setModel(cmd.model);
       break;
     case "resume":
-      await resumeMainSession(orchestrator, cmd.session_id);
+      await orchestrator.resumeSession(cmd.session_id);
       break;
   }
 }
 
 // ---------- stdin command loop ----------
 
+/** Build a dynamic prompt showing the active agent context. */
+function buildPrompt(orchestrator: LocalOrchestrator): string {
+  if (!process.stdin.isTTY) return "";
+  const agent = orchestrator.activeAgent;
+  return agent ? `\x1b[36m${agent}\x1b[0m> ` : "\x1b[2m>\x1b[0m ";
+}
+
 function stdinLoop(orchestrator: LocalOrchestrator): Promise<void> {
+  const isTTY = process.stdin.isTTY;
+
   return new Promise<void>((resolve) => {
     const rl = readline.createInterface({
       input: process.stdin,
-      terminal: false,
+      // TTY mode: enable line editing, history, and prompt
+      ...(isTTY
+        ? { output: process.stdout, terminal: true, prompt: buildPrompt(orchestrator) }
+        : { terminal: false }),
     });
+
+    // Ctrl+C: interrupt running query instead of killing the process
+    if (isTTY) {
+      rl.on("SIGINT", () => {
+        const status = orchestrator.getStatus(orchestrator.activeAgent);
+        if (status.busy) {
+          orchestrator.interrupt(orchestrator.activeAgent);
+          process.stdout.write("\n\x1b[33m  interrupted\x1b[0m\n");
+        }
+        // Re-display prompt for next input
+        rl.setPrompt(buildPrompt(orchestrator));
+        rl.prompt();
+      });
+    }
 
     rl.on("line", (line) => {
       const trimmed = line.trim();
-      if (!trimmed) return;
+      if (!trimmed) {
+        if (isTTY) { rl.setPrompt(buildPrompt(orchestrator)); rl.prompt(); }
+        return;
+      }
+
+      // Slash commands (TTY only)
+      if (trimmed.startsWith("/") && handleSlashCommand(trimmed, orchestrator)) {
+        if (isTTY) { rl.setPrompt(buildPrompt(orchestrator)); rl.prompt(); }
+        return;
+      }
 
       // Try structured JSON command first; fall back to plain-text chat
       const cmd = parseCommand(trimmed) ?? { cmd: "chat" as const, message: trimmed };
-      handleLocalCommand(orchestrator, cmd).catch(() => {});
+      handleLocalCommand(orchestrator, cmd).catch((err) => {
+        emit({
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
     });
 
     rl.on("close", resolve);
+
+    // Wire prompt re-display: REPL emitter calls this after result/error events
+    if (isTTY) {
+      setPromptCallback(() => {
+        rl.setPrompt(buildPrompt(orchestrator));
+        rl.prompt();
+      });
+      rl.prompt();
+    }
   });
 }
 

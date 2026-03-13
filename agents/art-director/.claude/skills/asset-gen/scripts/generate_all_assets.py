@@ -66,7 +66,7 @@ def run_subprocess(label, script_path, args, gemini_key, timeout=1800):
     try:
         env = {**os.environ, "GEMINI_API_KEY": gemini_key, "PYTHONUTF8": "1"}
         result = subprocess.run(
-            ["python", str(script_path)] + args,
+            [sys.executable, str(script_path)] + args,
             env=env, capture_output=True, text=True, timeout=timeout
         )
         if result.returncode == 0:

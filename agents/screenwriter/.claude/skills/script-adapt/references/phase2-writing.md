@@ -32,7 +32,7 @@
 
 ## 剧本格式规范
 
-Phase 2 写作使用标准中文微短剧场记格式，完整规范见 `## Reference Documents` 中的 `## script-format.md` 节。
+Phase 2 写作使用标准中文微短剧场记格式，完整规范见 `${CLAUDE_SKILL_DIR}/references/script-format.md`。
 
 **格式要点提示（不替代 script-format.md 完整规范）：**
 - 集标记：`第{N}集`

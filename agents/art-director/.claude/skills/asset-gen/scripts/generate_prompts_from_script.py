@@ -608,30 +608,39 @@ def extract_episodes_for_assets(script_config):
         'props': {}        # {prop_id: [episodes]}
     }
 
-    for episode in script_config.get('episodes', []):
-        episode_num = episode.get('episode')
+    for ep_idx, episode in enumerate(script_config.get('episodes', []), 1):
+        # Support both numeric 'episode' field and string 'episode_id'
+        episode_num = episode.get('episode') or episode.get('episode_id') or ep_idx
 
         for scene in episode.get('scenes', []):
-            # 提取场景中的角色
-            for cast_member in scene.get('cast', []):
-                actor_id = cast_member.get('actor_id')
+            # Support new format: actors array with actor_id
+            for cast_member in scene.get('actors', []) + scene.get('cast', []):
+                actor_id = cast_member.get('actor_id') or cast_member.get('id')
                 if actor_id:
                     if actor_id not in asset_episodes['actors']:
                         asset_episodes['actors'][actor_id] = []
                     if episode_num not in asset_episodes['actors'][actor_id]:
                         asset_episodes['actors'][actor_id].append(episode_num)
 
-            # 提取场景位置
-            location_id = scene.get('location_id')
-            if location_id:
-                if location_id not in asset_episodes['locations']:
-                    asset_episodes['locations'][location_id] = []
-                if episode_num not in asset_episodes['locations'][location_id]:
-                    asset_episodes['locations'][location_id].append(episode_num)
+            # Support new format: locations array with location_id
+            for loc in scene.get('locations', []):
+                location_id = loc.get('location_id') or loc.get('id')
+                if location_id:
+                    if location_id not in asset_episodes['locations']:
+                        asset_episodes['locations'][location_id] = []
+                    if episode_num not in asset_episodes['locations'][location_id]:
+                        asset_episodes['locations'][location_id].append(episode_num)
+            # Also support old format: single location_id on scene
+            old_location_id = scene.get('location_id')
+            if old_location_id:
+                if old_location_id not in asset_episodes['locations']:
+                    asset_episodes['locations'][old_location_id] = []
+                if episode_num not in asset_episodes['locations'][old_location_id]:
+                    asset_episodes['locations'][old_location_id].append(episode_num)
 
-            # 提取道具
+            # Extract props
             for prop in scene.get('props', []):
-                prop_id = prop.get('prop_id')
+                prop_id = prop.get('prop_id') or prop.get('id')
                 if prop_id:
                     if prop_id not in asset_episodes['props']:
                         asset_episodes['props'][prop_id] = []
@@ -643,7 +652,7 @@ def extract_episodes_for_assets(script_config):
 
 def process_character_state(actor_name, actor_id, state, asset_episodes, script_config, gemini_key, style_config):
     """并发处理单个角色状态的提示词生成"""
-    state_name = state.get('name')
+    state_name = state.get('state_name') or state.get('name')
     log(f"  - 生成形态: {actor_name}({state_name})")
 
     # 生成该形态的描述
@@ -659,7 +668,7 @@ def process_character_state(actor_name, actor_id, state, asset_episodes, script_
     )
 
     return {
-        "state_id": state.get('id'),
+        "state_id": state.get('state_id') or state.get('id'),
         "name": state_name,
         "episodes": sorted(asset_episodes['actors'].get(actor_id, [])),
         "three_view_prompt": three_view_prompt,
@@ -792,8 +801,8 @@ def main():
     character_tasks = []
     with ThreadPoolExecutor(max_workers=10) as executor:
         for actor in actors:
-            actor_id = actor.get('id')
-            actor_name = actor.get('name')
+            actor_id = actor.get('actor_id') or actor.get('id')
+            actor_name = actor.get('actor_name') or actor.get('name')
             states = actor.get('states', [])
 
             log(f"提交角色任务: {actor_name}")
@@ -881,8 +890,8 @@ def main():
     with ThreadPoolExecutor(max_workers=10) as executor:
         scene_futures = {}
         for location in locations:
-            location_id = location.get('id')
-            location_name = location.get('name')
+            location_id = location.get('location_id') or location.get('id')
+            location_name = location.get('location_name') or location.get('name')
             log(f"提交场景任务: {location_name}")
 
             future = executor.submit(
@@ -912,8 +921,8 @@ def main():
     with ThreadPoolExecutor(max_workers=10) as executor:
         prop_futures = {}
         for prop in props:
-            prop_id = prop.get('id')
-            prop_name = prop.get('name')
+            prop_id = prop.get('prop_id') or prop.get('id')
+            prop_name = prop.get('prop_name') or prop.get('name')
             log(f"提交道具任务: {prop_name}")
 
             future = executor.submit(

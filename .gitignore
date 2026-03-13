@@ -18,3 +18,5 @@ web/.next/
 web/out/
 .worktrees/
 .agentos/
+__pycache__/
+*.pyc

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# SYNC-NOTICE: This script is duplicated in both script-writer and script-adapt skills.
+# Any changes must be applied to both copies:
+#   - agents/screenwriter/.claude/skills/script-writer/scripts/detect_source_structure.py
+#   - agents/screenwriter/.claude/skills/script-adapt/scripts/detect_source_structure.py
 """
 Source structure detector - Python port of src/tools/source-structure.ts
 Detects episode/chapter boundaries in source.txt and outputs structured JSON.

@@ -18,7 +18,8 @@ class PromptOptimizer:
             rules_dir: 规则文件目录，默认为当前文件所在目录
         """
         if rules_dir is None:
-            rules_dir = os.path.dirname(os.path.abspath(__file__))
+            from pathlib import Path
+            rules_dir = str(Path(__file__).parent.parent / "references" / "prompt-rules")
 
         self.rules_dir = rules_dir
         self.content_rules = self._load_xml_rules("content_rules.xml")

@@ -243,10 +243,10 @@ export class LocalOrchestrator {
     };
   }
 
-  getSkillMap(): Record<string, string> {
-    const map: Record<string, string> = {};
+  getSkillMap(): Record<string, { description: string; skills?: string[]; mcpServers?: string[] }> {
+    const map: Record<string, { description: string; skills?: string[]; mcpServers?: string[] }> = {};
     for (const [name, defn] of Object.entries(this.agentDefinitions)) {
-      map[name] = defn.description;
+      map[name] = { description: defn.description };
     }
     return map;
   }
@@ -262,6 +262,48 @@ export class LocalOrchestrator {
   /** List all known agent names (from routing YAML), regardless of session state */
   get agentNames(): string[] {
     return Object.keys(this.agentDefinitions);
+  }
+
+  /** Resume the main session from a specific session ID. */
+  async resumeSession(sessionId: string): Promise<void> {
+    if (!this.mainSession) {
+      emit({ type: "error", message: "No main session available to resume" });
+      return;
+    }
+
+    this.mainSession.sessionId = sessionId;
+    this.mainSession.options.resume = sessionId;
+    this.mainSession.options.continue = false;
+    this.mainSession.historyLoaded = false;
+
+    this.saveSessions();
+    await this.emitHistoryForSession(this.mainSession);
+
+    const status = this.getStatus(null);
+    emit({
+      type: "status",
+      state: status.busy ? "busy" : "idle",
+      session_id: sessionId,
+    });
+  }
+
+  /** Reset all sessions — start fresh conversations */
+  resetSessions(): void {
+    if (this.mainSession) {
+      this.mainSession.sessionId = null;
+      delete this.mainSession.options.resume;
+      delete this.mainSession.options.continue;
+      this.mainSession.historyLoaded = false;
+    }
+    for (const session of this.agents.values()) {
+      session.sessionId = null;
+      delete session.options.resume;
+      delete session.options.continue;
+      session.historyLoaded = false;
+    }
+    this.pendingSessionIds.clear();
+    this._activeAgent = null;
+    try { fs.unlinkSync(this.sessionsFile); } catch { /* ignore */ }
   }
 
   // -- Internal --

@@ -34,9 +34,14 @@ def load_script_data(script_path, episode_num):
     # 查找指定集数
     episodes = global_config.get('episodes', [])
     episode_data = None
-    for ep in episodes:
-        if ep.get('episode') == episode_num:
+    for ep_idx, ep in enumerate(episodes, 1):
+        # Support both numeric 'episode' field and string 'episode_id' (e.g. "ep_001")
+        ep_num = ep.get('episode') or ep_idx
+        ep_id = ep.get('episode_id', '')
+        if ep_num == episode_num or ep_id == f"ep_{episode_num:03d}":
             episode_data = ep
+            # Inject a numeric episode number for downstream use
+            episode_data.setdefault('episode', episode_num)
             break
 
     if not episode_data:
@@ -47,9 +52,18 @@ def load_script_data(script_path, episode_num):
 
 def build_mappings(global_config):
     """构建ID到名称的映射"""
-    actors_map = {a['id']: a['name'] for a in global_config.get('actors', [])}
-    locations_map = {l['id']: l['name'] for l in global_config.get('locations', [])}
-    props_map = {p['id']: p['name'] for p in global_config.get('props', [])}
+    actors_map = {
+        a.get('actor_id') or a.get('id'): a.get('actor_name') or a.get('name')
+        for a in global_config.get('actors', [])
+    }
+    locations_map = {
+        l.get('location_id') or l.get('id'): l.get('location_name') or l.get('name')
+        for l in global_config.get('locations', [])
+    }
+    props_map = {
+        p.get('prop_id') or p.get('id'): p.get('prop_name') or p.get('name')
+        for p in global_config.get('props', [])
+    }
     return actors_map, locations_map, props_map
 
 
@@ -346,7 +360,17 @@ def convert_actions_to_segments(scene, actors_map):
     action_part_index = 0  # 记录当前segment中有多少个action部分
 
     # 记录当前场次信息（用于调试和验证）
-    scene_location = scene.get('location', 'Unknown')
+    scene_location = scene.get('location') or scene.get('scene_id', 'Unknown')
+
+    # 提取 sequence 数字用于 segment_id，兼容 scene_id="scn_001" 格式
+    raw_seq = scene.get('sequence')
+    if raw_seq is None:
+        sid = scene.get('scene_id', 'scn_001')
+        try:
+            raw_seq = int(sid.split('_')[-1])
+        except (ValueError, IndexError):
+            raw_seq = 1
+    scene_sequence = raw_seq
 
     for action in scene['actions']:
         action_type = action['type']
@@ -374,7 +398,7 @@ def convert_actions_to_segments(scene, actors_map):
 
                 # 创建新segment
                 current_segment = {
-                    'segment_id': f"SC{scene['sequence']:02d}-L{segment_counter:02d}",
+                    'segment_id': f"SC{scene_sequence:02d}-L{segment_counter:02d}",
                     'action_content': action['content'],
                     'dialogues': [],
                     'inner_thoughts': [],
@@ -473,10 +497,21 @@ def generate_shots_for_segment(segment, scene, actors_map, locations_map, is_fir
     参数:
         previous_segment_last_position: 上一个segment最后一个shot的人物位置
     """
-    # 获取人物和场景
-    characters = [actors_map.get(c['actor_id'], c['actor_id']) for c in scene['cast']]
-    scene_name = locations_map.get(scene['location_id'], scene['location'])
-    time_of_day = scene.get('time_of_day', 'day')
+    # 获取人物和场景 — 兼容新旧格式
+    cast = scene.get('actors', scene.get('cast', []))
+    characters = [
+        actors_map.get(c.get('actor_id') or c.get('id'), c.get('actor_id') or c.get('id'))
+        for c in cast
+    ]
+    characters = [c for c in characters if c]
+    locs = scene.get('locations', [])
+    if locs:
+        loc_id = locs[0].get('location_id') or locs[0].get('id')
+        scene_name = locations_map.get(loc_id, loc_id or '未知场景')
+    else:
+        scene_name = locations_map.get(scene.get('location_id'), scene.get('location', '未知场景'))
+    env = scene.get('environment', {})
+    time_of_day = env.get('time') or scene.get('time_of_day', 'day')
 
     # 按→拆分动作内容
     action_parts = segment['action_content'].split('→')
@@ -592,14 +627,40 @@ def extract_emotion_and_conflict(segment):
 def generate_segment_json(segment, scene, actors_map, locations_map, props_map,
                           is_first_segment=False, previous_segment_last_position=None):
     """生成完整的segment JSON"""
-    # 获取人物列表
-    characters = [actors_map.get(c['actor_id'], c['actor_id']) for c in scene['cast']]
+    # 获取人物列表 — 兼容 {actor_id} 和 {id} 两种格式
+    cast = scene.get('actors', scene.get('cast', []))
+    characters = [
+        actors_map.get(c.get('actor_id') or c.get('id'), c.get('actor_id') or c.get('id'))
+        for c in cast
+    ]
+    characters = [c for c in characters if c]  # filter None
 
-    # 获取场景名称
-    scene_name = locations_map.get(scene['location_id'], scene['location'])
+    # 获取场景名称 — 兼容 locations 数组和旧版 location_id 字段
+    scene_name = '未知场景'
+    locs = scene.get('locations', [])
+    if locs:
+        loc_id = locs[0].get('location_id') or locs[0].get('id')
+        scene_name = locations_map.get(loc_id, loc_id or '未知场景')
+    elif scene.get('location_id'):
+        scene_name = locations_map.get(scene['location_id'], scene.get('location', '未知场景'))
+    elif scene.get('location'):
+        scene_name = scene['location']
 
-    # 获取道具列表
-    props = [props_map.get(p, p) for p in scene.get('prop_ids', [])]
+    # 获取道具列表 — 兼容 props 数组（含 prop_id）和旧版 prop_ids 字段
+    props_raw = scene.get('props', [])
+    props = []
+    for p in props_raw:
+        if isinstance(p, dict):
+            pid = p.get('prop_id') or p.get('id')
+            name = props_map.get(pid, pid)
+            if name:
+                props.append(name)
+        else:
+            props.append(props_map.get(p, p))
+
+    # 获取时间 — 兼容 environment.time 和旧版 time_of_day 字段
+    env = scene.get('environment', {})
+    time_val = env.get('time') or scene.get('time_of_day', 'day')
 
     # 生成shots（带上下文）
     shots, duration, last_position = generate_shots_for_segment(
@@ -615,12 +676,12 @@ def generate_segment_json(segment, scene, actors_map, locations_map, props_map,
     # 构建segment JSON
     segment_json = {
         'segment_id': segment['segment_id'],
-        'source_beat': segment['action_content'],  # 直接从script.json提取
+        'source_beat': segment['action_content'],
         'duration_seconds': duration,
         'characters': characters,
         'scene': scene_name,
-        'time': 'day' if scene['time_of_day'] == 'day' else 'night',
-        'weather': '晴' if scene['time_of_day'] == 'day' else '夜',
+        'time': 'day' if time_val == 'day' else 'night',
+        'weather': '晴' if time_val == 'day' else '夜',
         'props': props,
         'emotion': emotion,
         'core_conflict': conflict,

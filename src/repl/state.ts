@@ -2,8 +2,13 @@
 // output: Immutable REPL state transitions and delegation log lines
 // pos: REPL state machine — tracks active agent, stream type, and todo list
 
-import type { SandboxEvent, TodoItem } from "./protocol.js";
-import { createMarkdownState, type MarkdownState } from "./repl-markdown.js";
+import type { SandboxEvent, TodoItem } from "../protocol.js";
+import { createMarkdownState, type MarkdownState } from "./markdown.js";
+
+export interface ThinkingAccum {
+  chars: number;
+  startedAt: number; // Date.now() when first chunk arrived
+}
 
 export interface ReplState {
   activeAgent: string | null;
@@ -12,6 +17,10 @@ export interface ReplState {
   activeStream: "text" | "thinking" | null;
   markdownState: MarkdownState;
   todos: TodoItem[];
+  /** Cumulative session cost in USD */
+  totalCost: number;
+  /** Accumulated thinking stats (collapsed rendering) */
+  thinking: ThinkingAccum | null;
 }
 
 export function createInitialReplState(): ReplState {
@@ -22,6 +31,8 @@ export function createInitialReplState(): ReplState {
     activeStream: null,
     markdownState: createMarkdownState(),
     todos: [],
+    totalCost: 0,
+    thinking: null,
   };
 }
 

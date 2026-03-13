@@ -24,7 +24,7 @@ import auth as _auth
 
 def main():
     parser = argparse.ArgumentParser(description="提交图片生成任务")
-    parser.add_argument("--base-url", default=os.environ.get("AWB_BASE_URL", "https://animeworkbench.lingjingai.cn"),
+    parser.add_argument("--base-url", default=os.environ.get("AWB_BASE_URL", "https://animeworkbench-pre.lingjingai.cn"),
                         help="API Base URL")
     parser.add_argument("--token", default=None, help="Bearer Token（可选，默认从配置文件自动获取）")
     parser.add_argument("--model-code", required=True, help="模型编码")

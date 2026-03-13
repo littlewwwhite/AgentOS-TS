@@ -5,8 +5,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { FIXED_MODEL } from "./fixed-model.js";
 import { loadAgentManifests } from "./agent-manifest.js";
+
+const FIXED_MODEL = "claude-sonnet-4-6";
 import { buildHooks } from "./hooks/index.js";
 import { buildMainSessionSpec } from "./session-specs.js";
 import { createToolServers } from "./tools/index.js";

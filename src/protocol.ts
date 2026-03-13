@@ -160,8 +160,17 @@ const VALID_CMDS = new Set([
   "set_model",
 ]);
 
-export function emit(event: SandboxEvent): void {
+let emitFn: (event: SandboxEvent) => void = (event) => {
   process.stdout.write(`${JSON.stringify(event)}\n`);
+};
+
+export function emit(event: SandboxEvent): void {
+  emitFn(event);
+}
+
+/** Replace the default JSON-line emitter (e.g. with a REPL renderer). */
+export function setEmitter(fn: (event: SandboxEvent) => void): void {
+  emitFn = fn;
 }
 
 export function parseCommand(line: string): SandboxCommand | null {

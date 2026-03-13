@@ -129,7 +129,11 @@ def analyze_video_for_review(
         if not api_key:
             raise ValueError("未找到 GEMINI_API_KEY 环境变量")
 
-    client = genai.Client(api_key=api_key)
+    base_url = os.getenv("GEMINI_BASE_URL")
+    if base_url:
+        client = genai.Client(api_key=api_key, http_options={"base_url": base_url})
+    else:
+        client = genai.Client(api_key=api_key)
 
     print(f"[UPLOAD] 上传视频: {video_path}")
     video_file = client.files.upload(file=video_path)

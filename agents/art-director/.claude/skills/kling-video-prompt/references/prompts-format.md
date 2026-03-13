@@ -135,19 +135,19 @@
 同时检查 prompts 和 props 字段:
 
 ```bash
-python D:\jiaoben-claude\03-video\.claude\skills\kling-video-prompt\scripts\check_all.py <json_file>
+python3 ${CLAUDE_SKILL_DIR}/scripts/check_all.py <json_file>
 ```
 
 ### 2. 单独检查 Prompts 格式
 
 ```bash
-python D:\jiaoben-claude\03-video\.claude\skills\kling-video-prompt\scripts\check_prompts_format.py <json_file>
+python3 ${CLAUDE_SKILL_DIR}/scripts/check_prompts_format.py <json_file>
 ```
 
 ### 3. 单独检查 Props 字段
 
 ```bash
-python D:\jiaoben-claude\03-video\.claude\skills\kling-video-prompt\scripts\check_props_field.py <json_file>
+python3 ${CLAUDE_SKILL_DIR}/scripts/check_props_field.py <json_file>
 ```
 
 ## 更新记录
@@ -159,5 +159,5 @@ python D:\jiaoben-claude\03-video\.claude\skills\kling-video-prompt\scripts\chec
   - 修正 ep01_shots.json 中的 props 字段错误
 - **v2.31.0 (2026-03-05)**:
   - 修正 prompts 格式规范,添加完整示例和检查工具
-- **文件位置**: `D:\jiaoben-claude\03-video\.claude\skills\kling-video-prompt\SKILL.md`
-- **检查脚本目录**: `D:\jiaoben-claude\03-video\.claude\skills\kling-video-prompt\scripts\`
+- **文件位置**: `${CLAUDE_SKILL_DIR}/SKILL.md`
+- **检查脚本目录**: `${CLAUDE_SKILL_DIR}/scripts/`

@@ -2,9 +2,9 @@
 // output: ANSI-formatted terminal output lines
 // pos: Event renderer — transforms protocol events into human-readable CLI output
 
-import type { ReplState } from "./repl-state.js";
-import type { SandboxEvent } from "./protocol.js";
-import { createMarkdownState, transformMarkdownChunk, flushMarkdownBuffer } from "./repl-markdown.js";
+import type { ReplState } from "./state.js";
+import type { SandboxEvent } from "../protocol.js";
+import { createMarkdownState, transformMarkdownChunk, flushMarkdownBuffer } from "./markdown.js";
 
 export interface ReplPalette {
   dim: (text: string) => string;
@@ -17,15 +17,30 @@ export interface ReplPalette {
   badge: (name: string) => string;
 }
 
+// ---------- Terminal width ----------
+
+/** Available width for content, accounting for badge/indent overhead. */
+function contentWidth(): number {
+  return (process.stdout.columns ?? 80) - 16;
+}
+
+function truncate(text: string, maxLen?: number): string {
+  const limit = maxLen ?? contentWidth();
+  return text.length > limit ? `${text.slice(0, limit - 3)}...` : text;
+}
+
+// ---------- Tool label formatting ----------
+
 function formatToolLabel(name: string, input?: Record<string, unknown>): string {
+  const maxLen = contentWidth();
   if (!input) return name;
+
   if (name === "Bash") {
     if (typeof input.description === "string" && input.description.length > 0) {
-      return `Bash(${input.description})`;
+      return `Bash(${truncate(input.description, maxLen - 6)})`;
     }
     if (typeof input.command === "string") {
-      const short = input.command.length > 60 ? `${input.command.slice(0, 57)}...` : input.command;
-      return `Bash(${short})`;
+      return `Bash(${truncate(input.command, maxLen - 6)})`;
     }
     return "Bash";
   }
@@ -35,7 +50,7 @@ function formatToolLabel(name: string, input?: Record<string, unknown>): string 
   }
   if (name === "Agent" || name === "Task") {
     const agentName = input.subagent_type ?? input.name ?? input.agent ?? null;
-    const desc = typeof input.description === "string" ? input.description.slice(0, 50) : "";
+    const desc = typeof input.description === "string" ? truncate(input.description, 50) : "";
     if (agentName) return `${agentName}${desc ? ` - ${desc}` : ""}`;
     if (desc) return `Agent(${desc})`;
     return "Agent";
@@ -56,25 +71,28 @@ function formatToolLabel(name: string, input?: Record<string, unknown>): string 
         return `${key}: ${serialized}`;
       })
       .join(", ");
-    return `${server}:${tool}${params ? `(${params})` : ""}`;
+    return truncate(`${server}:${tool}${params ? `(${params})` : ""}`, maxLen);
   }
   const arg =
     input.file_path ??
     input.command ??
     input.pattern ??
     input.url ??
-    (typeof input.prompt === "string" ? input.prompt.slice(0, 60) : null) ??
+    (typeof input.prompt === "string" ? input.prompt.slice(0, maxLen) : null) ??
     "";
   if (arg) {
-    const short = typeof arg === "string" && arg.length > 60 ? `${arg.slice(0, 57)}...` : arg;
-    return `${name}(${short})`;
+    return `${name}(${truncate(String(arg), maxLen - name.length - 2)})`;
   }
   return name;
 }
 
+// ---------- Badge ----------
+
 function formatAgentBadge(agent: string | undefined | null, palette: ReplPalette): string {
   return palette.badge(agent ?? "main");
 }
+
+// ---------- Stream management ----------
 
 function flushActiveStream(state: ReplState, palette?: ReplPalette): { state: ReplState; output: string[] } {
   if (!state.activeStream) {
@@ -85,6 +103,8 @@ function flushActiveStream(state: ReplState, palette?: ReplPalette): { state: Re
     const flushed = flushMarkdownBuffer(state.markdownState, palette);
     if (flushed.output) output.push(flushed.output);
   }
+  // Thinking flush: summary is handled by the emitter (index.ts) via spinner.
+  // Just reset state here, no output.
   output.push("\n");
   return {
     state: {
@@ -92,6 +112,7 @@ function flushActiveStream(state: ReplState, palette?: ReplPalette): { state: Re
       textStarted: false,
       activeStream: null,
       markdownState: createMarkdownState(),
+      // Keep thinking accumulator — emitter reads it to show summary
     },
     output,
   };
@@ -142,6 +163,8 @@ function appendStreamChunk(
   };
 }
 
+// ---------- Main renderer ----------
+
 export function renderSandboxEvent(
   state: ReplState,
   event: SandboxEvent,
@@ -154,9 +177,20 @@ export function renderSandboxEvent(
     }
 
     case "thinking": {
-      const badge = formatAgentBadge(event.agent, palette);
-      const label = `${badge} ${palette.dim("thinking")}\n`;
-      return appendStreamChunk(state, label, palette.dim(event.text), "thinking", palette);
+      // Collapsed rendering: accumulate chars silently, spinner managed by emitter
+      const prev = state.thinking;
+      const now = Date.now();
+      return {
+        state: {
+          ...state,
+          activeStream: "thinking",
+          thinking: {
+            chars: (prev?.chars ?? 0) + event.text.length,
+            startedAt: prev?.startedAt ?? now,
+          },
+        },
+        output: [],
+      };
     }
 
     case "tool_use": {
@@ -174,15 +208,18 @@ export function renderSandboxEvent(
       return { state, output: [] };
 
     case "result": {
+      const newTotal = state.totalCost + event.cost;
       const flushed = flushActiveStream({
         ...state,
         busy: false,
+        totalCost: newTotal,
       }, palette);
       const cost = `$${event.cost.toFixed(4)}`;
+      const total = `$${newTotal.toFixed(4)}`;
       const duration = `${(event.duration_ms / 1000).toFixed(1)}s`;
       return {
-        state: flushed.state,
-        output: [...flushed.output, `\n${palette.dim(`  - ${cost} \u00b7 ${duration}`)}\n`],
+        state: { ...flushed.state, totalCost: newTotal },
+        output: [...flushed.output, `\n${palette.dim(`  - ${cost} \u00b7 ${duration} \u00b7 total: ${total}`)}\n`],
       };
     }
 
@@ -191,9 +228,15 @@ export function renderSandboxEvent(
         ...state,
         busy: false,
       }, palette);
+      // Format multi-line errors and truncate excessively long messages
+      const msg = event.message;
+      const lines = msg.split("\n");
+      const formatted = lines.length > 1
+        ? `  \u2717 ${lines[0]}\n${lines.slice(1, 8).map((l) => `    ${palette.dim(l)}`).join("\n")}${lines.length > 8 ? `\n    ${palette.dim(`... (${lines.length - 8} more lines)`)}` : ""}`
+        : `  \u2717 ${truncate(msg, contentWidth())}`;
       return {
         state: flushed.state,
-        output: [...flushed.output, `${palette.red(`  \u2717 ${event.message}`)}\n`],
+        output: [...flushed.output, `${palette.red(formatted)}\n`],
       };
     }
 
@@ -209,10 +252,9 @@ export function renderSandboxEvent(
     case "skills": {
       const flushed = flushActiveStream(state, palette);
       const output = [...flushed.output, `${palette.dim("  Skills:")}\n`];
-      for (const [name, description] of Object.entries(event.skills)) {
-        const short = typeof description === "string"
-          ? (description.length > 60 ? `${description.slice(0, 60)}\u2026` : description)
-          : "";
+      for (const [name, detail] of Object.entries(event.skills)) {
+        const desc = detail.description ?? "";
+        const short = desc.length > 60 ? `${desc.slice(0, 60)}\u2026` : desc;
         output.push(`    ${palette.cyan(name.padEnd(18))} ${palette.dim(short)}\n`);
       }
       return {
@@ -245,9 +287,25 @@ export function renderSandboxEvent(
       return { state: flushed.state, output: flushed.output };
     }
 
+    case "history": {
+      const flushed = flushActiveStream(state, palette);
+      const output = [...flushed.output];
+      const agent = event.agent;
+      const label = agent ? palette.dim(`  [${agent} history]`) : palette.dim("  [history]");
+      output.push(`${label}\n`);
+      for (const msg of event.messages.slice(-6)) {
+        const role = msg.role === "user" ? palette.cyan("you") : palette.dim("assistant");
+        const preview = truncate(msg.content.replace(/\n/g, " "), contentWidth() - 14);
+        output.push(`    ${role}: ${palette.dim(preview)}\n`);
+      }
+      if (event.messages.length > 6) {
+        output.push(`    ${palette.dim(`... ${event.messages.length - 6} earlier messages`)}\n`);
+      }
+      return { state: flushed.state, output };
+    }
+
     case "agent_entered":
     case "agent_exited":
-    case "history":
     case "ready":
       return flushActiveStream(state, palette);
 

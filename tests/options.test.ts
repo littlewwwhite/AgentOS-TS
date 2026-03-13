@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { FIXED_MODEL } from "../src/fixed-model.js";
+
+// FIXED_MODEL is now a private constant in options.ts — use the known value directly
+const FIXED_MODEL = "claude-sonnet-4-6";
 
 // Mock all external dependencies before importing the module under test
 vi.mock("../src/agent-manifest.js", () => ({

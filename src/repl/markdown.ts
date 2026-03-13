@@ -2,7 +2,7 @@
 // output: ANSI-formatted text for terminal rendering
 // pos: Streaming markdown-to-ANSI converter for CLI REPL output pipeline
 
-import type { ReplPalette } from "./repl-render.js";
+import type { ReplPalette } from "./render.js";
 
 export interface MarkdownState {
   lineBuffer: string;
@@ -15,11 +15,14 @@ export function createMarkdownState(): MarkdownState {
 }
 
 function transformInline(line: string, palette: ReplPalette): string {
-  // inline code: `code`
+  // Links: [text](url) → text (url)
+  line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) =>
+    `${palette.cyan(text)} ${palette.dim(`(${url})`)}`);
+  // Inline code: `code`
   line = line.replace(/`([^`]+)`/g, (_, code) => palette.cyan(code));
-  // bold: **text**
+  // Bold: **text**
   line = line.replace(/\*\*([^*]+)\*\*/g, (_, text) => palette.bold(text));
-  // italic: *text*
+  // Italic: *text*
   line = line.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, (_, text) => palette.dim(text));
   return line;
 }
@@ -45,10 +48,39 @@ function transformLine(line: string, state: MarkdownState, palette: ReplPalette)
     return { output: palette.dim(`  ${line}`), state };
   }
 
-  // Headings
-  const headingMatch = line.match(/^(#{1,3})\s+(.*)/);
+  // Headings with visual hierarchy
+  const headingMatch = line.match(/^(#{1,6})\s+(.*)/);
   if (headingMatch) {
-    return { output: palette.bold(headingMatch[2]), state };
+    const level = headingMatch[1].length;
+    const text = transformInline(headingMatch[2], palette);
+    if (level === 1) return { output: `${palette.bold(text)}\n${"─".repeat(Math.min(text.length, 40))}`, state };
+    if (level === 2) return { output: palette.bold(text), state };
+    return { output: palette.dim(palette.bold(text)), state };
+  }
+
+  // Blockquote: > text
+  const quoteMatch = line.match(/^>\s?(.*)/);
+  if (quoteMatch) {
+    return { output: `${palette.dim("│")} ${palette.dim(transformInline(quoteMatch[1], palette))}`, state };
+  }
+
+  // Unordered list: - item, * item
+  const ulMatch = line.match(/^(\s*)[-*]\s+(.*)/);
+  if (ulMatch) {
+    const indent = ulMatch[1];
+    return { output: `${indent}  ${palette.dim("•")} ${transformInline(ulMatch[2], palette)}`, state };
+  }
+
+  // Ordered list: 1. item
+  const olMatch = line.match(/^(\s*)(\d+)\.\s+(.*)/);
+  if (olMatch) {
+    const indent = olMatch[1];
+    return { output: `${indent}  ${palette.dim(`${olMatch[2]}.`)} ${transformInline(olMatch[3], palette)}`, state };
+  }
+
+  // Horizontal rule: ---, ***, ___
+  if (/^[-*_]{3,}\s*$/.test(line)) {
+    return { output: palette.dim("────────────────"), state };
   }
 
   // Normal line — apply inline formatting
