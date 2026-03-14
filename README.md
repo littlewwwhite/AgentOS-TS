@@ -80,12 +80,10 @@ agents/
 │       ├── CLAUDE.md              # 智能体系统提示词
 │       ├── settings.json          # 工具权限 (allow/deny)
 │       └── skills/                # 领域技能 (script-writer/, script-adapt/)
-├── art-director/                  # 同构 — image-create, asset-gen, image-edit 技能
-├── video-producer/                # video-create, video-review 技能
+├── art-director/                  # 同构 — asset-gen, image-create, image-edit, kling-video-prompt, create-subject 技能
+├── video-producer/                # video-create, video-review, gemini-video-review 技能
 ├── post-production/               # music-matcher 技能
 └── skill-creator/                 # skill-creator 技能
-
-skills/                            # 全局技能注册目录（与 agents 技能同步）
 
 web/                               # Next.js + shadcn/ui 前端
 ├── app/                           # App Router：布局、页面、API 路由
@@ -107,8 +105,8 @@ workspace/                         # 运行时工作区（按项目隔离）
 | 智能体 | MCP 服务 | 领域技能 |
 |--------|---------|---------|
 | screenwriter | source, script | script-adapt, script-writer |
-| art-director | image | asset-gen, image-create, image-edit, kling-video-prompt |
-| video-producer | video | video-create, video-review |
+| art-director | image | asset-gen, image-create, image-edit, kling-video-prompt, create-subject |
+| video-producer | video | video-create, video-review, gemini-video-review |
 | post-production | audio | music-matcher |
 | skill-creator | — | skill-creator |
 

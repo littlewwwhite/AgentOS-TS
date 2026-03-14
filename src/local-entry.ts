@@ -111,11 +111,29 @@ export async function handleLocalCommand(
 
 // ---------- stdin command loop ----------
 
+const SLASH_COMMANDS = ["/new", "/status", "/agents", "/enter", "/exit", "/quit", "/help"];
+
 /** Build a dynamic prompt showing the active agent context. */
 function buildPrompt(orchestrator: LocalOrchestrator): string {
   if (!process.stdin.isTTY) return "";
   const agent = orchestrator.activeAgent;
   return agent ? `\x1b[36m${agent}\x1b[0m> ` : "\x1b[2m>\x1b[0m ";
+}
+
+/** Tab-completion: slash commands + agent names after `/enter `. */
+function buildCompleter(orchestrator: LocalOrchestrator): (line: string) => [string[], string] {
+  return (line: string): [string[], string] => {
+    if (line.startsWith("/enter ")) {
+      const partial = line.slice(7);
+      const hits = orchestrator.agentNames.filter((n) => n.startsWith(partial));
+      return [hits.map((n) => `/enter ${n}`), line];
+    }
+    if (line.startsWith("/")) {
+      const hits = SLASH_COMMANDS.filter((c) => c.startsWith(line));
+      return [hits, line];
+    }
+    return [[], line];
+  };
 }
 
 function stdinLoop(orchestrator: LocalOrchestrator): Promise<void> {
@@ -124,21 +142,36 @@ function stdinLoop(orchestrator: LocalOrchestrator): Promise<void> {
   return new Promise<void>((resolve) => {
     const rl = readline.createInterface({
       input: process.stdin,
-      // TTY mode: enable line editing, history, and prompt
+      // TTY mode: enable line editing, history, prompt, and tab completion
       ...(isTTY
-        ? { output: process.stdout, terminal: true, prompt: buildPrompt(orchestrator) }
+        ? {
+            output: process.stdout,
+            terminal: true,
+            prompt: buildPrompt(orchestrator),
+            completer: buildCompleter(orchestrator),
+          }
         : { terminal: false }),
     });
 
-    // Ctrl+C: interrupt running query instead of killing the process
+    // Ctrl+C: interrupt running query; double-press while idle to exit
     if (isTTY) {
+      let lastSigint = 0;
       rl.on("SIGINT", () => {
         const status = orchestrator.getStatus(orchestrator.activeAgent);
         if (status.busy) {
           orchestrator.interrupt(orchestrator.activeAgent);
           process.stdout.write("\n\x1b[33m  interrupted\x1b[0m\n");
+          lastSigint = 0;
+        } else {
+          const now = Date.now();
+          if (now - lastSigint < 500) {
+            process.stdout.write("\n");
+            rl.close();
+            return;
+          }
+          lastSigint = now;
+          process.stdout.write("\n\x1b[2m  press Ctrl+C again to exit\x1b[0m\n");
         }
-        // Re-display prompt for next input
         rl.setPrompt(buildPrompt(orchestrator));
         rl.prompt();
       });
@@ -187,8 +220,10 @@ async function main(): Promise<void> {
 
   const { projectPath: rawPath, agentsDir, model } = parseArgs(process.argv.slice(2));
 
+  const isTTY = !!process.stdin.isTTY;
+
   // TTY → human-readable rendering; piped → raw JSON protocol
-  if (process.stdin.isTTY) enableReplMode();
+  if (isTTY) enableReplMode();
   const projectPath = path.resolve(rawPath);
   await fs.mkdir(projectPath, { recursive: true });
 
@@ -196,6 +231,7 @@ async function main(): Promise<void> {
     projectPath,
     agentsDir,
     model,
+    freshStart: isTTY, // REPL starts clean; piped mode restores sessions
   });
   await orchestrator.init();
 

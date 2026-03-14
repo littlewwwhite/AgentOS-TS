@@ -12,7 +12,7 @@ if (process.env.ANTHROPIC_BASE_URL?.match(/^https?:\/\/(127\.0\.0\.1|localhost)/
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
-const ROOT = path.resolve(import.meta.dir, "..");
+const ROOT = path.resolve(import.meta.dir, "../..");
 const AGENTS_DIR = path.join(ROOT, "agents");
 const PROJECT_PATH = path.join(ROOT, "workspace", "__test__");
 

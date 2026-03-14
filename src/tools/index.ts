@@ -13,6 +13,8 @@ import { generateImage, upscaleImage } from "./image.js";
 import { parseScript } from "./script-parser.js";
 import { detectSourceStructure, prepareSourceProject } from "./source.js";
 import { checkVideoStatus, generateVideo } from "./video.js";
+import { awbGetAuth, awbLogin, awbUpload, awbSubmitTask, awbPollTask, awbApiRequest } from "./awb/index.js";
+import { writeJson, readJson, saveAsset, listAssets } from "./storage.js";
 import { checkWorkspace } from "./workspace.js";
 
 // -- Task Queue singleton --
@@ -36,7 +38,7 @@ function ensureTaskQueue(): TaskQueue {
   if (!taskQueue) {
     // Lazy init with defaults
     const storePath = path.join(process.cwd(), ".agentos", "tasks.db");
-    const apisDir = path.resolve(import.meta.dir, "../../apis");
+    const apisDir = path.resolve(import.meta.dir, "../task-queue/apis");
     initTaskQueue(storePath, apisDir);
   }
   return taskQueue!;
@@ -73,7 +75,12 @@ const TOOL_SERVER_BUILDERS = {
   video: () => createSdkMcpServer({ name: "video", tools: [generateVideo, checkVideoStatus] }),
   audio: () => createSdkMcpServer({ name: "audio", tools: [generateTts, generateSfx, generateMusic] }),
   script: () => createSdkMcpServer({ name: "script", tools: [parseScript] }),
+  storage: () => createSdkMcpServer({ name: "storage", tools: [writeJson, readJson, saveAsset, listAssets] }),
   workspace: () => createSdkMcpServer({ name: "workspace", tools: [checkWorkspace] }),
+  awb: () => createSdkMcpServer({
+    name: "awb",
+    tools: [awbGetAuth, awbLogin, awbUpload, awbSubmitTask, awbPollTask, awbApiRequest],
+  }),
   tasks: () => createSdkMcpServer({ name: "tasks", tools: createTaskTools(ensureTaskQueue()) }),
   engine: () => {
     const { store, scheduler } = ensureEngine();

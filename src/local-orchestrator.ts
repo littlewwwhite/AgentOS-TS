@@ -63,6 +63,8 @@ export interface OrchestratorConfig {
   projectPath: string;
   agentsDir: string;
   model?: string;
+  /** Skip session restore — REPL mode starts fresh each time */
+  freshStart?: boolean;
 }
 
 // ---------- LocalOrchestrator ----------
@@ -119,7 +121,9 @@ export class LocalOrchestrator {
       this.baseOptions,
       Object.keys((this.baseOptions.mcpServers ?? {})) as ToolServerName[],
     );
-    this.loadSessions();
+    if (!this.config.freshStart) {
+      this.loadSessions();
+    }
 
     await this.emitSessionHistory();
 

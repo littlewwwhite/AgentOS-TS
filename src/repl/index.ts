@@ -123,6 +123,7 @@ const HELP_TEXT = [
   "  /agents       List available agents",
   "  /enter <name> Switch to agent",
   "  /exit         Return to main",
+  "  /quit         Exit the REPL",
   "  /help         Show this help",
   "",
 ].join("\n");
@@ -166,6 +167,11 @@ export function handleSlashCommand(input: string, orchestrator: LocalOrchestrato
     case "exit":
       orchestrator.exitAgent();
       return true;
+
+    case "quit":
+    case "q":
+      process.stdout.write(`${ANSI_PALETTE.dim("  bye.")}\n`);
+      process.exit(0);
 
     case "help":
       process.stdout.write(HELP_TEXT);

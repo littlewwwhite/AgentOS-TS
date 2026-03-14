@@ -8,5 +8,6 @@
 | `queue.ts` | 核心引擎 | 提交、轮询、重试、并发限制、生命周期管理 |
 | `executor.ts` | 执行层 | API 调用执行器接口 + AnimeworkbenchExecutor 实现 |
 | `registry.ts` | 配置层 | 从 `apis/*.yaml` 加载 API 配置，驱动 executor 行为 |
+| `apis/` | 配置数据 | API endpoint YAML 定义（animeworkbench-image/video） |
 | `tools.ts` | MCP 接口 | submit_task / check_tasks / cancel_task / download_result 四个 MCP tool |
 | `index.ts` | 桶导出 | 统一导出 |
