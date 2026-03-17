@@ -677,4 +677,94 @@ describe("script-parser", () => {
       expect(actorIds).toContain("act_001");
     });
   });
+
+  describe("case-insensitive English name matching", () => {
+    test("different casing in script resolves to same catalog actor", async () => {
+      const projectPath = await setupProject(
+        {
+          "ep01.md": `第1集
+
+1-1 日 内 客厅
+人物：Alice、bob
+▲Alice走进客厅。
+bob：你好
+
+1-2 日 内 卧室
+人物：alice、Bob
+alice：晚安
+Bob：晚安
+`,
+        },
+        {
+          actors: [
+            { id: "act_001", name: "Alice" },
+            { id: "act_002", name: "Bob" },
+          ],
+          locations: [
+            { id: "loc_001", name: "客厅" },
+            { id: "loc_002", name: "卧室" },
+          ],
+          props: [],
+        },
+        { title: "大小写测试", style: "", worldview: "" },
+      );
+
+      const result = await parseEpisodes(projectPath);
+      const scriptPath = path.join(projectPath, "output", "script.json");
+      const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+
+      // Only 2 actors, not 4
+      expect(script.actors.length).toBe(2);
+
+      // Canonical names preserve catalog casing
+      const actorNames = script.actors.map((a: any) => a.actor_name);
+      expect(actorNames).toContain("Alice");
+      expect(actorNames).toContain("Bob");
+      expect(actorNames).not.toContain("alice");
+      expect(actorNames).not.toContain("bob");
+
+      // Both scenes reference the same actor IDs
+      const scene1Ids = script.episodes[0].scenes[0].actors.map((a: any) => a.actor_id);
+      const scene2Ids = script.episodes[0].scenes[1].actors.map((a: any) => a.actor_id);
+      expect(scene1Ids).toContain("act_001");
+      expect(scene1Ids).toContain("act_002");
+      expect(scene2Ids).toContain("act_001");
+      expect(scene2Ids).toContain("act_002");
+
+      // No warnings — all resolved
+      expect(result).not.toHaveProperty("warnings");
+
+      await cleanup(projectPath);
+    });
+
+    test("case-insensitive matching without catalog", async () => {
+      const projectPath = await setupProject(
+        {
+          "ep01.md": `第1集
+
+1-1 日 内 Studio
+人物：Charlie
+Charlie：开始
+
+1-2 日 内 studio
+人物：charlie
+charlie：继续
+`,
+        },
+        undefined,
+        { title: "无catalog大小写", style: "", worldview: "" },
+      );
+
+      const result = await parseEpisodes(projectPath);
+      const scriptPath = path.join(projectPath, "output", "script.json");
+      const script = JSON.parse(await fs.readFile(scriptPath, "utf-8"));
+
+      // Only 1 actor, not 2
+      expect(script.actors.length).toBe(1);
+      // Only 1 location, not 2
+      expect(script.locations.length).toBe(1);
+
+      await cleanup(projectPath);
+    });
+  });
 });

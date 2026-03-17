@@ -86,6 +86,18 @@ const SPACE_MAP: Record<string, string> = {
 
 const NON_CHARACTER = new Set(["旁白", "字幕", "系统提示"]);
 
+/** Case-insensitive lookup in a name→id registry. */
+function registryLookup(registry: Record<string, string>, name: string): string | undefined {
+  return registry[name] ?? registry[name.toLowerCase()];
+}
+
+/** Register name with a lowercase shadow key for case-insensitive matching. */
+function registrySet(registry: Record<string, string>, name: string, value: string): void {
+  registry[name] = value;
+  const lower = name.toLowerCase();
+  if (lower !== name) registry[lower] = value;
+}
+
 // ---------- Helpers ----------
 
 function cleanName(name: string): string {
@@ -188,10 +200,10 @@ async function loadCatalogMappings(projectPath: string): Promise<CatalogMappings
       registry: Record<string, string>,
       entry: { id: string; name: string; aliases?: string[] },
     ): void {
-      registry[entry.name] = entry.id;
+      registrySet(registry, entry.name, entry.id);
       for (const alias of entry.aliases ?? []) {
-        if (alias && !registry[alias]) {
-          registry[alias] = entry.id;
+        if (alias && !registryLookup(registry, alias)) {
+          registrySet(registry, alias, entry.id);
         }
       }
     }
@@ -200,7 +212,12 @@ async function loadCatalogMappings(projectPath: string): Promise<CatalogMappings
       const c = data.actors[i];
       const id = c.id ?? `act_${fmtId(i + 1)}`;
       registerNames(actorIds, { ...c, id });
-      if (c.states?.length) actorStates[c.name] = loadStates(id, c.states);
+      if (c.states?.length) {
+        const states = loadStates(id, c.states);
+        actorStates[c.name] = states;
+        const lower = c.name.toLowerCase();
+        if (lower !== c.name) actorStates[lower] = states;
+      }
       if (c.description) descriptions[id] = c.description;
     }
     const locIds: Record<string, string> = {};
@@ -316,41 +333,41 @@ export async function parseEpisodes(
   const sceneLocStates: Record<number, [string, string] | null> = {};
 
   function registerLocation(name: string): string | null {
-    if (locations[name]) return locations[name];
+    if (registryLookup(locations, name)) return registryLookup(locations, name)!;
     if (catalog.hasCatalog) {
       unresolvedLocations.add(name);
       return null;
     }
     locCounter++;
     const lid = `loc_${fmtId(locCounter)}`;
-    locations[name] = lid;
+    registrySet(locations, name, lid);
     return lid;
   }
 
   function registerActor(name: string): string | null {
     if (!name || isGroup(name) || NON_CHARACTER.has(name)) return null;
-    if (actors[name]) return actors[name];
+    if (registryLookup(actors, name)) return registryLookup(actors, name)!;
     if (catalog.hasCatalog) {
       unresolvedActors.add(name);
       return null;
     }
     actorCounter++;
     const aid = `act_${fmtId(actorCounter)}`;
-    actors[name] = aid;
+    registrySet(actors, name, aid);
     return aid;
   }
 
   function registerProp(name: string): string | null {
     const propName = name.trim();
     if (!propName) return null;
-    if (props[propName]) return props[propName];
+    if (registryLookup(props, propName)) return registryLookup(props, propName)!;
     if (catalog.hasCatalog) {
       unresolvedProps.add(propName);
       return null;
     }
     propCounter++;
     const pid = `prp_${fmtId(propCounter)}`;
-    props[propName] = pid;
+    registrySet(props, propName, pid);
     return pid;
   }
 
@@ -496,8 +513,8 @@ export async function parseEpisodes(
           const cid = registerActor(name);
           if (cid) {
             if (state) {
-              if (name in catalog.actorStates) {
-                if (!catalog.actorStates[name].includes(state)) {
+              if (name.toLowerCase() in catalog.actorStates) {
+                if (!catalog.actorStates[name.toLowerCase()].includes(state)) {
                   console.warn(
                     `⚠️  Warning: Actor '${name}' state '${state}' not in catalog.json states: ${JSON.stringify(catalog.actorStates[name])}`,
                   );
@@ -534,10 +551,10 @@ export async function parseEpisodes(
           if (!name || !state) continue;
 
           // Try actor first
-          const cid = actors[name] ?? registerActor(name);
+          const cid = registryLookup(actors, name) ?? registerActor(name);
           if (cid) {
-            if (name in catalog.actorStates) {
-              if (!catalog.actorStates[name].includes(state)) {
+            if (name.toLowerCase() in catalog.actorStates) {
+              if (!catalog.actorStates[name.toLowerCase()].includes(state)) {
                 console.warn(
                   `⚠️  Warning: Actor '${name}' state '${state}' not in catalog.json states: ${JSON.stringify(catalog.actorStates[name])}`,
                 );
