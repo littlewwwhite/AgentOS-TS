@@ -16,6 +16,8 @@ import { checkVideoStatus, generateVideo } from "./video.js";
 import { awbGetAuth, awbLogin, awbUpload, awbSubmitTask, awbPollTask, awbApiRequest } from "./awb/index.js";
 import { writeJson, readJson, saveAsset, listAssets } from "./storage.js";
 import { checkWorkspace } from "./workspace.js";
+import { createVikingTools } from "./viking.js";
+import { initViking } from "../viking/index.js";
 
 // -- Task Queue singleton --
 
@@ -85,6 +87,10 @@ const TOOL_SERVER_BUILDERS = {
   engine: () => {
     const { store, scheduler } = ensureEngine();
     return createSdkMcpServer({ name: "engine", tools: createCheckpointTools(store, scheduler) });
+  },
+  viking: () => {
+    const client = initViking();
+    return createSdkMcpServer({ name: "viking", tools: createVikingTools(client) });
   },
 } satisfies Record<string, () => unknown>;
 
