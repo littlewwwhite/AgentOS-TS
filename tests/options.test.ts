@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // FIXED_MODEL is now a private constant in options.ts — use the known value directly
 const FIXED_MODEL = "claude-sonnet-4-6";
@@ -26,14 +26,24 @@ vi.mock("../src/hooks/index.js", () => ({
   }),
 }));
 
+// Default: no Viking singleton (null). Tests override via initViking/resetViking.
+vi.mock("../src/viking/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/viking/index.js")>();
+  return { ...actual };
+});
+
 import { createToolServers } from "../src/tools/index.js";
 import { buildOptions, describeAgentList, describeWorkspace, WORKSPACE_DIRS } from "../src/options.js";
+import { initViking, resetViking } from "../src/viking/index.js";
 
 const mockCreateToolServers = createToolServers as ReturnType<typeof vi.fn>;
 
 describe("buildOptions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+  afterEach(() => {
+    resetViking();
   });
 
   it("returns SDK-compatible options with required fields", async () => {
@@ -122,5 +132,48 @@ describe("WORKSPACE_DIRS", () => {
     expect(WORKSPACE_DIRS).toContain("draft");
     expect(WORKSPACE_DIRS).toContain("output");
     expect(WORKSPACE_DIRS).toContain("assets");
+  });
+});
+
+describe("describeWorkspace — Viking context injection", () => {
+  afterEach(() => {
+    resetViking();
+  });
+
+  it("includes Viking artifact summaries when available", async () => {
+    const client = initViking({ url: "http://mock:1933" });
+    vi.spyOn(client, "health").mockResolvedValue(true);
+    vi.spyOn(client, "find").mockResolvedValue([
+      { uri: "file:///ws/draft/ep01.json", score: 0.92, content: "Episode 1 script draft" },
+      { uri: "file:///ws/assets/logo.png", score: 0.85, content: "Logo asset" },
+    ]);
+
+    const result = await describeWorkspace("/tmp/nonexistent-ws");
+
+    expect(result).toContain("## Shared Context (from OpenViking)");
+    expect(result).toContain("file:///ws/draft/ep01.json: Episode 1 script draft (score: 0.92)");
+    expect(result).toContain("file:///ws/assets/logo.png: Logo asset (score: 0.85)");
+    expect(client.find).toHaveBeenCalledWith("recent artifacts and deliverables", { limit: 10 });
+  });
+
+  it("falls back to directory-only when Viking health fails", async () => {
+    const client = initViking({ url: "http://mock:1933" });
+    vi.spyOn(client, "health").mockResolvedValue(false);
+    const findSpy = vi.spyOn(client, "find");
+
+    const result = await describeWorkspace("/tmp/nonexistent-ws");
+
+    expect(result).toContain("## Workspace");
+    expect(result).not.toContain("## Shared Context");
+    expect(findSpy).not.toHaveBeenCalled();
+  });
+
+  it("falls back gracefully when Viking is not initialized", async () => {
+    resetViking(); // ensure getVikingClient() returns null
+
+    const result = await describeWorkspace("/tmp/nonexistent-ws");
+
+    expect(result).toContain("## Workspace");
+    expect(result).not.toContain("## Shared Context");
   });
 });

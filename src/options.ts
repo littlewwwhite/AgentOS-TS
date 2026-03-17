@@ -1,4 +1,4 @@
-// input: Project path, agents dir, CLI flags
+// input: Project path, agents dir, CLI flags, OpenViking singleton
 // output: SDK-compatible options with lightweight agent routing map
 // pos: Configuration factory — builds orchestrator options; agent config loaded by SDK from .claude/ dirs
 
@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { loadAgentManifests } from "./agent-manifest.js";
+import { getVikingClient } from "./viking/index.js";
 
 const FIXED_MODEL = "claude-sonnet-4-6";
 import { buildHooks } from "./hooks/index.js";
@@ -36,6 +37,25 @@ export async function describeWorkspace(projectPath: string): Promise<string> {
     const sources = (await fs.readdir(dataDir)).filter((f) => !f.startsWith(".")).sort();
     if (sources.length > 0) lines.push(`  data/: ${sources.join(", ")}`);
   } catch { /* no data dir */ }
+
+  // -- OpenViking shared context (best-effort, non-blocking) --
+  try {
+    const viking = getVikingClient();
+    if (viking && await viking.health()) {
+      const artifacts = await viking.find("recent artifacts and deliverables", { limit: 10 });
+      if (artifacts.length > 0) {
+        lines.push("");
+        lines.push("## Shared Context (from OpenViking)");
+        for (const a of artifacts) {
+          const label = a.content || a.uri;
+          lines.push(`  - ${a.uri}: ${label} (score: ${a.score.toFixed(2)})`);
+        }
+      }
+    }
+  } catch {
+    // OpenViking unavailable — degrade silently
+  }
+
   return lines.join("\n");
 }
 
