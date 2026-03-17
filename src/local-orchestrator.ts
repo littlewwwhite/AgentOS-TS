@@ -17,6 +17,8 @@ import {
 } from "./tools/agent-switch.js";
 import { type ToolServerName, createToolServers } from "./tools/index.js";
 import { runQuery } from "./local-runtime.js";
+import { getVikingClient } from "./viking/index.js";
+import { scanWorkspaceChanges, publishArtifacts } from "./viking/auto-publish.js";
 
 // ---------- AsyncQueue ----------
 
@@ -268,6 +270,16 @@ export class LocalOrchestrator {
     return Object.keys(this.agentDefinitions);
   }
 
+  /** All active session IDs keyed by agent name (for exit summary). */
+  get sessionIds(): Record<string, string> {
+    const ids: Record<string, string> = {};
+    if (this.mainSession?.sessionId) ids.main = this.mainSession.sessionId;
+    for (const [name, session] of this.agents) {
+      if (session.sessionId) ids[name] = session.sessionId;
+    }
+    return ids;
+  }
+
   /** Resume the main session from a specific session ID. */
   async resumeSession(sessionId: string): Promise<void> {
     if (!this.mainSession) {
@@ -457,6 +469,18 @@ export class LocalOrchestrator {
 
       const returned = session.name;
       this._activeAgent = null;
+
+      // Auto-publish workspace changes to OpenViking (best-effort, fire-and-forget)
+      const viking = getVikingClient();
+      if (viking) {
+        scanWorkspaceChanges(this.config.projectPath, Date.now() - 600_000) // last 10 min
+          .then(files => files.length > 0
+            ? publishArtifacts(viking, files, { producer: returned, summary: req.summary })
+            : 0,
+          )
+          .catch(() => { /* OpenViking unavailable */ });
+      }
+
       emit({
         type: "agent_exited",
         agent: returned,

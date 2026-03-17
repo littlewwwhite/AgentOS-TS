@@ -1,4 +1,4 @@
-// input: VikingClient class + options from ./client.js
+// input: VikingClient class + options from ./client.js, auto-publish utilities
 // output: Singleton lifecycle (initViking / getVikingClient / resetViking) + re-exports
 // pos: Public barrel — all viking imports go through here
 
@@ -11,6 +11,8 @@ export type {
   VikingFindOptions,
   VikingAddOptions,
 } from "./client.js";
+export { scanWorkspaceChanges, publishArtifacts } from "./auto-publish.js";
+export type { PublishMetadata } from "./auto-publish.js";
 
 import { VikingClient, type VikingClientOptions } from "./client.js";
 
