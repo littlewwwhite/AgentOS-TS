@@ -101,7 +101,7 @@ describe("VikingClient", () => {
         `${DEFAULT_URL}/api/v1/search`,
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ query: "test query", limit: 5 }),
+          body: JSON.stringify({ limit: 5, query: "test query" }),
         }),
       );
     });
@@ -110,6 +110,12 @@ describe("VikingClient", () => {
       fetchSpy.mockResolvedValueOnce(jsonResponse({ result: {} }));
       const c = new VikingClient({ apiKey: API_KEY, agentId: AGENT_ID });
       expect(await c.find("query")).toEqual([]);
+    });
+
+    it("throws on HTTP error response", async () => {
+      fetchSpy.mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500));
+      const c = new VikingClient({ apiKey: API_KEY, agentId: AGENT_ID });
+      await expect(c.find("query")).rejects.toThrow("HTTP 500");
     });
 
     it("sends correct headers", async () => {
@@ -141,9 +147,15 @@ describe("VikingClient", () => {
         `${DEFAULT_URL}/api/v1/resources`,
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ path: "/path/to/new.txt", tags: ["doc"] }),
+          body: JSON.stringify({ tags: ["doc"], path: "/path/to/new.txt" }),
         }),
       );
+    });
+
+    it("throws on HTTP error response", async () => {
+      fetchSpy.mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500));
+      const c = new VikingClient({ apiKey: API_KEY, agentId: AGENT_ID });
+      await expect(c.addResource("/bad")).rejects.toThrow("HTTP 500");
     });
   });
 
@@ -165,6 +177,12 @@ describe("VikingClient", () => {
         `${DEFAULT_URL}/api/v1/fs/ls?uri=${encodeURIComponent("file:///dir")}`,
         expect.objectContaining({ method: "GET" }),
       );
+    });
+
+    it("throws on HTTP error response", async () => {
+      fetchSpy.mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500));
+      const c = new VikingClient({ apiKey: API_KEY, agentId: AGENT_ID });
+      await expect(c.ls("file:///dir")).rejects.toThrow("HTTP 500");
     });
   });
 

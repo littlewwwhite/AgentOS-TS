@@ -56,8 +56,8 @@ export class VikingClient {
   /** Returns true if the server is reachable, false on any error. */
   async health(): Promise<boolean> {
     try {
-      const res = await this.get("/health");
-      return res.ok;
+      await this.get("/health");
+      return true;
     } catch {
       return false;
     }
@@ -68,7 +68,7 @@ export class VikingClient {
     query: string,
     options?: Record<string, unknown>,
   ): Promise<VikingSearchResult[]> {
-    const body = { query, ...options };
+    const body = { ...options, query };
     const res = await this.post("/api/v1/search", body);
     const data = (await res.json()) as { result?: { resources?: VikingSearchResult[] } };
     return data.result?.resources ?? [];
@@ -79,7 +79,7 @@ export class VikingClient {
     path: string,
     options?: Record<string, unknown>,
   ): Promise<VikingAddResult> {
-    const body = { path, ...options };
+    const body = { ...options, path };
     const res = await this.post("/api/v1/resources", body);
     return (await res.json()) as VikingAddResult;
   }
@@ -102,20 +102,24 @@ export class VikingClient {
     };
   }
 
-  private get(path: string): Promise<Response> {
-    return fetch(`${this.baseUrl}${path}`, {
+  private async get(path: string): Promise<Response> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
       method: "GET",
       headers: this.headers(),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
+    if (!res.ok) throw new Error(`Viking GET ${path}: HTTP ${res.status}`);
+    return res;
   }
 
-  private post(path: string, body: unknown): Promise<Response> {
-    return fetch(`${this.baseUrl}${path}`, {
+  private async post(path: string, body: unknown): Promise<Response> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
+    if (!res.ok) throw new Error(`Viking POST ${path}: HTTP ${res.status}`);
+    return res;
   }
 }
