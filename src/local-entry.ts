@@ -17,8 +17,9 @@ if (process.env.ANTHROPIC_BASE_URL?.match(/^https?:\/\/(127\.0\.0\.1|localhost)/
 import { LocalOrchestrator } from "./local-orchestrator.js";
 import { emit, parseCommand } from "./protocol.js";
 import { loadEnvToProcess } from "./env.js";
+import { initViking } from "./viking/index.js";
 import type { SandboxCommand, SandboxEvent } from "./protocol.js";
-import { enableReplMode, handleSlashCommand, setPromptCallback } from "./repl/index.js";
+import { enableReplMode, handleSlashCommand, setPromptCallback, ANSI_PALETTE } from "./repl/index.js";
 
 // ---------- Global crash handlers ----------
 
@@ -48,15 +49,18 @@ function parseArgs(argv: string[]): {
   projectPath: string;
   agentsDir: string;
   model?: string;
+  resume?: boolean;
 } {
   let agentsDir = "agents";
   let model: string | undefined;
+  let resume = false;
   const positional: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--agents" && i + 1 < argv.length) agentsDir = argv[++i];
     else if (arg === "--model" && i + 1 < argv.length) model = argv[++i];
+    else if (arg === "--resume") resume = true;
     else if (!arg.startsWith("-")) positional.push(arg);
   }
 
@@ -64,6 +68,7 @@ function parseArgs(argv: string[]): {
     projectPath: positional[0] ?? "workspace",
     agentsDir,
     model: model ?? process.env.AGENTOS_MODEL,
+    resume,
   };
 }
 
@@ -136,6 +141,19 @@ function buildCompleter(orchestrator: LocalOrchestrator): (line: string) => [str
   };
 }
 
+/** Print session summary on exit. */
+function printSessionSummary(orchestrator: LocalOrchestrator): void {
+  const ids = orchestrator.sessionIds;
+  const count = Object.keys(ids).length;
+  if (count === 0) {
+    process.stdout.write(`${ANSI_PALETTE.dim("  bye.")}\n`);
+    return;
+  }
+  process.stdout.write(
+    `\n${ANSI_PALETTE.dim(`  ${count} session(s) saved. Run with`)} ${ANSI_PALETTE.cyan("--resume")} ${ANSI_PALETTE.dim("to restore.")}\n\n`,
+  );
+}
+
 function stdinLoop(orchestrator: LocalOrchestrator): Promise<void> {
   const isTTY = process.stdin.isTTY;
 
@@ -185,9 +203,14 @@ function stdinLoop(orchestrator: LocalOrchestrator): Promise<void> {
       }
 
       // Slash commands (TTY only)
-      if (trimmed.startsWith("/") && handleSlashCommand(trimmed, orchestrator)) {
-        if (isTTY) { rl.setPrompt(buildPrompt(orchestrator)); rl.prompt(); }
-        return;
+      if (trimmed.startsWith("/")) {
+        const result = handleSlashCommand(trimmed, orchestrator);
+        if (result === "quit") { rl.close(); return; }
+        if (result) {
+          rl.setPrompt(buildPrompt(orchestrator));
+          rl.prompt();
+          return;
+        }
       }
 
       // Try structured JSON command first; fall back to plain-text chat
@@ -200,7 +223,10 @@ function stdinLoop(orchestrator: LocalOrchestrator): Promise<void> {
       });
     });
 
-    rl.on("close", resolve);
+    rl.on("close", () => {
+      if (isTTY) printSessionSummary(orchestrator);
+      resolve();
+    });
 
     // Wire prompt re-display: REPL emitter calls this after result/error events
     if (isTTY) {
@@ -218,7 +244,11 @@ function stdinLoop(orchestrator: LocalOrchestrator): Promise<void> {
 async function main(): Promise<void> {
   loadEnvToProcess(path.resolve(".env"));
 
-  const { projectPath: rawPath, agentsDir, model } = parseArgs(process.argv.slice(2));
+  if (process.env.OPENVIKING_URL) {
+    initViking({ url: process.env.OPENVIKING_URL });
+  }
+
+  const { projectPath: rawPath, agentsDir, model, resume } = parseArgs(process.argv.slice(2));
 
   const isTTY = !!process.stdin.isTTY;
 
@@ -231,7 +261,8 @@ async function main(): Promise<void> {
     projectPath,
     agentsDir,
     model,
-    freshStart: isTTY, // REPL starts clean; piped mode restores sessions
+    // REPL defaults to fresh start; --resume or piped mode restores sessions
+    freshStart: isTTY && !resume,
   });
   await orchestrator.init();
 
