@@ -30,7 +30,7 @@ describe("loadAgentConfigs extended", () => {
 
   it("screenwriter declares scoped mcp servers in yaml", async () => {
     const agents = await loadAgentConfigs(path.resolve("agents"));
-    expect(agents.screenwriter.mcpServers).toEqual(["source", "script"]);
+    expect(agents.screenwriter.mcpServers).toEqual(["storage", "viking"]);
   });
 
   it("supports optional mcp server metadata in yaml", async () => {
