@@ -101,7 +101,7 @@ describe("VikingClient", () => {
         `${DEFAULT_URL}/api/v1/search`,
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ limit: 5, query: "test query" }),
+          body: JSON.stringify({ query: "test query", limit: 5 }),
         }),
       );
     });
@@ -140,14 +140,14 @@ describe("VikingClient", () => {
       fetchSpy.mockResolvedValueOnce(jsonResponse(addResult));
 
       const c = new VikingClient({ apiKey: API_KEY, agentId: AGENT_ID });
-      const result = await c.addResource("/path/to/new.txt", { tags: ["doc"] });
+      const result = await c.addResource("/path/to/new.txt", { reason: "doc" });
 
       expect(result).toEqual(addResult);
       expect(fetchSpy).toHaveBeenCalledWith(
         `${DEFAULT_URL}/api/v1/resources`,
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ tags: ["doc"], path: "/path/to/new.txt" }),
+          body: JSON.stringify({ path: "/path/to/new.txt", reason: "doc" }),
         }),
       );
     });

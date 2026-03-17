@@ -8,6 +8,8 @@ export type {
   VikingSearchResult,
   VikingFsEntry,
   VikingAddResult,
+  VikingFindOptions,
+  VikingAddOptions,
 } from "./client.js";
 
 import { VikingClient, type VikingClientOptions } from "./client.js";

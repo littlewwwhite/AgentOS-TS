@@ -32,9 +32,7 @@ export function createVikingTools(client?: VikingClient) {
     },
     async ({ query, target_uri, limit }) => {
       try {
-        const options: Record<string, unknown> = { limit };
-        if (target_uri) options.target_uri = target_uri;
-        const results = await getClient().find(query, options);
+        const results = await getClient().find(query, { targetUri: target_uri, limit });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(results) }],
         };
@@ -100,10 +98,7 @@ export function createVikingTools(client?: VikingClient) {
     },
     async ({ path, reason, target }) => {
       try {
-        const options: Record<string, unknown> = {};
-        if (reason) options.reason = reason;
-        if (target) options.target = target;
-        const result = await getClient().addResource(path, options);
+        const result = await getClient().addResource(path, { target, reason });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],
         };

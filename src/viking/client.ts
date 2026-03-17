@@ -32,6 +32,17 @@ export interface VikingAddResult {
   status: string;
 }
 
+export interface VikingFindOptions {
+  targetUri?: string;
+  limit?: number;
+}
+
+export interface VikingAddOptions {
+  target?: string;
+  reason?: string;
+  wait?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -66,9 +77,11 @@ export class VikingClient {
   /** Semantic search. Returns matching resources (empty array on none). */
   async find(
     query: string,
-    options?: Record<string, unknown>,
+    options?: VikingFindOptions,
   ): Promise<VikingSearchResult[]> {
-    const body = { ...options, query };
+    const body: Record<string, unknown> = { query };
+    if (options?.targetUri !== undefined) body.target_uri = options.targetUri;
+    if (options?.limit !== undefined) body.limit = options.limit;
     const res = await this.post("/api/v1/search", body);
     const data = (await res.json()) as { result?: { resources?: VikingSearchResult[] } };
     return data.result?.resources ?? [];
@@ -77,9 +90,12 @@ export class VikingClient {
   /** Register a file path as a resource. */
   async addResource(
     path: string,
-    options?: Record<string, unknown>,
+    options?: VikingAddOptions,
   ): Promise<VikingAddResult> {
-    const body = { ...options, path };
+    const body: Record<string, unknown> = { path };
+    if (options?.target !== undefined) body.target = options.target;
+    if (options?.reason !== undefined) body.reason = options.reason;
+    if (options?.wait !== undefined) body.wait = options.wait;
     const res = await this.post("/api/v1/resources", body);
     return (await res.json()) as VikingAddResult;
   }
