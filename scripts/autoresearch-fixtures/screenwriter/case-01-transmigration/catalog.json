@@ -1,0 +1,23 @@
+{
+  "actors": [
+    {"name": "苏瑶", "type": "protagonist", "aliases": ["女主"], "description": "穿越者，现代大学生灵魂，外表：黑发及腰、杏眼、瓜子脸，穿白色素衣", "default_state": "素衣"},
+    {"name": "凌天", "type": "supporting", "aliases": [], "description": "蛇族兽夫，红衣如血，凤眼上挑，笑容温柔但眼神危险，性格：表面温柔实则腹黑", "default_state": "红衣"},
+    {"name": "云松", "type": "supporting", "aliases": [], "description": "熊族兽夫，体型高大魁梧，沉默寡言，有致命暗伤（内腑碎裂），性格：木讷忠厚", "default_state": "粗布衣"},
+    {"name": "驰风", "type": "supporting", "aliases": [], "description": "鹰族兽夫，银发束高马尾，举止优雅，性格：礼貌疏离，内心绝望", "default_state": "青衫"},
+    {"name": "墨羽", "type": "supporting", "aliases": [], "description": "鸦族兽夫，黑衣黑发，沉默寡言，观察力极强，性格：冷漠警觉", "default_state": "黑衣"},
+    {"name": "焰", "type": "supporting", "aliases": [], "description": "火狐族兽夫（幼年体），橘红短发，瘦小，被原身虐待最严重，性格：怯懦胆小", "default_state": "破旧短衫"},
+    {"name": "霜", "type": "supporting", "aliases": [], "description": "冰狼族兽夫，白发冰蓝瞳，表情永远冷淡，保护焰，性格：冷淡护短", "default_state": "白衣"}
+  ],
+  "locations": [
+    {"name": "洞府卧室", "description": "破旧石洞，石床、油灯、潮湿阴暗"},
+    {"name": "洞府院子", "description": "月光下的石质院落，杂草丛生"},
+    {"name": "空间灵田", "description": "独立空间，灵气缭绕，灵药遍地，有现代纸箱"},
+    {"name": "洞府厨房", "description": "简陋石灶，木柜，油灯照明"}
+  ],
+  "props": [
+    {"name": "七彩契约印记", "description": "苏瑶手腕上的契约标记，暗淡=关系恶化，明亮=好感上升"},
+    {"name": "逆天改命系统", "description": "半透明蓝色光屏，显示好感度、倒计时、任务"},
+    {"name": "千年血参", "description": "灵田中的疗伤圣药，可治愈云松的内腑暗伤"},
+    {"name": "辣条", "description": "现代零食，空间灵田纸箱中的物资"}
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "meta": {"title": "六夫逆袭", "total_episodes": 2},
+  "actors": [
+    {"actor_id": "act_001", "name": "苏瑶", "description": "穿越者，现代大学生灵魂，黑发及腰、杏眼、瓜子脸", "aliases": ["女主"]},
+    {"actor_id": "act_002", "name": "凌天", "description": "蛇族兽夫，凤眼上挑，表面温柔实则腹黑", "aliases": []},
+    {"actor_id": "act_003", "name": "云松", "description": "熊族兽夫，体型高大，沉默寡言，有致命暗伤", "aliases": []},
+    {"actor_id": "act_004", "name": "驰风", "description": "鹰族兽夫，银发束高马尾，礼貌疏离", "aliases": []},
+    {"actor_id": "act_005", "name": "墨羽", "description": "鸦族兽夫，黑衣黑发，冷漠警觉", "aliases": []},
+    {"actor_id": "act_006", "name": "焰", "description": "火狐族兽夫幼年体，橘红短发，怯懦胆小", "aliases": []},
+    {"actor_id": "act_007", "name": "霜", "description": "冰狼族兽夫，白发冰蓝瞳，冷淡护短", "aliases": []}
+  ],
+  "locations": [
+    {"location_id": "loc_001", "name": "洞府卧室", "description": "破旧石洞，石床、油灯、潮湿阴暗"},
+    {"location_id": "loc_002", "name": "洞府院子", "description": "月光下的石质院落，杂草丛生"},
+    {"location_id": "loc_003", "name": "空间灵田", "description": "独立空间，灵气缭绕，灵药遍地"},
+    {"location_id": "loc_004", "name": "洞府厨房", "description": "简陋石灶，木柜，油灯照明"}
+  ],
+  "episodes": [
+    {
+      "episode_id": "ep_001",
+      "title": "穿越觉醒",
+      "scenes": [
+        {
+          "scene_id": "sc_001",
+          "heading": "1-1 夜 内 洞府卧室",
+          "actors": ["act_001", "act_002", "act_003", "act_004", "act_005", "act_006", "act_007"],
+          "location": "loc_001",
+          "actions": [
+            {"type": "action", "text": "苏瑶猛然睁眼 → 双手撑起身体 → 环顾四周昏暗石洞"},
+            {"type": "dialogue", "actor": "act_001", "emotion": "OS", "text": "这是哪？我不是在宿舍吗？"},
+            {"type": "action", "text": "苏瑶捂住额头 → 记忆画面闪回 → 双手攥紧石床边沿"},
+            {"type": "action", "text": "六个男人走进房间 → 站成一排 → 与苏瑶保持距离"},
+            {"type": "dialogue", "actor": "act_002", "emotion": "温柔", "text": "妻主醒了？我们还以为你不会醒了。"},
+            {"type": "action", "text": "凌天嘴角上扬 → 红衣在烛光下如血 → 眼神冰冷"},
+            {"type": "dialogue", "actor": "act_007", "emotion": "冷淡", "text": "妻主想起我们了？"},
+            {"type": "action", "text": "六人对视一眼 → 转身离开 → 房门关上"}
+          ]
+        },
+        {
+          "scene_id": "sc_002",
+          "heading": "1-2 夜 内 洞府院子",
+          "actors": ["act_001", "act_002", "act_003", "act_004"],
+          "location": "loc_002",
+          "actions": [
+            {"type": "action", "text": "苏瑶蹑手蹑脚走到门缝 → 贴着门框 → 透过缝隙向外看"},
+            {"type": "dialogue", "actor": "act_003", "emotion": "低声", "text": "还有六十天。"},
+            {"type": "dialogue", "actor": "act_004", "emotion": "疲惫", "text": "试婚期一到，就解脱了。"},
+            {"type": "action", "text": "苏瑶脚下踩到碎石 → 发出轻响 → 门外六道视线齐看过来"},
+            {"type": "action", "text": "苏瑶瘫坐在地 → 眼前浮现蓝色光屏 → 倒计时60天血红刺眼"},
+            {"type": "subtitle", "text": "【逆天改命系统已绑定】"},
+            {"type": "subtitle", "text": "【任务：提升兽夫全员好感度至0。奖励：空间灵田×1】"}
+          ]
+        }
+      ]
+    }
+  ]
+}
