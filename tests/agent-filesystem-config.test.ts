@@ -12,10 +12,20 @@ const AGENTS_DIR = path.resolve("agents");
 
 async function listAgentNames(): Promise<string[]> {
   const entries = await fs.readdir(AGENTS_DIR, { withFileTypes: true });
-  return entries
+  const dirs = entries
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
-    .map((entry) => entry.name)
-    .sort();
+    .map((entry) => entry.name);
+  // Only include directories that have a .claude/ subdirectory (actual agents)
+  const agents: string[] = [];
+  for (const dir of dirs) {
+    try {
+      await fs.access(path.join(AGENTS_DIR, dir, ".claude"));
+      agents.push(dir);
+    } catch {
+      // Skip directories without .claude/ (e.g., leftover runtime output dirs)
+    }
+  }
+  return agents.sort();
 }
 
 describe("agent filesystem configuration", () => {

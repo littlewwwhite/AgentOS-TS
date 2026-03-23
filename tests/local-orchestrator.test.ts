@@ -167,8 +167,8 @@ describe("LocalOrchestrator — getSkillMap()", () => {
       "image-gen": { description: "Generates images" },
     };
     expect(orch.getSkillMap()).toEqual({
-      "script-writer": "Writes scripts",
-      "image-gen": "Generates images",
+      "script-writer": { description: "Writes scripts" },
+      "image-gen": { description: "Generates images" },
     });
   });
 });

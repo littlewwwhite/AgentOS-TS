@@ -23,8 +23,8 @@ describe("loadAgentConfigs extended", () => {
     expect(agents.screenwriter).toBeDefined();
     expect(agents.screenwriter.description).toBeTruthy();
     expect(agents["art-director"]).toBeDefined();
-    expect(agents["video-producer"]).toBeDefined();
-    expect(agents["post-production"]).toBeDefined();
+    expect(agents["footage-producer"]).toBeDefined();
+    expect(agents["post-processor"]).toBeDefined();
     expect(agents["skill-creator"]).toBeDefined();
   });
 

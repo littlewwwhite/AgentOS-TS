@@ -8,7 +8,7 @@ import { matchEnterAgent, parseCommand } from "../src/protocol.js";
 // ---------- matchEnterAgent ----------
 
 describe("matchEnterAgent", () => {
-  const agents = ["screenwriter", "art-director", "video-producer", "post-production", "skill-creator"];
+  const agents = ["screenwriter", "art-director", "footage-producer", "video-editor", "post-production", "skill-creator"];
 
   it("matches Chinese 进入 prefix", () => {
     expect(matchEnterAgent("进入screenwriter", agents)).toBe("screenwriter");
@@ -23,7 +23,7 @@ describe("matchEnterAgent", () => {
   });
 
   it("matches English switch to prefix", () => {
-    expect(matchEnterAgent("switch to video-producer", agents)).toBe("video-producer");
+    expect(matchEnterAgent("switch to footage-producer", agents)).toBe("footage-producer");
   });
 
   it("is case insensitive for command", () => {

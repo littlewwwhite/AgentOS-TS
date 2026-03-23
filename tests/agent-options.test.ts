@@ -39,7 +39,7 @@ describe("buildAgentOptions", () => {
     const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
     const prompt = opts.systemPrompt as { append: string };
     expect(prompt.append).not.toContain("Orchestrator prompt");
-    expect(prompt.append).toContain("Project workspace: /workspace/");
+    expect(prompt.append).toContain("PROJECT_DIR=/workspace");
   });
 
   it("injects workspace snapshot into agent prompt", async () => {
@@ -77,11 +77,12 @@ describe("buildAgentOptions", () => {
     expect(opts.maxTurns).toBe(200); // agent's own limit, not orchestrator's 30
   });
 
-  it("agent prompt keeps the conversation attached after completion", async () => {
+  it("agent prompt supports both interactive and dispatched modes", async () => {
     const opts = await buildAgentOptions(BASE_OPTIONS, "/agents", "/workspace", "screenwriter");
     const prompt = opts.systemPrompt as { append: string };
     expect(prompt.append).toContain("Stay in this agent conversation after finishing the task");
-    expect(prompt.append).not.toContain("return_to_main");
+    // Worker prompt includes return_to_main for orchestrator-dispatched mode
+    expect(prompt.append).toContain("return_to_main");
   });
 
   it("strips agent field from options", async () => {

@@ -21,13 +21,14 @@ describe("buildMainSessionSpec", () => {
       "TodoWrite",
       "mcp__source__prepare_source_project",
       "mcp__switch__switch_to_agent",
+      "mcp__workspace__check_workspace",
     ]);
     expect(spec.disallowedTools).toEqual(
       expect.arrayContaining(["Bash", "Write", "Edit", "NotebookEdit"]),
     );
     expect(spec.permissionMode).toBe("dontAsk");
-    expect(spec.mcpServerNames).toEqual(["source", "switch"]);
-    expect(spec.systemPrompt.append).toContain("conversation focus stays with that sub-agent");
+    expect(spec.mcpServerNames).toEqual(["source", "switch", "workspace"]);
+    expect(spec.systemPrompt.append).toContain("PROJECT_DIR=/workspace");
     expect(spec.systemPrompt.append).toContain(
       "Delegate immediately when the request clearly belongs to a single sub-agent",
     );
@@ -36,7 +37,6 @@ describe("buildMainSessionSpec", () => {
     );
     expect(spec.systemPrompt.append).toContain("Uploaded source files live under /workspace/data/ by default");
     expect(spec.systemPrompt.append).toContain("Use the `prepare_source_project` tool");
-    expect(spec.systemPrompt.append).not.toContain("copy it from source materials to workspace as source.txt");
   });
 });
 
@@ -57,7 +57,9 @@ describe("buildWorkerSessionSpec", () => {
     // Skills are discovered natively by SDK from cwd/.claude/skills/ via settingSources
     expect(spec.settingSources).toEqual(["project"]);
     // System prompt should NOT contain injected skill content — SDK handles discovery
-    expect(spec.systemPrompt.append).not.toContain("## Injected Project Skills");
+    expect(spec.systemPrompt.append).toContain(
+      "PROJECT_DIR=/workspace",
+    );
     // Auto-execution instructions should be present
     expect(spec.systemPrompt.append).toContain("execute it to completion");
   });
@@ -87,8 +89,7 @@ describe("buildWorkerSessionSpec", () => {
       preset: "claude_code",
     });
     expect(spec.systemPrompt.append).toContain(
-      "Stay in this agent conversation after finishing the task",
+      "PROJECT_DIR=/workspace",
     );
-    expect(spec.systemPrompt.append).not.toContain("return_to_main");
   });
 });

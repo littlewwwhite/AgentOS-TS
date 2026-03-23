@@ -77,8 +77,18 @@ export async function buildMainSessionSpec(input: BuildMainSessionSpecInput): Pr
 Your ONLY job is to understand user intent and dispatch to the right sub-agent.
 Do NOT perform domain work (writing scripts, generating images, etc.) yourself.
 
-Project workspace: ${input.projectPath}/
+## Project Directory
+PROJECT_DIR=${input.projectPath}
+
 Source materials: ${path.join(input.projectPath, "data")}/
+
+Standard layout:
+- Script:    \${PROJECT_DIR}/output/script.json
+- Assets:    \${PROJECT_DIR}/output/{actors,locations,props}/
+- Episodes:  \${PROJECT_DIR}/output/ep{NNN}/
+- Workspace: \${PROJECT_DIR}/workspace/
+- Draft:     \${PROJECT_DIR}/draft/
+
 ${input.workspaceDescription ?? "## Workspace\n  (empty)"}
 
 ${describeAgentList(input.agents)}
@@ -102,28 +112,29 @@ ${describeAgentList(input.agents)}
 When the user requests full video production (e.g. "把这本小说做成视频", "全量制作", "完整流水线"):
 
 1. **SCRIPT** → screenwriter (script-adapt or script-writer)
-   - Output: output/script.json
+   - Output: \${PROJECT_DIR}/output/script.json
    - Gate: check_workspace("output") confirms script.json exists
 
-2. **ASSETS** → art-director (asset-gen)
-   - Input: output/script.json
-   - Output: 02-assert/output/{characters,scene,props}/
-   - Gate: check_workspace("02-assert/output") confirms asset directories populated
+2. **ASSETS + UPLOAD** → art-director (asset-gen)
+   - Input: \${PROJECT_DIR}/output/script.json
+   - Output: \${PROJECT_DIR}/output/{actors,locations,props}/
+   - Note: use \`--create-subjects\` flag to auto-upload + create AWB subjects
+   - Gate: check_workspace("output") confirms actors/ exists with element_id
 
-3. **STORYBOARD** → art-director (kling-video-prompt)
-   - Input: script.json + asset images
-   - Output: 03-video/output/ep{XX}_shots.json
-   - Gate: check_workspace("03-video/output") confirms shots files exist
+3. **VIDEO GENERATION** → footage-producer (storyboard-generate)
+   - Input: script.json + assets
+   - Output: \${PROJECT_DIR}/output/ep{NNN}/scn{NNN}/clip{NNN}/*.mp4
+   - Note: storyboard-generate handles prompt gen + batch video gen + Gemini review internally
+   - Gate: check_workspace("output") confirms mp4 files
 
-4. **VIDEO + REVIEW** → video-producer (video-create + video-review)
-   - Input: shots.json + assets
-   - Output: 03-video/output/ep{XX}/*.mp4
-   - Note: video-producer handles review & retry internally
-   - Gate: check_workspace("03-video/output") confirms mp4 files
+4. **VIDEO EDITING** → post-processor (video-editing)
+   - Input: video clips from step 3
+   - Output: \${PROJECT_DIR}/output/editing/ep{NNN}/ep{NNN}.mp4 + ep{NNN}.xml
+   - Note: three-phase AI editing: scene analysis → loop editing → EP merge
 
-5. **POST-PRODUCTION** → post-production (music-matcher)
-   - Input: final videos
-   - Output: final/
+5. **POST-PRODUCTION** → post-processor (music-matcher + subtitle-maker)
+   - Input: edited videos
+   - Output: \${PROJECT_DIR}/output/final/
 
 After each agent returns via return_to_main, use check_workspace to verify
 outputs before dispatching the next stage. Adjust plan based on actual results.
@@ -155,8 +166,18 @@ export async function buildWorkerSessionSpec(
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
-      append: `Project workspace: ${input.projectPath}/
-All file operations must use absolute paths within this workspace.
+      append: `## Project Directory
+PROJECT_DIR=${input.projectPath}
+
+All file operations must use absolute paths.
+When SKILL.md commands reference \${PROJECT_DIR}, substitute with the absolute path above.
+
+Standard layout:
+- Script:    ${input.projectPath}/output/script.json
+- Assets:    ${input.projectPath}/output/{actors,locations,props}/
+- Episodes:  ${input.projectPath}/output/ep{NNN}/
+- Workspace: ${input.projectPath}/workspace/
+- Draft:     ${input.projectPath}/draft/
 
 ${input.workspaceDescription ?? "## Workspace\n  (empty)"}
 
