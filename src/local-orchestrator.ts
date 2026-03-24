@@ -457,6 +457,12 @@ export class LocalOrchestrator {
       isError: false,
     };
 
+    // Inject PROJECT_DIR as process env so all child processes (Claude Code
+    // subprocess → Bash → Python scripts) inherit it automatically.
+    // This is the hard guarantee — scripts read os.environ["PROJECT_DIR"]
+    // even when Claude forgets to pass --project-dir.
+    process.env.PROJECT_DIR = this.config.projectPath;
+
     const handle = runQuery({
       prompt,
       options: session.options,
