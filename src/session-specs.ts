@@ -65,7 +65,7 @@ export async function buildMainSessionSpec(input: BuildMainSessionSpecInput): Pr
     cwd: input.projectPath,
     settingSources: ["project"],
     allowedTools: ["TodoWrite", "mcp__source__prepare_source_project", "mcp__switch__switch_to_agent", "mcp__workspace__check_workspace"],
-    disallowedTools: ["Bash", "Write", "Edit", "NotebookEdit"],
+    disallowedTools: ["Bash", "Write", "Edit", "Read", "NotebookEdit"],
     // "dontAsk": auto-approve allowedTools, silently deny everything else.
     // Main runs headless in a sandbox — "default" would hang waiting for human approval.
     permissionMode: "dontAsk",
@@ -99,13 +99,13 @@ ${describeAgentList(input.agents)}
 - The main agent must not ask domain-specific follow-up questions when the delegated agent can ask them directly
 - After dispatching a pipeline stage, wait for the agent to return_to_main with a completion summary before proceeding to the next stage
 - If user mentions a skill name, map it to the owning agent via [skills: ...] tags above
-- NEVER read files under skills/ directory or run Python scripts directly
-- NEVER perform domain work yourself — always delegate to the owning sub-agent
+- NEVER read files under skills/ directory or run Python scripts directly — except \`run_production.py\` in the PRODUCTION phase
+- NEVER perform domain work yourself — always delegate creative decisions to sub-agents
 - All content in Chinese (简体中文), structural keys in English
 - Use TodoWrite to show progress on multi-step tasks
 - Uploaded source files live under ${path.join(input.projectPath, "data")}/ by default
 - Use the \`prepare_source_project\` tool to normalize a referenced novel into ${input.projectPath}/<novel-name>/source.txt before dispatch
-- Do NOT use Bash or direct file-edit tools to copy source novels yourself
+- Do NOT use Bash or direct file-edit tools to copy source novels yourself — use prepare_source_project instead
 
 ## Production Pipeline (full lifecycle)
 
@@ -115,29 +115,24 @@ When the user requests full video production (e.g. "把这本小说做成视频"
    - Output: \${PROJECT_DIR}/output/script.json
    - Gate: check_workspace("output") confirms script.json exists
 
-2. **ASSETS + UPLOAD** → art-director (asset-gen)
-   - Input: \${PROJECT_DIR}/output/script.json
-   - Output: \${PROJECT_DIR}/output/{actors,locations,props}/
-   - Note: use \`--create-subjects\` flag to auto-upload + create AWB subjects
-   - Gate: check_workspace("output") confirms actors/ exists with element_id
+2. **DIRECTOR** → director (visual design + storyboard)
+   - Input: script.json
+   - Adds to script.json: actors[].visual, locations[].visual, scenes[].shots[]
+   - shots[]: each has {actions: [...], prompt: "PART分镜文本 with {角色名} placeholders"}
+   - Gate: check_workspace("output") confirms script.json has shots fields
 
-3. **VIDEO GENERATION** → footage-producer (storyboard-generate)
-   - Input: script.json + assets
-   - Output: \${PROJECT_DIR}/output/ep{NNN}/scn{NNN}/clip{NNN}/*.mp4
-   - Note: storyboard-generate handles prompt gen + batch video gen + Gemini review internally
-   - Gate: check_workspace("output") confirms mp4 files
-
-4. **VIDEO EDITING** → post-processor (video-editing)
-   - Input: video clips from step 3
-   - Output: \${PROJECT_DIR}/output/editing/ep{NNN}/ep{NNN}.mp4 + ep{NNN}.xml
-   - Note: three-phase AI editing: scene analysis → loop editing → EP merge
-
-5. **POST-PRODUCTION** → post-processor (music-matcher + subtitle-maker)
-   - Input: edited videos
-   - Output: \${PROJECT_DIR}/output/final/
+3. **PRODUCTION** → producer (all execution in one dispatch)
+   - Input: script.json (with director's visual + shots fields)
+   - The producer runs \`run_production.py\` which handles ALL of:
+     - Asset generation: actors[].visual → template → AWB image API + entity registration
+     - Video generation: shots[].prompt → replace {name} → element_id → AWB video API
+     - Video editing (PySceneDetect + Gemini + ffmpeg)
+     - Post-production (music + subtitles)
+   - Output: \${PROJECT_DIR}/output/ep{NNN}/ep{NNN}.mp4 + final/
+   - Gate: check_workspace("output") confirms final mp4 files
 
 After each agent returns via return_to_main, use check_workspace to verify
-outputs before dispatching the next stage. Adjust plan based on actual results.
+outputs before proceeding. Adjust plan based on actual results.
 If an agent reports failure, decide whether to retry or skip.
 
 ## Planning Requirement
@@ -169,8 +164,8 @@ export async function buildWorkerSessionSpec(
       append: `## Project Directory
 PROJECT_DIR=${input.projectPath}
 
-All file operations must use absolute paths.
-When SKILL.md commands reference \${PROJECT_DIR}, substitute with the absolute path above.
+CRITICAL: ALL file paths MUST start with ${input.projectPath}. Never use relative paths.
+Environment variable PROJECT_DIR is pre-set — Python scripts read it automatically via os.environ["PROJECT_DIR"].
 
 Standard layout:
 - Script:    ${input.projectPath}/output/script.json
