@@ -115,19 +115,18 @@ When the user requests full video production (e.g. "把这本小说做成视频"
    - Output: \${PROJECT_DIR}/output/script.json
    - Gate: check_workspace("output") confirms script.json exists
 
-2. **DIRECTOR** → director (visual design + storyboard)
+2. **DIRECTOR** → director (visual design + asset generation + storyboard)
    - Input: script.json
-   - Adds to script.json: actors[].visual, locations[].visual, scenes[].shots[]
-   - shots[]: each has {actions: [...], prompt: "PART分镜文本 with {角色名} placeholders"}
-   - Gate: check_workspace("output") confirms script.json has shots fields
+   - Step 1: adds actors[].visual, locations[].visual (creative text)
+   - Step 2: generates asset images via asset-gen skill + registers AWB subjects (element_id)
+   - Step 3: references real images to write scenes[].shots[] (storyboard prompts)
+   - Gate: check_workspace("output") confirms actors/ + script.json has shots fields
 
-3. **PRODUCTION** → producer (all execution in one dispatch)
-   - Input: script.json (with director's visual + shots fields)
-   - The producer runs \`run_production.py\` which handles ALL of:
-     - Asset generation: actors[].visual → template → AWB image API + entity registration
-     - Video generation: shots[].prompt → replace {name} → element_id → AWB video API
-     - Video editing (PySceneDetect + Gemini + ffmpeg)
-     - Post-production (music + subtitles)
+3. **PRODUCTION** → producer (video gen + post-production)
+   - Input: script.json (with visual + shots + element_id — ready for execution)
+   - Video generation: shots[].prompt → replace {name} → element_id → AWB video API
+   - Video editing (PySceneDetect + Gemini + ffmpeg)
+   - Post-production (music + subtitles)
    - Output: \${PROJECT_DIR}/output/ep{NNN}/ep{NNN}.mp4 + final/
    - Gate: check_workspace("output") confirms final mp4 files
 
