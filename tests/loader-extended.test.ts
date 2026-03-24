@@ -19,14 +19,12 @@ afterEach(async () => {
 describe("loadAgentConfigs extended", () => {
   it("loads real agents directory", async () => {
     const agents = await loadAgentConfigs(path.resolve("agents"));
-    expect(Object.keys(agents).length).toBe(5);
+    expect(Object.keys(agents).length).toBe(3);
     expect(agents.screenwriter).toBeDefined();
     expect(agents.screenwriter.description).toBeTruthy();
-    expect(agents["art-director"]).toBeDefined();
-    expect(agents["footage-producer"]).toBeDefined();
-    expect(agents["post-processor"]).toBeDefined();
-    expect(agents["skill-creator"]).toBeDefined();
-  });
+    expect(agents.director).toBeDefined();
+    expect(agents.producer).toBeDefined();
+      });
 
   it("screenwriter declares scoped mcp servers in yaml", async () => {
     const agents = await loadAgentConfigs(path.resolve("agents"));

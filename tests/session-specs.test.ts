@@ -24,7 +24,7 @@ describe("buildMainSessionSpec", () => {
       "mcp__workspace__check_workspace",
     ]);
     expect(spec.disallowedTools).toEqual(
-      expect.arrayContaining(["Bash", "Write", "Edit", "NotebookEdit"]),
+      expect.arrayContaining(["Bash", "Write", "Edit", "Read", "NotebookEdit"]),
     );
     expect(spec.permissionMode).toBe("dontAsk");
     expect(spec.mcpServerNames).toEqual(["source", "switch", "workspace"]);
