@@ -547,7 +547,7 @@ export class LocalOrchestrator {
 
       if (this.mainSession && req.summary) {
         this.mainSession.queue.push({
-          prompt: `[${returned} completed] ${req.summary}`,
+          prompt: `[${returned} completed] PROJECT_DIR=${this.config.projectPath}\n${req.summary}`,
           requestId,
         });
       }
