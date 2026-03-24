@@ -16,6 +16,7 @@ import {
   createSwitchSignal,
 } from "./tools/agent-switch.js";
 import { type ToolServerName, createToolServers } from "./tools/index.js";
+import { setProjectPathCallback } from "./tools/source.js";
 import { runQuery } from "./local-runtime.js";
 import { getVikingClient } from "./viking/index.js";
 import { scanWorkspaceChanges, publishArtifacts } from "./viking/auto-publish.js";
@@ -105,6 +106,17 @@ export class LocalOrchestrator {
   // -- Lifecycle --
 
   async init(): Promise<void> {
+    // Register callback so prepare_source_project can dynamically update projectPath
+    setProjectPathCallback((newPath: string) => {
+      const resolved = path.resolve(newPath);
+      if (resolved !== this.config.projectPath) {
+        emit({ type: "info", message: `PROJECT_DIR updated: ${resolved}` });
+        this.config.projectPath = resolved;
+        // Clear cached agent sessions so they rebuild with new projectPath
+        this.agents.clear();
+      }
+    });
+
     this.baseOptions = (await buildOptions(
       this.config.projectPath,
       this.config.agentsDir,
@@ -353,21 +365,57 @@ export class LocalOrchestrator {
   }
 
   private async runWorker(session: AgentSession): Promise<void> {
+    const MAX_RETRIES = 3;
     while (true) {
       const { prompt, requestId } = await session.queue.pull();
       session.busy = true;
-      try {
-        await this.processQuery(prompt, session, requestId);
-      } catch (err) {
+      let retries = 0;
+      let lastError: Error | null = null;
+
+      while (retries <= MAX_RETRIES) {
+        try {
+          await this.processQuery(
+            retries > 0
+              ? `[auto-retry ${retries}/${MAX_RETRIES}] ${prompt}`
+              : prompt,
+            session,
+            requestId,
+          );
+          lastError = null;
+          break; // success
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          const isTransient =
+            lastError.message.includes("authentication_failed") ||
+            lastError.message.includes("exited with code");
+
+          if (isTransient && retries < MAX_RETRIES) {
+            retries++;
+            emit({
+              type: "error",
+              message: `Agent "${session.name}" crashed (${lastError.message}), auto-retry ${retries}/${MAX_RETRIES} in 5s...`,
+              agent: session.name === "main" ? undefined : session.name,
+              request_id: requestId,
+            });
+            // Reset session so next query creates a fresh subprocess
+            delete session.options.resume;
+            delete session.options.continue;
+            await new Promise((r) => setTimeout(r, 5000));
+          } else {
+            break; // non-transient or exhausted retries
+          }
+        }
+      }
+
+      if (lastError) {
         emit({
           type: "error",
-          message: err instanceof Error ? err.message : String(err),
+          message: lastError.message,
           agent: session.name === "main" ? undefined : session.name,
           request_id: requestId,
         });
-      } finally {
-        session.busy = false;
       }
+      session.busy = false;
     }
   }
 
@@ -432,6 +480,14 @@ export class LocalOrchestrator {
 
     try {
       await handle.done;
+    } catch (err) {
+      // When a switch/return signal triggered query.close(), the SDK may reject
+      // with transport errors. Swallow them — signal handling below will take over.
+      if (this.signal.switchRequest || this.signal.returnRequest) {
+        // Expected: close() aborted the query mid-stream, proceed to signal handling
+      } else {
+        throw err; // Genuine error — let runWorker's catch handle it
+      }
     } finally {
       clearInterval(pollSignal);
       session.activeQueryHandle = null;

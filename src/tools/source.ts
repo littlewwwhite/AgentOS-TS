@@ -13,6 +13,13 @@ export interface PreparedSourceProject {
   sourceTextPath: string;
 }
 
+// Callback registry for projectPath updates
+let _onProjectPathChanged: ((newPath: string) => void) | null = null;
+
+export function setProjectPathCallback(cb: (newPath: string) => void): void {
+  _onProjectPathChanged = cb;
+}
+
 function getWorkspaceRoot(sourcePath: string): string {
   const parentDir = path.dirname(sourcePath);
   return path.basename(parentDir) === "data" ? path.dirname(parentDir) : parentDir;
@@ -33,6 +40,11 @@ export async function prepareSourceProjectFile(sourcePath: string): Promise<Prep
   await fs.mkdir(projectPath, { recursive: true });
   await fs.copyFile(resolvedSourcePath, sourceTextPath);
 
+  // Notify orchestrator to update projectPath for all subsequent agent dispatches
+  if (_onProjectPathChanged) {
+    _onProjectPathChanged(projectPath);
+  }
+
   return {
     projectName,
     projectPath,
@@ -43,7 +55,7 @@ export async function prepareSourceProjectFile(sourcePath: string): Promise<Prep
 
 export const prepareSourceProject = tool(
   "prepare_source_project",
-  "Normalize an uploaded novel file into <workspace>/<novel-name>/source.txt before dispatching to screenwriter.",
+  "Normalize an uploaded novel file into <workspace>/<novel-name>/source.txt before dispatching to screenwriter. Automatically updates PROJECT_DIR for all subsequent agent dispatches.",
   { source_path: z.string() },
   async ({ source_path: sourcePath }) => {
     const prepared = await prepareSourceProjectFile(sourcePath);
