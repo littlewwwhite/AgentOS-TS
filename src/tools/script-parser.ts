@@ -85,6 +85,8 @@ const SPACE_MAP: Record<string, string> = {
 };
 
 const NON_CHARACTER = new Set(["旁白", "字幕", "系统提示"]);
+const CJK_RE = /[\u3400-\u9fff]/;
+const LATIN_RE = /[A-Za-z]/;
 
 /** Case-insensitive lookup in a name→id registry. */
 function registryLookup(registry: Record<string, string>, name: string): string | undefined {
@@ -154,6 +156,10 @@ function parsePropLine(raw: string): string[] {
 
 function fmtId(n: number): string {
   return String(n).padStart(3, "0");
+}
+
+function isStandaloneEnglishTranslation(line: string): boolean {
+  return LATIN_RE.test(line) && !CJK_RE.test(line);
 }
 
 // ---------- Catalog / Design loaders ----------
@@ -430,6 +436,19 @@ export async function parseEpisodes(
     scene.actions.push(action);
   }
 
+  function maybeReplacePreviousSpeechWithEnglishTranslation(
+    scene: ParsedScene | null,
+    line: string,
+  ): boolean {
+    if (!scene || !isStandaloneEnglishTranslation(line)) return false;
+    const lastAction = scene.actions.at(-1);
+    if (!lastAction) return false;
+    if (lastAction.type !== "dialogue" && lastAction.type !== "inner_thought") return false;
+    if (!CJK_RE.test(lastAction.content)) return false;
+    lastAction.content = line.trim();
+    return true;
+  }
+
   for (const epFile of epFiles) {
     const text = await fs.readFile(epFile, "utf-8");
     for (const line of text.split("\n")) {
@@ -607,6 +626,10 @@ export async function parseEpisodes(
         if (cid) registerSceneActor(scnCounter, cid, null);
         const emotion = m[2]?.trim() ?? undefined;
         addAction(currentScene, "dialogue", m[3].trim(), cid ?? undefined, emotion);
+        continue;
+      }
+
+      if (maybeReplacePreviousSpeechWithEnglishTranslation(currentScene, stripped)) {
         continue;
       }
     }
