@@ -1,0 +1,10 @@
+{
+  "model": "gemini-3.1-flash-lite-preview",
+  "retry_attempts": 2,
+  "retry_sleep_seconds": 3,
+  "num_prompts": {
+    "character": 4,
+    "scene": 2,
+    "prop": 2
+  }
+}

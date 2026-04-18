@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(bunx vitest:*)",
+      "Bash(git -C /Users/dingzhijian/lingjing/AgentOS-TS/agents log --oneline -5)",
+      "Bash(git -C /Users/dingzhijian/lingjing/AgentOS-TS/agents diff HEAD -- art-director/.claude/skills/asset-gen/SKILL.md)",
+      "Bash(git -C /Users/dingzhijian/lingjing/AgentOS-TS/agents diff HEAD -- \"footage-producer/.claude/skills/storyboard-generate/SKILL.md\")",
+      "Bash(git -C /Users/dingzhijian/lingjing/AgentOS-TS/agents diff HEAD -- \"post-processor/.claude/skills/video-editing/SKILL.md\")",
+      "Bash(bun test:*)",
+      "Bash(python3 _shared/awb-auth/auth.py)",
+      "Bash(bun start:*)",
+      "Bash(tee /tmp/c3-pipeline.log)",
+      "Bash(python3:*)",
+      "Bash(cp agents/_shared/awb-auth/auth.py agents/director/.claude/skills/asset-gen/scripts/auth.py)",
+      "Bash(cp agents/_shared/awb-auth/login.py agents/director/.claude/skills/asset-gen/scripts/login.py)",
+      "Bash(cd:*)",
+      "Bash(grep -Pn \"^▲.*[\\\\x{4e00}-\\\\x{9fff}]\" ep*.md)",
+      "Bash(grep -Pn \"^\\(Characters|Props|Status|Scene\\):\" ep*.md)",
+      "Bash(for f:*)",
+      "Bash(do grep:*)",
+      "Bash(while read:*)",
+      "Bash(do echo:*)",
+      "Bash(npm list:*)",
+      "Bash(npm root:*)"
+    ]
+  }
+}

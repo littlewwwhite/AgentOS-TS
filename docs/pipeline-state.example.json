@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "updated_at": "2026-03-25T12:00:00Z",
+  "current_stage": "SCRIPT",
+  "next_action": "enter VISUAL",
+  "last_error": null,
+  "stages": {
+    "SCRIPT": {
+      "status": "validated",
+      "updated_at": "2026-03-25T12:00:00Z",
+      "artifacts": [
+        "output/script.json"
+      ],
+      "notes": "script.json exists with episodes[]"
+    },
+    "VISUAL": {
+      "status": "running",
+      "updated_at": "2026-03-25T12:10:00Z",
+      "artifacts": [
+        "workspace/style.json",
+        "workspace/actors_gen.json"
+      ],
+      "notes": "style selected and prompts generated"
+    },
+    "STORYBOARD": {
+      "status": "not_started",
+      "updated_at": null,
+      "artifacts": [],
+      "notes": null
+    },
+    "VIDEO": {
+      "status": "not_started",
+      "updated_at": null,
+      "artifacts": [],
+      "notes": null
+    },
+    "EDITING": {
+      "status": "not_started",
+      "updated_at": null,
+      "artifacts": [],
+      "notes": null
+    },
+    "MUSIC": {
+      "status": "not_started",
+      "updated_at": null,
+      "artifacts": [],
+      "notes": null
+    },
+    "SUBTITLE": {
+      "status": "not_started",
+      "updated_at": null,
+      "artifacts": [],
+      "notes": null
+    }
+  },
+  "episodes": {
+    "ep001": {
+      "storyboard": {
+        "status": "not_started"
+      },
+      "video": {
+        "status": "not_started"
+      },
+      "editing": {
+        "status": "not_started"
+      },
+      "music": {
+        "status": "not_started"
+      },
+      "subtitle": {
+        "status": "not_started"
+      }
+    }
+  }
+}

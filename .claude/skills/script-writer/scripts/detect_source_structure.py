@@ -1,0 +1,1 @@
+../../script-adapt/scripts/detect_source_structure.py

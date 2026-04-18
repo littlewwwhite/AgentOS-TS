@@ -1,0 +1,58 @@
+{
+  "_doc": "字幕样式预设。font_size/outline/margin_v 以比例系数定义，运行时乘以视频高度得到实际像素。参考 ShortMax 规范。",
+  "_fonts": {
+    "zh": "Noto Sans CJK SC",
+    "zh-Hant": "Noto Sans CJK TC",
+    "ja": "Noto Sans CJK JP",
+    "ko": "Noto Sans CJK KR",
+    "en": "Noto Sans",
+    "alibaba": "Alibaba PuHuiTi",
+    "oppo": "OPPO Sans",
+    "default": "Noto Sans"
+  },
+  "_doc_params": {
+    "font_size_ratio": "字号 = 视频高度 × ratio。横版 0.028 (720p→20px)，竖版 0.022 (1920p→42px)",
+    "outline_ratio": "描边宽度 = 视频高度 × ratio。0.002 (720p→1.4px)，ShortMax 建议 2-3px",
+    "margin_v_ratio": "底距 = 视频高度 × ratio。0.05 (720p→36px)，ShortMax 建议 5-10%"
+  },
+  "horizontal": {
+    "font_size_ratio": 0.028,
+    "outline_ratio": 0.002,
+    "margin_v_ratio": 0.05,
+    "primary_colour": "&H00FFFFFF",
+    "outline_colour": "&H00000000",
+    "shadow": 0,
+    "alignment": 2,
+    "bold": true
+  },
+  "horizontal_clean": {
+    "font_size_ratio": 0.028,
+    "outline_ratio": 0,
+    "margin_v_ratio": 0.05,
+    "primary_colour": "&H00FFFFFF",
+    "outline_colour": "&H00000000",
+    "shadow": 0,
+    "alignment": 2,
+    "bold": true
+  },
+  "vertical": {
+    "font_size_ratio": 0.022,
+    "outline_ratio": 0.0015,
+    "margin_v_ratio": 0.06,
+    "primary_colour": "&H00FFFFFF",
+    "outline_colour": "&H00000000",
+    "shadow": 0,
+    "alignment": 2,
+    "bold": true
+  },
+  "vertical_clean": {
+    "font_size_ratio": 0.022,
+    "outline_ratio": 0,
+    "margin_v_ratio": 0.06,
+    "primary_colour": "&H00FFFFFF",
+    "outline_colour": "&H00000000",
+    "shadow": 0,
+    "alignment": 2,
+    "bold": true
+  }
+}

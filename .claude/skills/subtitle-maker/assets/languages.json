@@ -1,0 +1,78 @@
+{
+  "_doc": "语言配置。定义支持的语言、字体映射、ASR 指令、检测规则。",
+  "languages": {
+    "zh": {
+      "name": "简体中文",
+      "name_en": "Simplified Chinese",
+      "font": "Noto Sans CJK SC",
+      "asr_instruction": "请使用简体中文转录，使用中文标点符号。",
+      "detect": {
+        "cjk_range": ["0x4E00", "0x9FFF"],
+        "exclude_hiragana": true,
+        "exclude_hangul": true
+      }
+    },
+    "zh-Hant": {
+      "name": "繁体中文",
+      "name_en": "Traditional Chinese",
+      "font": "Noto Sans CJK TC",
+      "asr_instruction": "請使用繁體中文轉錄，使用中文標點符號。",
+      "detect": {
+        "cjk_range": ["0x4E00", "0x9FFF"],
+        "note": "繁体检测较复杂，建议手动指定或通过词汇表判断"
+      }
+    },
+    "ja": {
+      "name": "日语",
+      "name_en": "Japanese",
+      "font": "Noto Sans CJK JP",
+      "asr_instruction": "日本語で文字起こししてください。日本語の句読点を使用してください。",
+      "detect": {
+        "hiragana_range": ["0x3040", "0x309F"],
+        "katakana_range": ["0x30A0", "0x30FF"],
+        "require_kana": true
+      }
+    },
+    "ko": {
+      "name": "韩语",
+      "name_en": "Korean",
+      "font": "Noto Sans CJK KR",
+      "asr_instruction": "한국어로 전사해 주세요. 한국어 문장 부호를 사용하세요.",
+      "detect": {
+        "hangul_range": ["0xAC00", "0xD7AF"]
+      }
+    },
+    "en": {
+      "name": "英语",
+      "name_en": "English",
+      "font": "Noto Sans",
+      "asr_instruction": "Transcribe in English. Use English punctuation.",
+      "detect": {
+        "latin_range": ["0x0041", "0x007A"],
+        "latin_ratio_min": 0.7
+      }
+    },
+    "es": {
+      "name": "西班牙语",
+      "name_en": "Spanish",
+      "font": "Noto Sans",
+      "asr_instruction": "Transcriba en español. Use puntuación en español.",
+      "detect": {
+        "latin_range": ["0x0041", "0x007A"],
+        "latin_ratio_min": 0.7
+      }
+    },
+    "fr": {
+      "name": "法语",
+      "name_en": "French",
+      "font": "Noto Sans",
+      "asr_instruction": "Transcrivez en français. Utilisez la ponctuation française.",
+      "detect": {
+        "latin_range": ["0x0041", "0x007A"],
+        "latin_ratio_min": 0.7
+      }
+    }
+  },
+  "default_language": "zh",
+  "default_font": "Noto Sans"
+}

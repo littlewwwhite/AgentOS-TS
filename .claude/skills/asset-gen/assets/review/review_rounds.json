@@ -1,0 +1,14 @@
+{
+  "character": {
+    "max_review_rounds": 2,
+    "max_ref_review_rounds": 2
+  },
+  "scene": {
+    "max_review_rounds": 2,
+    "max_ref_review_rounds": 2
+  },
+  "prop": {
+    "max_review_rounds": 2,
+    "max_ref_review_rounds": 2
+  }
+}
