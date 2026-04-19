@@ -42,14 +42,21 @@ function Shell() {
         </span>
         <div className="ml-auto flex items-center gap-3">
           <ProjectSwitcher selected={name} onSelect={setName} />
-          <span
-            className="w-[6px] h-[6px]"
-            style={{ backgroundColor: statusColor }}
-            aria-hidden
-          />
-          <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-subtle)]">
-            {statusLabel}
-          </span>
+          <div
+            className="flex items-center gap-3"
+            role="status"
+            aria-live="polite"
+            aria-label={`Connection: ${statusLabel}`}
+          >
+            <span
+              className="w-[6px] h-[6px]"
+              style={{ backgroundColor: statusColor }}
+              aria-hidden
+            />
+            <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-subtle)]">
+              {statusLabel}
+            </span>
+          </div>
         </div>
       </header>
       <div className="flex-1 flex overflow-hidden">
