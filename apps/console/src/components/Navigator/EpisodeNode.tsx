@@ -60,8 +60,7 @@ export function EpisodeNode({ epId, ep, unread, markSeen }: Props) {
         return (
           <div
             key={sub.label}
-            onClick={() => { openPath(p, resolveView(p), `${epId}/${sub.label}`, { pinned: false }); markSeen?.(p); }}
-            onDoubleClick={() => { openPath(p, resolveView(p), `${epId}/${sub.label}`, { pinned: true }); markSeen?.(p); }}
+            onClick={() => { openPath(p, resolveView(p), `${epId}/${sub.label}`, { pinned: true }); markSeen?.(p); }}
             className="pl-10 pr-3 py-1 text-[12px] text-[oklch(55%_0_0)] hover:bg-[oklch(14%_0_0)] cursor-pointer flex items-center gap-2"
           >
             {sub.label}
