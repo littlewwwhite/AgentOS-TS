@@ -22,29 +22,44 @@ function Shell() {
     send(message, name ?? undefined, sessionId ?? undefined);
   }
 
+  const statusLabel = !isConnected ? "OFFLINE" : isStreaming ? "STREAMING" : "CONNECTED";
+  const statusColor = !isConnected
+    ? "var(--color-ink-faint)"
+    : isStreaming
+      ? "var(--color-run)"
+      : "var(--color-ok)";
+
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <header className="shrink-0 flex items-center gap-4 px-5 py-3 border-b border-[oklch(20%_0_0)]">
-        <span className="text-sm font-semibold text-[oklch(65%_0.18_270)]">AgentOS</span>
-        <ProjectSwitcher selected={name} onSelect={setName} />
-        <div className="ml-auto flex items-center gap-2">
+    <div className="h-screen flex flex-col overflow-hidden bg-[var(--color-paper)]">
+      <header className="shrink-0 flex items-baseline gap-6 px-8 py-5 border-b border-[var(--color-rule-strong)]">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-ink)]">
+          AgentOS
+        </span>
+        <span className="font-serif text-[28px] leading-none text-[var(--color-ink)]">
+          {name ?? (
+            <span className="italic text-[var(--color-ink-faint)]">— select project</span>
+          )}
+        </span>
+        <div className="ml-auto flex items-center gap-3">
+          <ProjectSwitcher selected={name} onSelect={setName} />
           <span
-            className="w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: isConnected ? "oklch(70% 0.18 145)" : "oklch(42% 0 0)" }}
+            className="w-[6px] h-[6px]"
+            style={{ backgroundColor: statusColor }}
+            aria-hidden
           />
-          <span className="text-[11px] text-[oklch(42%_0_0)]">
-            {isConnected ? "已连接" : "连接中"}
+          <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-subtle)]">
+            {statusLabel}
           </span>
         </div>
       </header>
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-[260px] shrink-0 border-r border-[oklch(20%_0_0)] flex flex-col overflow-hidden">
+        <div className="w-[260px] shrink-0 border-r border-[var(--color-rule)] flex flex-col overflow-hidden">
           <Navigator />
         </div>
         <div className="flex-1 overflow-hidden">
           <Viewer />
         </div>
-        <div className="w-[380px] shrink-0 border-l border-[oklch(20%_0_0)] flex flex-col overflow-hidden">
+        <div className="w-[380px] shrink-0 border-l border-[var(--color-rule)] flex flex-col overflow-hidden">
           <ChatPane messages={messages} isStreaming={isStreaming} isConnected={isConnected} onSend={handleSend} />
         </div>
       </div>
