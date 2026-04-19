@@ -1,10 +1,18 @@
-import { runAgent } from "./src/orchestrator";
+import { createAgentSession, type AgentSession } from "./src/orchestrator";
+import type { ServerWebSocket } from "bun";
 import { join, normalize } from "path";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { rename, unlink } from "fs/promises";
 import { safeResolve, walkTree, mimeFor } from "./src/serverUtils";
 
 const WORKSPACE = join(import.meta.dir, "../../workspace");
+
+interface WsSlot {
+  project: string | null;
+  session: AgentSession | null;
+}
+
+const sessions = new WeakMap<ServerWebSocket<unknown>, WsSlot>();
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -179,11 +187,12 @@ Bun.serve({
   },
 
   websocket: {
-    open(ws) {
+    open(ws: ServerWebSocket<unknown>) {
+      sessions.set(ws, { project: null, session: null });
       console.log("WS connected");
     },
 
-    async message(ws, raw) {
+    async message(ws: ServerWebSocket<unknown>, raw: string | Buffer) {
       let payload: { message: string; project?: string; sessionId?: string };
       try {
         payload = JSON.parse(raw as string);
@@ -192,16 +201,46 @@ Bun.serve({
         return;
       }
 
-      try {
-        for await (const event of runAgent(payload.message, payload.project, payload.sessionId)) {
-          ws.send(JSON.stringify(event));
-        }
-      } catch (err) {
-        ws.send(JSON.stringify({ type: "error", message: String(err) }));
+      let slot = sessions.get(ws);
+      if (!slot) {
+        slot = { project: null, session: null };
+        sessions.set(ws, slot);
       }
+
+      const incomingProject = payload.project ?? null;
+      if (slot.session && slot.project !== incomingProject) {
+        await slot.session.close();
+        slot.session = null;
+        slot.project = null;
+      }
+
+      if (!slot.session) {
+        const session = createAgentSession(payload.project, payload.sessionId);
+        slot.session = session;
+        slot.project = incomingProject;
+        void (async () => {
+          try {
+            for await (const event of session.events) {
+              if (ws.readyState !== WebSocket.OPEN) break;
+              ws.send(JSON.stringify(event));
+            }
+          } catch (err) {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "error", message: String(err) }));
+            }
+          }
+        })();
+      }
+
+      slot.session.push(payload.message);
     },
 
-    close(ws) {
+    async close(ws: ServerWebSocket<unknown>) {
+      const slot = sessions.get(ws);
+      if (slot?.session) {
+        await slot.session.close();
+      }
+      sessions.delete(ws);
       console.log("WS disconnected");
     },
   },
