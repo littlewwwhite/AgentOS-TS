@@ -401,7 +401,7 @@ function ClipInfoPanel({
   const scriptBeats = splitStoryboardText(source, dict);
 
   return (
-    <aside className={`min-w-0 bg-[var(--color-paper)] border border-[var(--color-rule)] px-5 py-4 space-y-4 ${className}`.trim()}>
+    <aside className={`min-w-0 bg-[var(--color-paper)] border border-[var(--color-rule)] px-3 py-3 space-y-4 ${className}`.trim()}>
       <div className="flex flex-wrap gap-2">
         {summary.environment && <MetaBadge label="场域" value={summary.environment} />}
         {summary.location && <MetaBadge label="场景" value={summary.location} />}
@@ -727,8 +727,8 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
         ) : (
           <div className="grid flex-1 min-h-0 grid-rows-[minmax(0,1fr)_240px] gap-4">
             <div
-              className="grid min-h-0 gap-4 overflow-hidden"
-              style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(220px, 360px)" }}
+              className="grid min-h-0 gap-3 overflow-hidden"
+              style={{ gridTemplateColumns: "minmax(0, 1fr) clamp(180px, 34%, 320px)" }}
             >
               <PreviewStage
                 projectName={projectName}
