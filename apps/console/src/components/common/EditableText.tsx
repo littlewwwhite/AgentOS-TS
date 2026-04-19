@@ -137,6 +137,10 @@ export function EditableText({
   }, []);
 
   const isEmpty = value.length === 0;
+  const singleLinePlaceholderWidth =
+    !multiline && isEmpty && placeholder
+      ? `${Math.max(Array.from(placeholder).length, 2)}em`
+      : undefined;
 
   const sharedProps = {
     contentEditable: true as const,
@@ -157,6 +161,7 @@ export function EditableText({
       className={["relative inline-block min-h-[20px]", className]
         .filter(Boolean)
         .join(" ")}
+      style={singleLinePlaceholderWidth ? { minWidth: singleLinePlaceholderWidth } : undefined}
     >
       {/* Placeholder ghost — pointer-events:none, hidden when non-empty */}
       {placeholder && (
@@ -165,6 +170,7 @@ export function EditableText({
           className={[
             "pointer-events-none absolute inset-0",
             "italic select-none transition-opacity duration-150",
+            multiline ? "whitespace-pre-wrap" : "whitespace-nowrap",
             isEmpty ? "opacity-100" : "opacity-0",
           ].join(" ")}
           style={{ color: "var(--color-ink-faint)" }}

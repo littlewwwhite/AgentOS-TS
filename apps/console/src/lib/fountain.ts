@@ -54,6 +54,24 @@ export interface ScriptJson {
   episodes?: ReadonlyArray<ScriptEpisode>;
 }
 
+type RefRecord = {
+  id?: string;
+  name?: string;
+  aliases?: ReadonlyArray<string>;
+  actor_id?: string;
+  actor_name?: string;
+  location_id?: string;
+  location_name?: string;
+  prop_id?: string;
+  prop_name?: string;
+};
+
+type RefSource = {
+  actors?: ReadonlyArray<RefRecord>;
+  locations?: ReadonlyArray<RefRecord>;
+  props?: ReadonlyArray<RefRecord>;
+};
+
 // ---------------------------------------------------------------------------
 // Token types
 // ---------------------------------------------------------------------------
@@ -121,35 +139,45 @@ export type FountainToken =
  * e.g. dict["act_001"] === "白行风"
  * Missing fields are skipped silently; never throws.
  */
-export function buildRefDict(script: ScriptJson): Record<string, string> {
+export function buildRefDict(script: RefSource): Record<string, string> {
   const dict: Record<string, string> = {};
 
   for (const actor of script.actors ?? []) {
-    if (actor.actor_id && actor.actor_name) {
-      dict[actor.actor_id] = actor.actor_name;
-    }
+    indexRef(dict, actor.actor_id ?? actor.id, actor.actor_name ?? actor.name, actor.aliases);
   }
 
   for (const loc of script.locations ?? []) {
-    if (loc.location_id && loc.location_name) {
-      dict[loc.location_id] = loc.location_name;
-    }
+    indexRef(dict, loc.location_id ?? loc.id, loc.location_name ?? loc.name, loc.aliases);
   }
 
   for (const prop of script.props ?? []) {
-    if (prop.prop_id && prop.prop_name) {
-      dict[prop.prop_id] = prop.prop_name;
-    }
+    indexRef(dict, prop.prop_id ?? prop.id, prop.prop_name ?? prop.name, prop.aliases);
   }
 
   return dict;
+}
+
+function indexRef(
+  dict: Record<string, string>,
+  id: string | undefined,
+  name: string | undefined,
+  aliases: ReadonlyArray<string> | undefined,
+) {
+  if (!name) return;
+  if (id) dict[id] = name;
+  dict[name] = name;
+  for (const alias of aliases ?? []) {
+    if (alias) dict[alias] = name;
+  }
 }
 
 // ---------------------------------------------------------------------------
 // resolveRefs
 // ---------------------------------------------------------------------------
 
-const REF_PATTERN = /\{(act|loc|prp)_[A-Za-z0-9_]+\}/g;
+const REF_PATTERN = /\{\{([^{}\n]+)\}\}|\{([^{}\n]+)\}/g;
+const ID_REF_PATTERN = /^(act|loc|prp|st)_[A-Za-z0-9_]+$/;
+const HUMAN_NAME_PATTERN = /[\u3400-\u9fff]/;
 
 /**
  * Replace {act_XXX} / {loc_XXX} / {prp_XXX} tokens in text with their
@@ -159,10 +187,12 @@ export function resolveRefs(
   text: string,
   dict: Record<string, string>,
 ): string {
-  return text.replace(REF_PATTERN, (match) => {
-    // match looks like "{act_001}" — strip braces to get the key
-    const key = match.slice(1, -1);
-    return dict[key] ?? match;
+  return text.replace(REF_PATTERN, (match, doubleKey: string | undefined, singleKey: string | undefined) => {
+    const key = (doubleKey ?? singleKey ?? "").trim();
+    if (!key) return match;
+    if (dict[key]) return dict[key];
+    if (!ID_REF_PATTERN.test(key) && HUMAN_NAME_PATTERN.test(key)) return key;
+    return match;
   });
 }
 

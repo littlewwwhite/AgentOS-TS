@@ -1,6 +1,12 @@
 // apps/console/src/hooks/useWebSocket.ts
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, WsEvent } from "../types";
+import {
+  buildChatHistoryKey,
+  readStoredChatMessages,
+  resolveRestoredChatMessages,
+  writeStoredChatMessages,
+} from "../lib/chatHistory";
 
 function uid() {
   return Math.random().toString(36).slice(2);
@@ -17,12 +23,17 @@ export function useWebSocket(
   onToolResult?: (path: string) => void,
   onResult?: () => void,
   onSession?: (sessionId: string | null) => void,
+  project?: string | null,
+  sessionId?: string | null,
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const streamingIdRef = useRef<string | null>(null);
+  const activeProjectRef = useRef<string | null>(null);
+  const activeSessionRef = useRef<string | null>(null);
+  const activeHistoryKeyRef = useRef<string | null>(null);
 
   const onToolResultRef = useRef(onToolResult);
   const onResultRef = useRef(onResult);
@@ -32,11 +43,55 @@ export function useWebSocket(
   useEffect(() => { onSessionRef.current = onSession; }, [onSession]);
 
   useEffect(() => {
+    const currentProject = project ?? null;
+    const currentSession = sessionId ?? null;
+    const nextKey = currentProject && sessionId ? buildChatHistoryKey(currentProject, sessionId) : null;
+    const projectChanged = activeProjectRef.current !== currentProject;
+    const sessionChanged = activeSessionRef.current !== currentSession;
+    const bootstrappingSession = !projectChanged && activeSessionRef.current === null && currentSession !== null;
+    const sameKey = activeHistoryKeyRef.current === nextKey;
+
+    activeProjectRef.current = currentProject;
+    activeSessionRef.current = currentSession;
+    activeHistoryKeyRef.current = nextKey;
+
+    if (!currentProject) {
+      setMessages([]);
+      return;
+    }
+
+    if (!sessionId) {
+      if (projectChanged) setMessages([]);
+      return;
+    }
+
+    const restored = readStoredChatMessages(currentProject, sessionId);
+    setMessages((prev) =>
+      resolveRestoredChatMessages(prev, restored, {
+        sameKey,
+        projectChanged,
+        sessionChanged,
+        bootstrappingSession,
+      }),
+    );
+  }, [project, sessionId]);
+
+  useEffect(() => {
+    if (!project || !sessionId) return;
+    writeStoredChatMessages(project, sessionId, messages);
+  }, [messages, project, sessionId]);
+
+  useEffect(() => {
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => setIsConnected(true);
-    ws.onclose = () => setIsConnected(false);
+    ws.onclose = () => {
+      setIsConnected(false);
+      setIsStreaming(false);
+      streamingIdRef.current = null;
+      setMessages((prev) => prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)));
+    };
 
     ws.onmessage = (e) => {
       const event: WsEvent = JSON.parse(e.data);
@@ -58,18 +113,20 @@ export function useWebSocket(
 
       if (event.type === "text") {
         setIsStreaming(true);
+        const targetId = streamingIdRef.current ?? uid();
+        if (!streamingIdRef.current) {
+          streamingIdRef.current = targetId;
+        }
         setMessages((prev) => {
-          const existingId = streamingIdRef.current;
-          if (existingId) {
+          const hasTarget = prev.some((m) => m.id === targetId);
+          if (hasTarget) {
             return prev.map((m) =>
-              m.id === existingId ? { ...m, content: m.content + event.text } : m
+              m.id === targetId ? { ...m, content: m.content + event.text } : m
             );
           }
-          const newId = uid();
-          streamingIdRef.current = newId;
           return [
             ...prev,
-            { id: newId, role: "assistant", content: event.text, isStreaming: true, timestamp: Date.now() },
+            { id: targetId, role: "assistant", content: event.text, isStreaming: true, timestamp: Date.now() },
           ];
         });
       }
@@ -143,6 +200,7 @@ export function useWebSocket(
         content: message,
         timestamp: Date.now(),
       };
+      setIsStreaming(true);
       setMessages((prev) => [...prev, userMsg]);
       wsRef.current.send(JSON.stringify({ message, project, sessionId }));
     },

@@ -1,66 +1,139 @@
-# AgentOS-TS Lite
+# AgentOS-TS
 
-一个面向 `Claude Code` / `Codex` 直接使用的本地 skill pack 仓库。
+一个给导演、编剧、制片团队使用的 **AI 视频生产技能仓库**。
 
-这个 `lite` 分支不再维护以下能力：
+你可以把它理解成一套已经整理好的“创作助手能力包”：
 
-- `bun start` 启动的 CLI
-- TypeScript runtime / orchestrator / task queue
-- Web 前端与 HTTP server
-- sandbox / E2B / OpenViking 相关运行时壳层
+- 能做题材调研
+- 能写剧本 / 改编剧本
+- 能生成角色、场景、道具视觉资产
+- 能写分镜和镜头脚本
+- 能批量生成视频
+- 能做剪辑、配乐、字幕
 
-保留内容只围绕一件事组织：让模型在当前仓库里直接发现并执行视频生产相关 skills。
+它不是传统意义上要先启动的 Web 平台，也不是一个等你运行 `npm run dev` 的应用；它更像是一个给 `Claude Code` / `Codex` 直接读取和执行的创作工作台。
 
-## 保留结构
+## 这个项目能帮你做什么
+
+如果你手里已经有小说、故事梗概、人物设定，或者已经有部分视频素材，这个仓库可以帮助你把内容继续往下推进。
+
+典型流程如下：
 
 ```text
-.claude/skills/          # Skills 事实源
-.agents/skills -> ../.claude/skills
-AGENTS.md                # Codex 仓库约束
-CLAUDE.md                # Claude Code 仓库级指令
-docs/                    # 少量 skill 维护文档
-data/                    # 可选输入素材
-workspace/               # 可选项目工作目录
+题材调研 → 剧本创作 / 改编 → 角色与场景资产 → 分镜 → 视频生成 → 剪辑 → 配乐 → 字幕 → 成片
 ```
 
-## 当前 Skills
+适合的工作场景：
 
-- `wangwen` — 数据支撑型灵感调研（Stage 0）
-- `script-adapt`
-- `script-writer`
-- `asset-gen`
-- `storyboard`
-- `video-gen`
-- `video-editing`
-- `music-matcher`
-- `subtitle-maker`
+- 导演想快速验证一个题材值不值得做
+- 编剧想把小说改成结构化剧本
+- 团队想把剧本进一步推进到分镜和视频样片
+- 后期想继续补配乐、字幕和成片交付
 
-这些 skills 的正文、引用资料和脚本都位于 [`.claude/skills`](/Users/dingzhijian/lingjing/AgentOS-TS/.claude/skills)。
+## 内置能力
 
-## 使用方式
+| 阶段 | 能力名 | 作用 |
+| --- | --- | --- |
+| 调研 | `wangwen` | 看什么题材在涨、找对标、看改编机会 |
+| 剧本 | `script-adapt` | 把长篇小说改成剧本 |
+| 剧本 | `script-writer` | 原创剧本，或把短篇内容扩写成长剧 |
+| 视觉 | `asset-gen` | 生成角色、场景、道具视觉资产 |
+| 分镜 | `storyboard` | 生成分镜、镜头脚本、对白结构 |
+| 视频 | `video-gen` | 根据剧本 / 分镜批量生成视频 |
+| 剪辑 | `video-editing` | 对视频做筛选、拼接、优化 |
+| 配乐 | `music-matcher` | 自动匹配背景音乐并合成 |
+| 字幕 | `subtitle-maker` | 生成字幕、烧录字幕、导出字幕轨 |
 
-### Claude Code
+## 怎么使用
 
-把当前仓库作为工作目录打开即可。仓库级指令见 [CLAUDE.md](/Users/dingzhijian/lingjing/AgentOS-TS/CLAUDE.md)。
+### 第一步：打开仓库
 
-### Codex
+把这个仓库交给 `Claude Code` 或 `Codex` 打开即可。
 
-Codex 使用 [`.agents/skills`](/Users/dingzhijian/lingjing/AgentOS-TS/.agents/skills) 作为 repo-local skills 入口；该目录只是适配层，事实源仍是 [`.claude/skills`](/Users/dingzhijian/lingjing/AgentOS-TS/.claude/skills)。
+你不需要先研究代码结构，也不需要先启动一个服务。
 
-仓库约束见 [AGENTS.md](/Users/dingzhijian/lingjing/AgentOS-TS/AGENTS.md)。
+### 第二步：准备你的素材
 
-## 环境说明
+常见输入包括：
 
-仓库不再要求安装 Bun / Node 运行主程序。
+- 小说原文
+- 故事大纲
+- 人物小传
+- 现有剧本
+- 已经生成的视频片段
 
-是否需要额外环境，取决于你实际调用的 skill：
+你可以把素材放在：
 
-- Python 类 skill 脚本优先使用 `uv` 或 `python3`
-- 部分视频/字幕/配乐链路依赖外部 API key、FFmpeg、Gemini、AWB 等环境
-- 具体前置条件以各 skill 自身的 `SKILL.md` 与 `scripts/` 说明为准
+- `data/`：适合放原始文本、参考资料
+- `workspace/{项目名}/`：适合放某个项目的完整过程文件
 
-## 维护原则
+### 第三步：直接说你的目标
 
-- 新增或修改 skill，只改 [`.claude/skills`](/Users/dingzhijian/lingjing/AgentOS-TS/.claude/skills)
-- 不要恢复 `src/`、`tests/`、`web/`、`server` 这类应用壳层，除非仓库目标再次变回“可启动应用”
-- 优先保持仓库是“技能内容仓库”而不是“运行时平台仓库”
+最简单的方式，就是直接用自然语言告诉 Agent 你要做什么。
+
+例如：
+
+- `帮我看看最近什么女性向漫剧题材更容易起量`
+- `把 data/我的小说.txt 改编成适合短剧的剧本`
+- `根据现有剧本，先生成角色和场景设定图`
+- `继续把这个项目往下做成分镜`
+- `把第 1 集视频做剪辑，再补配乐和字幕`
+- `从故事梗概开始，帮我一路做到可交付样片`
+
+## 结果会放在哪里
+
+如果你按项目方式使用，通常每个项目会放在：
+
+```text
+workspace/{name}/
+├── source.txt
+├── pipeline-state.json
+├── draft/
+└── output/
+```
+
+你最关心的内容通常在：
+
+- `workspace/{name}/output/`
+
+这里会逐步放出剧本、资产图、分镜结果、视频、字幕等产物。
+
+## 适合谁看
+
+这份仓库更偏向内容生产团队，而不是工程团队。
+
+如果你是下面这些角色，会比较适合直接使用：
+
+- 导演
+- 编剧
+- 制片
+- 视频后期
+- AI 内容制作团队
+
+## 你不需要关心的事
+
+对大多数导演、编剧来说，下面这些不是第一优先级：
+
+- 不需要先启动前端页面
+- 不需要先理解完整代码结构
+- 不需要自己手工串联所有流程
+
+你更需要做的是：
+
+- 提供清晰的素材
+- 说明你现在处于哪个阶段
+- 直接告诉 Agent 你下一步想要什么结果
+
+## 仓库说明（给需要维护的人）
+
+- `./.claude/skills/` 是能力定义的事实源
+- `./.agents/skills/` 是给 `Codex` 用的入口映射
+- `AGENTS.md` 和 `CLAUDE.md` 是仓库级工作说明
+- `workspace/` 是项目工作目录
+- `docs/` 里放的是少量规范文档
+
+如果你只是来使用它做项目，可以先忽略这些细节。
+
+## 一句话理解
+
+> 这是一个让导演和编剧可以直接调用 AI 创作能力、把内容一路推进到视频成片的仓库。

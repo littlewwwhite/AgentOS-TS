@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import type { PipelineState, TreeNode } from "../types";
+import { buildProjectRouteSearch, readProjectRoute } from "../lib/sessionRoute";
 
 interface ProjectContextValue {
   name: string | null;
@@ -50,8 +51,9 @@ function writeStoredSession(name: string, id: string | null) {
 }
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
-  const [name, setName] = useState<string | null>(null);
-  const [sessionId, setSessionIdState] = useState<string | null>(null);
+  const routeRef = useRef(readProjectRoute(typeof window === "undefined" ? "" : window.location.search));
+  const [name, setNameState] = useState<string | null>(routeRef.current.project);
+  const [sessionId, setSessionIdState] = useState<string | null>(routeRef.current.sessionId);
   const [state, setState] = useState<PipelineState | null>(null);
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -70,7 +72,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     abortRef.current?.abort();
     unreadRef.current.clear();
     setUnreadTick((t) => t + 1);
-    setSessionIdState(readStoredSession(name));
+    const route = readProjectRoute(typeof window === "undefined" ? "" : window.location.search);
+    const nextSessionId = route.project === name && route.sessionId
+      ? route.sessionId
+      : readStoredSession(name);
+    setSessionIdState(nextSessionId);
+    writeStoredSession(name, nextSessionId);
     const ac = new AbortController();
     abortRef.current = ac;
     setIsLoading(true);
@@ -94,6 +101,30 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     if (debounceRef.current !== undefined) clearTimeout(debounceRef.current);
     abortRef.current?.abort();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = () => {
+      const route = readProjectRoute(window.location.search);
+      setNameState(route.project);
+      setSessionIdState(route.sessionId);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const nextSearch = buildProjectRouteSearch(window.location.search, {
+      project: name,
+      sessionId,
+    });
+    const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (nextUrl !== currentUrl) {
+      window.history.replaceState(window.history.state, "", nextUrl);
+    }
+  }, [name, sessionId]);
 
   const refresh = useCallback(() => {
     if (!name) return;
@@ -121,6 +152,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const [unreadTick, setUnreadTick] = useState(0);
   const unreadRef = useRef<Map<string, number>>(new Map());
+
+  const setName = useCallback((nextName: string | null) => {
+    setNameState(nextName);
+    setSessionIdState((current) => (nextName === name ? current : null));
+  }, [name]);
 
   const noteToolPath = useCallback((path: string) => {
     const m = unreadRef.current;

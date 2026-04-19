@@ -49,7 +49,7 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend }: Props) 
                 <button
                   key={s}
                   onClick={() => onSend(s)}
-                  disabled={!isConnected}
+                  disabled={!isConnected || isStreaming}
                   className="text-left text-[13px] text-[var(--color-ink-muted)] hover:text-[var(--color-accent)] py-1 border-b border-[var(--color-rule)] hover:border-[var(--color-accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <span className="font-mono text-[10px] text-[var(--color-ink-faint)] mr-2">→</span>

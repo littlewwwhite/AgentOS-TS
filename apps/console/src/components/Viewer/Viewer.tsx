@@ -65,8 +65,13 @@ export function Viewer() {
     );
   }
   const displayPath = active.path ? `workspace/${name}/${active.path}` : `workspace/${name}`;
+  const contentClass =
+    active.view === "storyboard"
+      ? "flex-1 min-h-0 overflow-hidden overscroll-none"
+      : "flex-1 overflow-auto";
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full min-h-0 flex flex-col">
       <TabBar />
       <div className="flex items-center justify-between px-6 py-2 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] shrink-0">
         <span className="font-mono text-[11px] text-[var(--color-ink-muted)] truncate">
@@ -76,7 +81,7 @@ export function Viewer() {
           {kindLabel(active.view)}
         </span>
       </div>
-      <div className="flex-1 overflow-auto">
+      <div className={contentClass}>
         {renderView(active.view, name, active.path)}
       </div>
     </div>

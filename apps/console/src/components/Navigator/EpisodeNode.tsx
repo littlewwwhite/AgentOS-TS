@@ -41,13 +41,22 @@ export function EpisodeNode({ epId, ep, unread, markSeen }: Props) {
   const [open, setOpen] = useState(false);
   const { openPath } = useTabs();
   const worstStatus = rollupStatus(ep);
+  const defaultPath = SUBS[0].path(epId);
+
+  function openDefaultStoryboard() {
+    openPath(defaultPath, resolveView(defaultPath), `${epId}/${SUBS[0].label}`, { pinned: true });
+    markSeen?.(defaultPath);
+  }
 
   return (
     <div>
       <div
         className="flex items-center gap-2 px-4 py-1.5 text-[13px] text-[var(--color-ink-muted)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
         onClick={() => {
-          if (!open) markSeen?.(`output/${epId}`);
+          if (!open) {
+            markSeen?.(`output/${epId}`);
+            openDefaultStoryboard();
+          }
           setOpen(!open);
         }}
       >
