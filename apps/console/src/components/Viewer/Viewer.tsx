@@ -8,6 +8,8 @@ import { ImageView } from "./views/ImageView";
 import { VideoView } from "./views/VideoView";
 import { AssetGalleryView } from "./views/AssetGalleryView";
 import { VideoGridView } from "./views/VideoGridView";
+import { ScriptView } from "./views/ScriptView";
+import { StoryboardView } from "./views/StoryboardView";
 import type { ViewKind } from "../../types";
 
 function renderView(kind: ViewKind, projectName: string, path: string) {
@@ -18,6 +20,9 @@ function renderView(kind: ViewKind, projectName: string, path: string) {
     case "video": return <VideoView projectName={projectName} path={path} />;
     case "asset-gallery": return <AssetGalleryView projectName={projectName} path={path} />;
     case "video-grid": return <VideoGridView projectName={projectName} path={path} />;
+    case "script": return <ScriptView projectName={projectName} path={path} />;
+    case "storyboard": return <StoryboardView projectName={projectName} path={path} />;
+    case "inspiration": return <JsonView projectName={projectName} path={path} />;
     default: return <FallbackView projectName={projectName} path={path} />;
   }
 }
