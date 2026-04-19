@@ -36,31 +36,38 @@ export function AssetGalleryView({ projectName, path }: Props) {
   }, [tree, path]);
 
   if (groups.length === 0) {
-    return <div className="p-6 text-sm text-[oklch(42%_0_0)]">未发现图片资产</div>;
+    return <div className="px-10 py-10 font-serif italic text-[15px] text-[var(--color-ink-faint)]">No image assets found.</div>;
   }
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="px-10 py-8 space-y-12">
       {groups.map((g) => (
-        <div key={g.id}>
-          <div className="text-[12px] text-[oklch(55%_0_0)] mb-2">{g.id} · {g.files.length}</div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2">
+        <section key={g.id}>
+          <header className="flex items-baseline gap-3 mb-4">
+            <h2 className="font-serif text-[20px] italic text-[var(--color-ink)]">{g.id}</h2>
+            <span className="font-mono text-[11px] text-[var(--color-ink-subtle)] uppercase tracking-wider">
+              {g.files.length} items
+            </span>
+          </header>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-5">
             {g.files.map((f) => (
-              <button
-                key={f.path}
-                onClick={() => setLightbox(f.path)}
-                className="aspect-square overflow-hidden rounded bg-[oklch(14%_0_0)] hover:ring-1 hover:ring-[oklch(65%_0.18_270)]"
-              >
-                <img src={fileUrl(projectName, f.path)} alt={f.name} className="w-full h-full object-cover" loading="lazy" />
-              </button>
+              <figure key={f.path} className="space-y-2">
+                <button
+                  onClick={() => setLightbox(f.path)}
+                  className="block w-full aspect-square overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunk)] hover:border-[var(--color-accent)] transition-colors"
+                >
+                  <img src={fileUrl(projectName, f.path)} alt={f.name} className="w-full h-full object-cover" loading="lazy" />
+                </button>
+                <figcaption className="font-mono text-[11px] text-[var(--color-ink-subtle)] truncate">{f.name}</figcaption>
+              </figure>
             ))}
           </div>
-        </div>
+        </section>
       ))}
       {lightbox && (
         <div
           onClick={() => setLightbox(null)}
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 cursor-zoom-out"
+          className="fixed inset-0 bg-[var(--color-ink)]/90 flex items-center justify-center z-50 cursor-zoom-out"
         >
           <img src={fileUrl(projectName, lightbox)} alt="" className="max-w-[90vw] max-h-[90vh] object-contain" />
         </div>

@@ -21,28 +21,33 @@ export function VideoGridView({ projectName, path }: Props) {
   }, [tree, path]);
 
   if (videos.length === 0) {
-    return <div className="p-6 text-sm text-[oklch(42%_0_0)]">未发现视频文件</div>;
+    return <div className="px-10 py-10 font-serif italic text-[15px] text-[var(--color-ink-faint)]">No video files found.</div>;
   }
 
   return (
-    <div className="p-4">
-      <div className="text-[12px] text-[oklch(55%_0_0)] mb-2">{videos.length} 个视频</div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+    <div className="px-10 py-8">
+      <header className="flex items-baseline gap-3 mb-4">
+        <span className="font-mono text-[11px] text-[var(--color-ink-subtle)] uppercase tracking-wider">
+          {videos.length} clips
+        </span>
+      </header>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-5">
         {videos.map((v) => (
-          <button
-            key={v.path}
-            onClick={() => setLightbox(v.path)}
-            className="aspect-video rounded overflow-hidden bg-black hover:ring-1 hover:ring-[oklch(65%_0.18_270)] text-left"
-          >
-            <video src={fileUrl(projectName, v.path) + "#t=0.5"} preload="metadata" muted className="w-full h-full object-cover" />
-            <div className="px-2 py-1 text-[11px] text-[oklch(55%_0_0)] truncate">{v.path}</div>
-          </button>
+          <figure key={v.path} className="space-y-2">
+            <button
+              onClick={() => setLightbox(v.path)}
+              className="block w-full aspect-video overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunk)] hover:border-[var(--color-accent)] transition-colors"
+            >
+              <video src={fileUrl(projectName, v.path) + "#t=0.5"} preload="metadata" muted className="w-full h-full object-cover" />
+            </button>
+            <figcaption className="font-mono text-[11px] text-[var(--color-ink-subtle)] truncate">{v.path}</figcaption>
+          </figure>
         ))}
       </div>
       {lightbox && (
         <div
           onClick={() => setLightbox(null)}
-          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 cursor-zoom-out p-8"
+          className="fixed inset-0 bg-[var(--color-ink)]/95 flex items-center justify-center z-50 cursor-zoom-out p-8"
         >
           <video
             src={fileUrl(projectName, lightbox)}
