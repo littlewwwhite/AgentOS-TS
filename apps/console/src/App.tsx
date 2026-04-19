@@ -66,7 +66,7 @@ function Shell() {
         <div className="flex-1 overflow-hidden">
           <Viewer />
         </div>
-        <div className="w-[380px] shrink-0 border-l border-[var(--color-rule)] flex flex-col overflow-hidden">
+        <div className="w-[480px] shrink-0 border-l border-[var(--color-rule)] flex flex-col overflow-hidden">
           <ChatPane messages={messages} isStreaming={isStreaming} isConnected={isConnected} onSend={handleSend} />
         </div>
       </div>
