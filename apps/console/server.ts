@@ -117,7 +117,7 @@ Bun.serve({
     },
 
     async message(ws, raw) {
-      let payload: { message: string; project?: string };
+      let payload: { message: string; project?: string; sessionId?: string };
       try {
         payload = JSON.parse(raw as string);
       } catch {
@@ -126,7 +126,7 @@ Bun.serve({
       }
 
       try {
-        for await (const event of runAgent(payload.message)) {
+        for await (const event of runAgent(payload.message, payload.project, payload.sessionId)) {
           ws.send(JSON.stringify(event));
         }
       } catch (err) {
