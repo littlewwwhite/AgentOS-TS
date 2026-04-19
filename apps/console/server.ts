@@ -1,6 +1,7 @@
 import { runAgent } from "./src/orchestrator";
-import { join } from "path";
+import { join, normalize } from "path";
 import { existsSync, readdirSync, readFileSync } from "fs";
+import { rename, unlink } from "fs/promises";
 import { safeResolve, walkTree, mimeFor } from "./src/serverUtils";
 
 const WORKSPACE = join(import.meta.dir, "../../workspace");
@@ -34,7 +35,7 @@ function scanProjects() {
 Bun.serve({
   port: 3001,
 
-  fetch(req, server) {
+  async fetch(req, server) {
     const url = new URL(req.url);
 
     // WebSocket 升级
@@ -106,6 +107,72 @@ Bun.serve({
       return new Response(file, {
         headers: { "Content-Type": mime, "Accept-Ranges": "bytes" },
       });
+    }
+
+    // PUT /api/file?project=<name>&path=<relPath>  — write artifact back to disk
+    if (url.pathname === "/api/file" && (req.method === "PUT" || req.method === "OPTIONS")) {
+      const corsWithMethods = {
+        ...CORS,
+        "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      };
+
+      if (req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsWithMethods });
+      }
+
+      // Validate query params
+      const project = url.searchParams.get("project");
+      const relPath = url.searchParams.get("path");
+      if (!project || !relPath) {
+        return Response.json({ error: "missing project or path param" }, { status: 400, headers: corsWithMethods });
+      }
+
+      // Validate project exists
+      const projectRoot = join(WORKSPACE, project);
+      if (!existsSync(projectRoot)) {
+        return Response.json({ error: "project not found" }, { status: 404, headers: corsWithMethods });
+      }
+
+      // Normalize and whitelist: must match output/**/*.json
+      const normalized = normalize(relPath).replace(/\\/g, "/");
+      if (!/^output\/.+\.json$/.test(normalized)) {
+        return Response.json({ error: "path not allowed: must be under output/ and end in .json" }, { status: 403, headers: corsWithMethods });
+      }
+
+      // Safe resolve (throws on path escape)
+      let abs: string;
+      try {
+        abs = safeResolve(projectRoot, normalized);
+      } catch {
+        return Response.json({ error: "path escape detected" }, { status: 403, headers: corsWithMethods });
+      }
+
+      // Parent directory must already exist
+      const parentDir = join(abs, "..");
+      if (!existsSync(parentDir)) {
+        return Response.json({ error: "parent directory does not exist" }, { status: 404, headers: corsWithMethods });
+      }
+
+      // Read body and validate JSON
+      const text = await req.text();
+      try {
+        JSON.parse(text);
+      } catch {
+        return Response.json({ error: "request body is not valid JSON" }, { status: 409, headers: corsWithMethods });
+      }
+
+      // Atomic write: tmp → rename
+      const tmp = `${abs}.tmp-${Math.random().toString(36).slice(2)}`;
+      try {
+        await Bun.write(tmp, text);
+        await rename(tmp, abs);
+      } catch (err) {
+        try { await unlink(tmp); } catch { /* ignore cleanup failure */ }
+        return Response.json({ error: `write failed: ${String(err)}` }, { status: 500, headers: corsWithMethods });
+      }
+
+      return Response.json({ ok: true, bytes: Buffer.byteLength(text, "utf8") }, { status: 200, headers: corsWithMethods });
     }
 
     return Response.json({ error: "not found" }, { status: 404, headers: CORS });
