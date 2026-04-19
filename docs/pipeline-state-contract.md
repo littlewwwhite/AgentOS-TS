@@ -34,6 +34,7 @@
 
 固定 stage 名称：
 
+- `INSPIRATION`
 - `SCRIPT`
 - `VISUAL`
 - `STORYBOARD`
@@ -100,6 +101,7 @@
 
 ## Minimum Artifact Mapping
 
+- `INSPIRATION` → `output/inspiration.json`
 - `SCRIPT` → `output/script.json`
 - `VISUAL` → `output/actors/actors.json`, `output/locations/locations.json`, `output/props/props.json`
 - `STORYBOARD` → `output/script.json` and optional `workspace/storyboard/ep{NNN}.shots.json`

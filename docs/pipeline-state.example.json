@@ -5,6 +5,14 @@
   "next_action": "enter VISUAL",
   "last_error": null,
   "stages": {
+    "INSPIRATION": {
+      "status": "validated",
+      "updated_at": "2026-04-19T09:00:00Z",
+      "artifacts": [
+        "output/inspiration.json"
+      ],
+      "notes": "data-backed inspiration brief passed self-check"
+    },
     "SCRIPT": {
       "status": "validated",
       "updated_at": "2026-03-25T12:00:00Z",
