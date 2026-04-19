@@ -6,6 +6,7 @@ import { JsonView } from "./views/JsonView";
 import { TextView } from "./views/TextView";
 import { ImageView } from "./views/ImageView";
 import { VideoView } from "./views/VideoView";
+import { AssetGalleryView } from "./views/AssetGalleryView";
 import type { ViewKind } from "../../types";
 
 function renderView(kind: ViewKind, projectName: string, path: string) {
@@ -14,6 +15,7 @@ function renderView(kind: ViewKind, projectName: string, path: string) {
     case "text": return <TextView projectName={projectName} path={path} />;
     case "image": return <ImageView projectName={projectName} path={path} />;
     case "video": return <VideoView projectName={projectName} path={path} />;
+    case "asset-gallery": return <AssetGalleryView projectName={projectName} path={path} />;
     default: return <FallbackView projectName={projectName} path={path} />;
   }
 }
