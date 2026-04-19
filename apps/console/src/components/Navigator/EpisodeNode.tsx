@@ -8,6 +8,7 @@ interface Props {
   epId: string;
   ep: EpisodeState | undefined;
   unread: Map<string, number>;
+  markSeen?: (path: string) => void;
 }
 
 const SUBS: Array<{ label: string; path: (epId: string) => string }> = [
@@ -36,7 +37,7 @@ function rollupStatus(ep: EpisodeState | undefined): StageStatus {
   return STATUS_PRIORITY.find((p) => present.includes(p)) ?? "not_started";
 }
 
-export function EpisodeNode({ epId, ep, unread }: Props) {
+export function EpisodeNode({ epId, ep, unread, markSeen }: Props) {
   const [open, setOpen] = useState(false);
   const { openPath } = useTabs();
   const worstStatus = rollupStatus(ep);
@@ -45,7 +46,10 @@ export function EpisodeNode({ epId, ep, unread }: Props) {
     <div>
       <div
         className="flex items-center gap-2 px-3 py-1 text-[12px] text-[oklch(75%_0_0)] hover:bg-[oklch(14%_0_0)] cursor-pointer"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) markSeen?.(`output/${epId}`);
+          setOpen(!open);
+        }}
       >
         <span className="text-[oklch(42%_0_0)] text-[10px]">{open ? "▾" : "▸"}</span>
         <span>{epId}</span>
@@ -56,8 +60,8 @@ export function EpisodeNode({ epId, ep, unread }: Props) {
         return (
           <div
             key={sub.label}
-            onClick={() => openPath(p, resolveView(p), `${epId}/${sub.label}`, { pinned: false })}
-            onDoubleClick={() => openPath(p, resolveView(p), `${epId}/${sub.label}`, { pinned: true })}
+            onClick={() => { openPath(p, resolveView(p), `${epId}/${sub.label}`, { pinned: false }); markSeen?.(p); }}
+            onDoubleClick={() => { openPath(p, resolveView(p), `${epId}/${sub.label}`, { pinned: true }); markSeen?.(p); }}
             className="pl-10 pr-3 py-1 text-[12px] text-[oklch(55%_0_0)] hover:bg-[oklch(14%_0_0)] cursor-pointer flex items-center gap-2"
           >
             {sub.label}

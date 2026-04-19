@@ -6,12 +6,27 @@ function uid() {
   return Math.random().toString(36).slice(2);
 }
 
-export function useWebSocket(url: string) {
+function extractPath(content: unknown): string | undefined {
+  if (typeof content !== "string" || !content) return undefined;
+  const m = content.match(/(?:workspace\/[^/\s"]+\/)?((?:output|draft)\/[^\s")]+)/);
+  return m?.[1];
+}
+
+export function useWebSocket(
+  url: string,
+  onToolResult?: (path: string) => void,
+  onResult?: () => void,
+) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const streamingIdRef = useRef<string | null>(null);
+
+  const onToolResultRef = useRef(onToolResult);
+  const onResultRef = useRef(onResult);
+  useEffect(() => { onToolResultRef.current = onToolResult; }, [onToolResult]);
+  useEffect(() => { onResultRef.current = onResult; }, [onResult]);
 
   useEffect(() => {
     const ws = new WebSocket(url);
@@ -68,6 +83,9 @@ export function useWebSocket(url: string) {
             m.id === `tool_${event.id}` ? { ...m, toolOutput: event.output, isStreaming: false } : m
           )
         );
+        const p = extractPath(event.output);
+        if (p) onToolResultRef.current?.(p);
+        onResultRef.current?.();
       }
 
       if (event.type === "result") {
@@ -76,6 +94,7 @@ export function useWebSocket(url: string) {
         setMessages((prev) =>
           prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
         );
+        onResultRef.current?.();
       }
 
       if (event.type === "error") {

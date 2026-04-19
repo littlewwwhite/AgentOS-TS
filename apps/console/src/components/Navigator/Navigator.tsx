@@ -6,11 +6,8 @@ import { StageNode } from "./StageNode";
 import { EpisodeNode } from "./EpisodeNode";
 
 export function Navigator() {
-  const { name, state, tree } = useProject();
+  const { name, state, tree, unread, markSeen } = useProject();
   const { openPath } = useTabs();
-
-  const unread = useMemo(() => new Map<string, number>(), []);
-  // weak-follow counters are mutated in Task 15; hold the map reference here.
 
   const paths = useMemo(() => new Set(tree.map((n) => n.path)), [tree]);
   const prefixes = useMemo(() => {
@@ -48,16 +45,18 @@ export function Navigator() {
         <StageNode
           label="Inspiration"
           status={state?.stages?.INSPIRATION?.status}
-          onClick={() => open("output/inspiration.json", "Inspiration", false)}
-          onDoubleClick={() => open("output/inspiration.json", "Inspiration", true)}
+          unread={unread.get("output/inspiration.json")}
+          onClick={() => { open("output/inspiration.json", "Inspiration", false); markSeen("output/inspiration.json"); }}
+          onDoubleClick={() => { open("output/inspiration.json", "Inspiration", true); markSeen("output/inspiration.json"); }}
         />
       )}
       {has("output/script.json") && (
         <StageNode
           label="Script"
           status={state?.stages?.SCRIPT?.status}
-          onClick={() => open("output/script.json", "Script", false)}
-          onDoubleClick={() => open("output/script.json", "Script", true)}
+          unread={unread.get("output/script.json")}
+          onClick={() => { open("output/script.json", "Script", false); markSeen("output/script.json"); }}
+          onDoubleClick={() => { open("output/script.json", "Script", true); markSeen("output/script.json"); }}
         />
       )}
       {(hasPrefix("output/actors") || hasPrefix("output/locations") || hasPrefix("output/props")) && (
@@ -65,22 +64,22 @@ export function Navigator() {
           {hasPrefix("output/actors") && (
             <div
               className="pl-8 pr-3 py-1 text-[12px] text-[oklch(65%_0_0)] hover:bg-[oklch(14%_0_0)] cursor-pointer"
-              onClick={() => open("output/actors", "Actors", false)}
-              onDoubleClick={() => open("output/actors", "Actors", true)}
+              onClick={() => { open("output/actors", "Actors", false); markSeen("output/actors"); }}
+              onDoubleClick={() => { open("output/actors", "Actors", true); markSeen("output/actors"); }}
             >Actors</div>
           )}
           {hasPrefix("output/locations") && (
             <div
               className="pl-8 pr-3 py-1 text-[12px] text-[oklch(65%_0_0)] hover:bg-[oklch(14%_0_0)] cursor-pointer"
-              onClick={() => open("output/locations", "Locations", false)}
-              onDoubleClick={() => open("output/locations", "Locations", true)}
+              onClick={() => { open("output/locations", "Locations", false); markSeen("output/locations"); }}
+              onDoubleClick={() => { open("output/locations", "Locations", true); markSeen("output/locations"); }}
             >Locations</div>
           )}
           {hasPrefix("output/props") && (
             <div
               className="pl-8 pr-3 py-1 text-[12px] text-[oklch(65%_0_0)] hover:bg-[oklch(14%_0_0)] cursor-pointer"
-              onClick={() => open("output/props", "Props", false)}
-              onDoubleClick={() => open("output/props", "Props", true)}
+              onClick={() => { open("output/props", "Props", false); markSeen("output/props"); }}
+              onDoubleClick={() => { open("output/props", "Props", true); markSeen("output/props"); }}
             >Props</div>
           )}
         </StageNode>
@@ -88,15 +87,16 @@ export function Navigator() {
       {epIds.length > 0 && (
         <StageNode label="Episodes" expandable defaultOpen>
           {epIds.map((id) => (
-            <EpisodeNode key={id} epId={id} ep={state?.episodes?.[id]} unread={unread} />
+            <EpisodeNode key={id} epId={id} ep={state?.episodes?.[id]} unread={unread} markSeen={markSeen} />
           ))}
         </StageNode>
       )}
       {has("draft") && (
         <StageNode
           label="Draft"
-          onClick={() => open("draft", "Draft", false)}
-          onDoubleClick={() => open("draft", "Draft", true)}
+          unread={unread.get("draft")}
+          onClick={() => { open("draft", "Draft", false); markSeen("draft"); }}
+          onDoubleClick={() => { open("draft", "Draft", true); markSeen("draft"); }}
         />
       )}
     </div>

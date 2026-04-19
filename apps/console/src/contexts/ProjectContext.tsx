@@ -6,8 +6,11 @@ interface ProjectContextValue {
   state: PipelineState | null;
   tree: TreeNode[];
   isLoading: boolean;
+  unread: Map<string, number>;
   setName: (name: string | null) => void;
   refresh: () => void;
+  noteToolPath: (path: string) => void;
+  markSeen: (path: string) => void;
 }
 
 const Ctx = createContext<ProjectContextValue | null>(null);
@@ -35,9 +38,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     if (!name) {
       setState(null);
       setTree([]);
+      unreadRef.current.clear();
+      setUnreadTick((t) => t + 1);
       return;
     }
     abortRef.current?.abort();
+    unreadRef.current.clear();
+    setUnreadTick((t) => t + 1);
     const ac = new AbortController();
     abortRef.current = ac;
     setIsLoading(true);
@@ -86,9 +93,38 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     }, 500);
   }, [name]);
 
+  const [unreadTick, setUnreadTick] = useState(0);
+  const unreadRef = useRef<Map<string, number>>(new Map());
+
+  const noteToolPath = useCallback((path: string) => {
+    const m = unreadRef.current;
+    m.set(path, (m.get(path) ?? 0) + 1);
+    const parts = path.split("/");
+    for (let i = parts.length - 1; i > 0; i--) {
+      const pre = parts.slice(0, i).join("/");
+      m.set(pre, (m.get(pre) ?? 0) + 1);
+    }
+    setUnreadTick((t) => t + 1);
+  }, []);
+
+  const markSeen = useCallback((path: string) => {
+    const m = unreadRef.current;
+    const count = m.get(path) ?? 0;
+    if (count === 0) return;
+    m.delete(path);
+    const parts = path.split("/");
+    for (let i = parts.length - 1; i > 0; i--) {
+      const pre = parts.slice(0, i).join("/");
+      const c = m.get(pre) ?? 0;
+      if (c <= count) m.delete(pre);
+      else m.set(pre, c - count);
+    }
+    setUnreadTick((t) => t + 1);
+  }, []);
+
   const value = useMemo(
-    () => ({ name, state, tree, isLoading, setName, refresh }),
-    [name, state, tree, isLoading, refresh],
+    () => ({ name, state, tree, isLoading, unread: unreadRef.current, setName, refresh, noteToolPath, markSeen }),
+    [name, state, tree, isLoading, refresh, noteToolPath, markSeen, unreadTick],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
