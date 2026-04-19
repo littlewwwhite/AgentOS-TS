@@ -61,6 +61,7 @@ export async function* runReal(
       options: {
         cwd,
         permissionMode: "bypassPermissions",
+        allowDangerouslySkipPermissions: true,
         ...(sessionId ? { resume: sessionId } : {}),
       },
     })) {
