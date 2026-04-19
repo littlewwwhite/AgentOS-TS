@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { EpisodeState } from "../../types";
+import type { EpisodeState, StageStatus } from "../../types";
 import { StatusBadge } from "./StatusBadge";
 import { useTabs } from "../../contexts/TabsContext";
 import { resolveView } from "../Viewer/resolveView";
@@ -18,14 +18,28 @@ const SUBS: Array<{ label: string; path: (epId: string) => string }> = [
   { label: "Final", path: (id) => `output/${id}/final` },
 ];
 
+const STATUS_PRIORITY: StageStatus[] = [
+  "failed",
+  "running",
+  "partial",
+  "not_started",
+  "completed",
+  "validated",
+];
+
+function rollupStatus(ep: EpisodeState | undefined): StageStatus {
+  if (!ep) return "not_started";
+  const present = [ep.storyboard, ep.video, ep.editing, ep.music, ep.subtitle]
+    .map((s) => s?.status)
+    .filter((s): s is StageStatus => !!s);
+  if (present.length === 0) return "not_started";
+  return STATUS_PRIORITY.find((p) => present.includes(p)) ?? "not_started";
+}
+
 export function EpisodeNode({ epId, ep, unread }: Props) {
   const [open, setOpen] = useState(false);
   const { openPath } = useTabs();
-  const worstStatus =
-    ep?.video?.status === "failed" || ep?.storyboard?.status === "failed" ? "failed" :
-    ep?.video?.status === "running" ? "running" :
-    ep?.video?.status === "completed" ? "completed" :
-    ep?.storyboard?.status ?? "not_started";
+  const worstStatus = rollupStatus(ep);
 
   return (
     <div>
@@ -35,7 +49,7 @@ export function EpisodeNode({ epId, ep, unread }: Props) {
       >
         <span className="text-[oklch(42%_0_0)] text-[10px]">{open ? "▾" : "▸"}</span>
         <span>{epId}</span>
-        <StatusBadge status={worstStatus as never} unread={unread.get(`output/${epId}`)} />
+        <StatusBadge status={worstStatus} unread={unread.get(`output/${epId}`)} />
       </div>
       {open && SUBS.map((sub) => {
         const p = sub.path(epId);

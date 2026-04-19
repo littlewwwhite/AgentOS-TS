@@ -25,20 +25,21 @@ export function OverviewView() {
       <div>
         <h1 className="text-xl font-semibold text-[oklch(85%_0_0)]">{name}</h1>
         <div className="text-[12px] text-[oklch(55%_0_0)] mt-1">
-          当前阶段 {state.current_stage} · 下一步 {state.next_action}
+          当前阶段 {state.current_stage ?? "—"} · 下一步 {state.next_action ?? "—"}
         </div>
         {state.last_error && <div className="text-[12px] text-red-400 mt-1">上次错误：{state.last_error}</div>}
       </div>
       <div>
         <div className="text-[12px] text-[oklch(55%_0_0)] mb-2">阶段状态</div>
         <table className="w-full text-[12px]">
+          <caption className="sr-only">Pipeline stage status</caption>
           <tbody>
             {STAGES.map((s) => {
               const status = state.stages?.[s]?.status ?? "not_started";
               const artifacts = state.stages?.[s]?.artifacts ?? [];
               return (
                 <tr key={s} className="border-t border-[oklch(20%_0_0)]">
-                  <td className="py-2 text-[oklch(75%_0_0)] w-40">{s}</td>
+                  <th scope="row" className="py-2 text-[oklch(75%_0_0)] w-40 text-left font-normal">{s}</th>
                   <td className="py-2">
                     <span
                       className="px-2 py-0.5 rounded text-[11px]"

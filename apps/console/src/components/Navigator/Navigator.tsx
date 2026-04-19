@@ -12,24 +12,35 @@ export function Navigator() {
   const unread = useMemo(() => new Map<string, number>(), []);
   // weak-follow counters are mutated in Task 15; hold the map reference here.
 
+  const paths = useMemo(() => new Set(tree.map((n) => n.path)), [tree]);
+  const prefixes = useMemo(() => {
+    const s = new Set<string>();
+    for (const n of tree) {
+      const segs = n.path.split("/");
+      for (let i = 1; i < segs.length; i++) s.add(segs.slice(0, i).join("/"));
+    }
+    return s;
+  }, [tree]);
+
   if (!name) {
     return <div className="p-3 text-[11px] text-[oklch(42%_0_0)]">请选择项目</div>;
   }
 
-  const has = (path: string) => tree.some((n) => n.path === path);
-  const hasPrefix = (prefix: string) => tree.some((n) => n.path.startsWith(prefix + "/"));
+  const has = (path: string) => paths.has(path);
+  const hasPrefix = (prefix: string) => prefixes.has(prefix);
 
   function open(path: string, title: string, pinned: boolean) {
     openPath(path, resolveView(path), title, { pinned });
   }
 
   const epIds = Object.keys(state?.episodes ?? {}).sort();
+  const anyRunning = Object.values(state?.stages ?? {}).some((s) => s.status === "running");
 
   return (
     <div className="py-2 overflow-y-auto h-full text-[13px]">
       <StageNode
         label="Overview"
-        status={state?.current_stage ? "running" : undefined}
+        status={anyRunning ? "running" : undefined}
         onClick={() => open("", "Overview", false)}
         onDoubleClick={() => open("", "Overview", true)}
       />
