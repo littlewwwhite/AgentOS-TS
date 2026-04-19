@@ -56,9 +56,39 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-// Canvas 视图类型（由 tool_result 路径路由决定）
-export type CanvasView =
-  | { type: "pipeline"; projectName: string }
-  | { type: "images"; paths: string[] }
-  | { type: "text"; content: string; label: string }
-  | { type: "idle" };
+// Navigator tree node (from server tree endpoint)
+export interface TreeNode {
+  path: string;
+  name: string;
+  type: "dir" | "file";
+  size?: number;
+  mtime?: number;
+}
+
+// Viewer tab state
+export type ViewKind =
+  | "overview"
+  | "script"
+  | "storyboard"
+  | "inspiration"
+  | "asset-gallery"
+  | "video-grid"
+  | "image"
+  | "video"
+  | "text"
+  | "json"
+  | "fallback";
+
+export interface Tab {
+  id: string;           // unique
+  path: string;         // project-relative; "" means project root
+  title: string;        // display in tab bar
+  view: ViewKind;       // resolved kind
+  pinned: boolean;      // true = user-pinned; false = preview tab
+}
+
+// Weak-follow signal from WS tool_result
+export interface FollowSignal {
+  path: string;         // project-relative
+  timestamp: number;
+}
