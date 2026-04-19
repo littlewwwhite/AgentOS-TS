@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  /* Base — warm neutrals, tinted toward brand hue 85 */
+  --color-paper:       oklch(97% 0.008 85);
+  --color-paper-soft:  oklch(94% 0.010 85);
+  --color-paper-sunk:  oklch(92% 0.012 85);
+  --color-rule:        oklch(88% 0.010 85);
+  --color-rule-strong: oklch(80% 0.012 85);
+
+  /* Ink scale */
+  --color-ink:         oklch(22% 0.012 85);
+  --color-ink-muted:   oklch(48% 0.010 85);
+  --color-ink-subtle:  oklch(65% 0.008 85);
+  --color-ink-faint:   oklch(78% 0.008 85);
+
+  /* Accents */
+  --color-accent:      oklch(48% 0.17 32);
+  --color-accent-soft: oklch(94% 0.04 32);
+
+  /* Functional status */
+  --color-run:   oklch(58% 0.14 220);
+  --color-ok:    oklch(52% 0.11 145);
+  --color-warn:  oklch(66% 0.13 75);
+  --color-err:   oklch(52% 0.18 25);
+
+  /* Type */
+  --font-serif: "Fraunces Variable", "EB Garamond", Georgia, serif;
+  --font-sans:  "Geist Variable", "Inter", system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono Variable", ui-monospace, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-ink);
+}
