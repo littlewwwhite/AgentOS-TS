@@ -1,4 +1,3 @@
-// apps/console/src/components/Chat/ChatPane.tsx
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../../types";
 import { MessageBubble } from "./MessageBubble";
@@ -33,37 +32,41 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend }: Props) 
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
+    <div className="flex flex-col h-full bg-[var(--color-paper)]">
+      <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-6">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full gap-6 text-center">
-            <p className="text-[oklch(40%_0_0)] text-sm">向 AgentOS 发送指令</p>
-            <div className="flex flex-col gap-2 w-full max-w-xs">
+          <div className="flex flex-col justify-center h-full gap-8">
+            <div>
+              <div className="font-serif text-[28px] leading-tight text-[var(--color-ink)]">
+                Say something.
+              </div>
+              <div className="mt-2 text-[13px] text-[var(--color-ink-muted)] leading-relaxed">
+                Instruct the agent in natural language. The session persists across messages.
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => onSend(s)}
                   disabled={!isConnected}
-                  className="text-left text-[13px] text-[oklch(55%_0_0)] border border-[oklch(22%_0_0)] rounded-xl px-4 py-2.5 hover:border-[oklch(30%_0_0)] hover:text-[oklch(70%_0_0)] transition-colors disabled:opacity-40"
+                  className="text-left text-[13px] text-[var(--color-ink-muted)] hover:text-[var(--color-accent)] py-1 border-b border-[var(--color-rule)] hover:border-[var(--color-accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
+                  <span className="font-mono text-[10px] text-[var(--color-ink-faint)] mr-2">→</span>
                   {s}
                 </button>
               ))}
             </div>
           </div>
         )}
-
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} />
+        {messages.map((m, i) => (
+          <MessageBubble key={m.id} message={m} isFirst={i === 0} />
         ))}
         <div ref={bottomRef} />
       </div>
-
-      {/* 输入框 */}
       <form
         onSubmit={handleSubmit}
-        className="border-t border-[oklch(20%_0_0)] px-4 py-3 flex gap-2 items-end"
+        className="border-t border-[var(--color-rule-strong)] px-5 py-4 flex gap-3 items-end bg-[var(--color-paper)]"
       >
         <textarea
           value={input}
@@ -74,17 +77,17 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend }: Props) 
               handleSubmit(e as unknown as React.FormEvent);
             }
           }}
-          placeholder={isConnected ? "输入指令…" : "连接中…"}
+          placeholder={isConnected ? "Message…" : "Connecting…"}
           disabled={!isConnected || isStreaming}
           rows={1}
-          className="flex-1 bg-[oklch(18%_0_0)] border border-[oklch(25%_0_0)] rounded-xl px-4 py-2.5 text-sm text-[oklch(88%_0_0)] placeholder-[oklch(38%_0_0)] resize-none focus:outline-none focus:border-[oklch(65%_0.18_270)] disabled:opacity-40 transition-colors"
+          className="flex-1 bg-[var(--color-paper-sunk)] border-0 rounded-[2px] px-3 py-2.5 text-[13px] text-[var(--color-ink)] placeholder-[var(--color-ink-faint)] resize-none focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-40"
         />
         <button
           type="submit"
           disabled={!input.trim() || isStreaming || !isConnected}
-          className="shrink-0 bg-[oklch(65%_0.18_270)] hover:bg-[oklch(70%_0.18_270)] text-white rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="shrink-0 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-accent)] hover:text-[var(--color-ink)] px-2 py-2.5 disabled:text-[var(--color-ink-faint)] disabled:cursor-not-allowed transition-colors"
         >
-          发送
+          Send
         </button>
       </form>
     </div>
