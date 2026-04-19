@@ -22,30 +22,31 @@ export function TabsProvider({ children }: { children: ReactNode }) {
 
   const openPath = useCallback((path: string, view: ViewKind, title: string, opts: OpenOpts = {}) => {
     const pinned = opts.pinned ?? false;
+    // Generate id and resolve target id BEFORE calling setters so strict-mode
+    // double-invocation of the setTabs updater can't produce divergent ids.
+    const newId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let targetId = newId;
     setTabs((prev) => {
       const existing = prev.find((t) => t.path === path);
       if (existing) {
-        setActiveId(existing.id);
+        targetId = existing.id;
         if (pinned && !existing.pinned) {
           return prev.map((t) => (t.id === existing.id ? { ...t, pinned: true } : t));
         }
         return prev;
       }
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const next: Tab = { id, path, title, view, pinned };
-      // Replace existing unpinned preview tab when new tab is also unpinned
+      const next: Tab = { id: newId, path, title, view, pinned };
       if (!pinned) {
         const previewIdx = prev.findIndex((t) => !t.pinned);
         if (previewIdx >= 0) {
           const copy = [...prev];
           copy[previewIdx] = next;
-          setActiveId(id);
           return copy;
         }
       }
-      setActiveId(id);
       return [...prev, next];
     });
+    setActiveId(targetId);
   }, []);
 
   const pinActive = useCallback(() => {
