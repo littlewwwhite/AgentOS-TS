@@ -5,6 +5,7 @@ import { ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { TabsProvider } from "./contexts/TabsContext";
 import { ProjectSwitcher } from "./components/Navigator/ProjectSwitcher";
 import { Viewer } from "./components/Viewer/Viewer";
+import { Navigator } from "./components/Navigator/Navigator";
 
 const WS_URL = "ws://localhost:3001/ws";
 
@@ -33,7 +34,7 @@ function Shell() {
       </header>
       <div className="flex-1 flex overflow-hidden">
         <div className="w-[260px] shrink-0 border-r border-[oklch(20%_0_0)] flex flex-col overflow-hidden">
-          <div className="p-3 text-[11px] text-[oklch(42%_0_0)]">Navigator — 待实现</div>
+          <Navigator />
         </div>
         <div className="flex-1 overflow-hidden">
           <Viewer />
