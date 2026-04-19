@@ -10,11 +10,16 @@ import { Navigator } from "./components/Navigator/Navigator";
 const WS_URL = "ws://localhost:3001/ws";
 
 function Shell() {
-  const { name, setName, noteToolPath, refresh } = useProject();
-  const { messages, isConnected, isStreaming, send } = useWebSocket(WS_URL, noteToolPath, refresh);
+  const { name, setName, noteToolPath, refresh, sessionId, setSessionId } = useProject();
+  const { messages, isConnected, isStreaming, send } = useWebSocket(
+    WS_URL,
+    noteToolPath,
+    refresh,
+    setSessionId,
+  );
 
   function handleSend(message: string) {
-    send(message, name ?? undefined);
+    send(message, name ?? undefined, sessionId ?? undefined);
   }
 
   return (
