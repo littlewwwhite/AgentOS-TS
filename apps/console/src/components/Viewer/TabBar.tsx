@@ -4,24 +4,38 @@ export function TabBar() {
   const { tabs, activeId, activate, closeTab } = useTabs();
   if (tabs.length === 0) return null;
   return (
-    <div className="flex items-center gap-0 border-b border-[oklch(20%_0_0)] overflow-x-auto shrink-0">
+    <div className="flex items-stretch border-b border-[var(--color-rule)] overflow-x-auto shrink-0 bg-[var(--color-paper)]">
       {tabs.map((t) => {
         const active = t.id === activeId;
         return (
           <div
             key={t.id}
             onClick={() => activate(t.id)}
-            className={
-              "flex items-center gap-2 px-3 py-2 text-[12px] border-r border-[oklch(20%_0_0)] cursor-pointer whitespace-nowrap " +
-              (active ? "bg-[oklch(18%_0_0)] text-[oklch(85%_0_0)]" : "text-[oklch(55%_0_0)] hover:text-[oklch(75%_0_0)]")
-            }
+            className="group flex items-center gap-2 px-4 h-9 cursor-pointer whitespace-nowrap relative"
           >
-            <span className={t.pinned ? "" : "italic"}>{t.title}</span>
+            <span
+              className={
+                "text-[12px] " +
+                (active
+                  ? "font-serif italic text-[13px] text-[var(--color-ink)]"
+                  : "text-[var(--color-ink-muted)] group-hover:text-[var(--color-ink)] " +
+                    (t.pinned ? "" : "italic"))
+              }
+            >
+              {t.title}
+            </span>
             <button
               onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}
-              className="text-[oklch(42%_0_0)] hover:text-[oklch(75%_0_0)]"
-              aria-label="关闭"
+              className="font-mono text-[10px] text-[var(--color-ink-faint)] opacity-0 group-hover:opacity-100 hover:text-[var(--color-ink)] transition-opacity"
+              aria-label="Close"
             >×</button>
+            {active && (
+              <span
+                className="absolute left-4 right-4 bottom-0 h-[2px]"
+                style={{ backgroundColor: "var(--color-accent)" }}
+                aria-hidden
+              />
+            )}
           </div>
         );
       })}
