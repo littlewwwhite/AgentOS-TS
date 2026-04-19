@@ -1,4 +1,3 @@
-// apps/console/src/components/Navigator/ProjectSwitcher.tsx
 import { useEffect, useState } from "react";
 import type { Project } from "../../types";
 
@@ -18,15 +17,20 @@ export function ProjectSwitcher({ selected, onSelect }: Props) {
     return () => { alive = false; };
   }, []);
   return (
-    <select
-      value={selected ?? ""}
-      onChange={(e) => onSelect(e.target.value || null)}
-      className="bg-transparent border border-[oklch(20%_0_0)] rounded px-2 py-1 text-[12px] text-[oklch(75%_0_0)]"
-    >
-      <option value="">选择项目</option>
-      {projects.map((p) => (
-        <option key={p.name} value={p.name}>{p.name}</option>
-      ))}
-    </select>
+    <label className="flex items-baseline gap-2 cursor-pointer">
+      <select
+        value={selected ?? ""}
+        onChange={(e) => onSelect(e.target.value || null)}
+        className="bg-transparent border-0 border-b border-[var(--color-rule-strong)] rounded-none px-1 py-0.5 text-[12px] text-[var(--color-ink)] focus:outline-none focus:border-[var(--color-accent)]"
+      >
+        <option value="">— project —</option>
+        {projects.map((p) => (
+          <option key={p.name} value={p.name}>{p.name}</option>
+        ))}
+      </select>
+      <span className="font-mono text-[10px] text-[var(--color-ink-subtle)] uppercase tracking-wider">
+        {projects.length} {projects.length === 1 ? "project" : "projects"}
+      </span>
+    </label>
   );
 }

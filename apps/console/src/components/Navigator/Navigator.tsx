@@ -20,7 +20,7 @@ export function Navigator() {
   }, [tree]);
 
   if (!name) {
-    return <div className="p-3 text-[11px] text-[oklch(42%_0_0)]">请选择项目</div>;
+    return <div className="p-6 font-serif italic text-[13px] text-[var(--color-ink-faint)]">Select a project to begin.</div>;
   }
 
   const has = (path: string) => paths.has(path);
@@ -34,7 +34,7 @@ export function Navigator() {
   const anyRunning = Object.values(state?.stages ?? {}).some((s) => s.status === "running");
 
   return (
-    <div className="py-2 overflow-y-auto h-full text-[13px]">
+    <div className="py-4 overflow-y-auto h-full">
       <StageNode
         label="Overview"
         status={anyRunning ? "running" : undefined}
@@ -60,19 +60,19 @@ export function Navigator() {
         <StageNode label="Assets" status={state?.stages?.VISUAL?.status} expandable defaultOpen>
           {hasPrefix("output/actors") && (
             <div
-              className="pl-8 pr-3 py-1 text-[12px] text-[oklch(65%_0_0)] hover:bg-[oklch(14%_0_0)] cursor-pointer"
+              className="pl-6 pr-4 py-1.5 text-[13px] text-[var(--color-ink-muted)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
               onClick={() => { open("output/actors", "Actors"); markSeen("output/actors"); }}
             >Actors</div>
           )}
           {hasPrefix("output/locations") && (
             <div
-              className="pl-8 pr-3 py-1 text-[12px] text-[oklch(65%_0_0)] hover:bg-[oklch(14%_0_0)] cursor-pointer"
+              className="pl-6 pr-4 py-1.5 text-[13px] text-[var(--color-ink-muted)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
               onClick={() => { open("output/locations", "Locations"); markSeen("output/locations"); }}
             >Locations</div>
           )}
           {hasPrefix("output/props") && (
             <div
-              className="pl-8 pr-3 py-1 text-[12px] text-[oklch(65%_0_0)] hover:bg-[oklch(14%_0_0)] cursor-pointer"
+              className="pl-6 pr-4 py-1.5 text-[13px] text-[var(--color-ink-muted)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
               onClick={() => { open("output/props", "Props"); markSeen("output/props"); }}
             >Props</div>
           )}
