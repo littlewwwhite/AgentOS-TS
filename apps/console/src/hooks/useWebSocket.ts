@@ -72,8 +72,11 @@ export function useWebSocket(
 
       if (event.type === "tool_use") {
         if (streamingIdRef.current) {
+          const closingId = streamingIdRef.current;
           setMessages((prev) =>
-            prev.map((m) => m.id === streamingIdRef.current ? { ...m, isStreaming: false } : m)
+            prev
+              .map((m) => (m.id === closingId ? { ...m, isStreaming: false } : m))
+              .filter((m) => !(m.id === closingId && !m.toolName && m.content.trim() === ""))
           );
           streamingIdRef.current = null;
         }
@@ -106,7 +109,9 @@ export function useWebSocket(
         setIsStreaming(false);
         streamingIdRef.current = null;
         setMessages((prev) =>
-          prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
+          prev
+            .filter((m) => !(m.role === "assistant" && !m.toolName && m.content.trim() === ""))
+            .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
         );
         onResultRef.current?.();
       }
@@ -116,7 +121,7 @@ export function useWebSocket(
         streamingIdRef.current = null;
         onSessionRef.current?.(null);
         setMessages((prev) => [
-          ...prev,
+          ...prev.filter((m) => !(m.role === "assistant" && !m.toolName && m.content.trim() === "")),
           { id: uid(), role: "assistant", content: `错误：${event.message}`, timestamp: Date.now() },
         ]);
       }

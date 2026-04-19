@@ -62,6 +62,41 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend }: Props) 
         {messages.map((m, i) => (
           <MessageBubble key={m.id} message={m} isFirst={i === 0} />
         ))}
+        {/* Thinking spinner: show only when streaming but no text bubble is actively streaming */}
+        {isStreaming && (() => {
+          const lastMsg = messages[messages.length - 1];
+          const hasActiveTextStream =
+            lastMsg &&
+            lastMsg.role === "assistant" &&
+            !lastMsg.toolName &&
+            lastMsg.isStreaming === true;
+          if (hasActiveTextStream) return null;
+          return (
+            <div className="flex items-center gap-2 pl-1">
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 6,
+                  height: 6,
+                  backgroundColor: "var(--color-accent)",
+                  animation: "thinking-pulse 800ms ease-in-out infinite alternate",
+                }}
+              />
+              <span
+                className="font-sans text-[13px] text-[var(--color-ink-subtle)]"
+                style={{ fontStyle: "italic" }}
+              >
+                正在思考…
+              </span>
+              <style>{`
+                @keyframes thinking-pulse {
+                  from { opacity: 0.4; }
+                  to   { opacity: 1;   }
+                }
+              `}</style>
+            </div>
+          );
+        })()}
         <div ref={bottomRef} />
       </div>
       <form
