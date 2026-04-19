@@ -144,29 +144,21 @@ State transition rules:
 
 ## Project Layout
 
-每个项目以 `{name}` 命名（通常取源文件名或用户指定），workspace 和 output 按项目名隔离。`${PROJECT_DIR}` 为仓库根目录。
+每个项目以 `{name}` 命名（通常取源文件名或用户指定），**所有产物都落在 `workspace/{name}/` 单一根目录下**，不再使用顶层 `output/`。
 
 ```
-${PROJECT_DIR}/
-├── data/                    ← uploaded source materials
-├── workspace/{name}/        ← per-project intermediate artifacts
-│   ├── pipeline-state.json  ← machine-readable pipeline checkpoint
-│   ├── source.txt           ← source copy
-│   ├── draft/               ← LLM-generated intermediates
-│   │   ├── design.json
-│   │   ├── catalog.json
-│   │   ├── connectivity.md
-│   │   └── episodes/
-│   └── ...
-├── output/{name}/           ← per-project final deliverables
-│   ├── script.json          ← structured script
-│   ├── actors/              ← character images
-│   ├── locations/           ← scene images
-│   ├── props/               ← prop images
-│   └── ep{NNN}/             ← per-episode video + audio
-└── .claude/skills/          ← skill definitions
+<repo-root>/
+├── data/                          ← uploaded source materials
+├── workspace/{name}/              ← per-project root (single source of truth)
+│   ├── pipeline-state.json        ← machine-readable pipeline checkpoint
+│   ├── source.txt                 ← source copy
+│   ├── draft/                     ← LLM intermediates (design.json, connectivity.md, episodes/, …)
+│   └── output/                    ← user-facing artifacts
+│       ├── inspiration.json
+│       ├── script.json
+│       ├── actors/  locations/  props/
+│       └── ep{NNN}/               ← per-episode storyboard + scn*/clip*/*.mp4
+└── .claude/skills/                ← skill definitions
 ```
 
-Skills 中引用路径时使用 `${WORKSPACE}` 和 `${OUTPUT}` 简写：
-- `${WORKSPACE}` = `${PROJECT_DIR}/workspace/{name}`
-- `${OUTPUT}` = `${OUTPUT}/{name}`
+Skills 中的 `${PROJECT_DIR}` 在执行时被设置为当前项目根目录 `workspace/{name}/`，因此 `${PROJECT_DIR}/output/...` 自然落在 `workspace/{name}/output/...`。`${WORKSPACE}` 和 `${OUTPUT}` 宏已废弃 —— skills 一律使用 `${PROJECT_DIR}` 前缀。
