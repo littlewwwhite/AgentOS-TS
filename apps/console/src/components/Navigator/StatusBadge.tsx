@@ -1,26 +1,43 @@
 import type { StageStatus } from "../../types";
 
-const COLOR: Record<StageStatus | "none", string> = {
-  not_started: "oklch(30% 0 0)",
-  running: "oklch(75% 0.18 260)",
-  partial: "oklch(78% 0.18 80)",
-  completed: "oklch(70% 0.18 145)",
-  validated: "oklch(70% 0.18 145)",
-  failed: "oklch(65% 0.22 25)",
-  none: "transparent",
-};
-
 interface Props { status?: StageStatus | null; unread?: number; }
 
+interface StatusSpec { color: string; label: string }
+
+const MAP: Record<StageStatus, StatusSpec | null> = {
+  running:     { color: "var(--color-run)",       label: "RUN" },
+  partial:     { color: "var(--color-warn)",      label: "PART" },
+  completed:   { color: "var(--color-ok)",        label: "OK" },
+  validated:   { color: "var(--color-ok)",        label: "✓" },
+  failed:      { color: "var(--color-err)",       label: "FAIL" },
+  not_started: { color: "var(--color-ink-faint)", label: "—" },
+};
+
 export function StatusBadge({ status, unread }: Props) {
-  if (unread && unread > 0) {
-    return (
-      <span className="ml-auto text-[10px] px-1.5 rounded-full bg-[oklch(65%_0.18_270)] text-black min-w-[16px] text-center">
-        {unread > 99 ? "99+" : unread}
-      </span>
-    );
-  }
-  const color = COLOR[(status ?? "none") as keyof typeof COLOR] ?? "transparent";
-  if (color === "transparent") return null;
-  return <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />;
+  const spec = status ? MAP[status] : null;
+  const showUnread = !!(unread && unread > 0);
+  if (!spec && !showUnread) return null;
+  return (
+    <span className="ml-auto flex items-center gap-1.5">
+      {spec && (
+        <>
+          <span
+            className="w-[6px] h-[6px] shrink-0"
+            style={{ backgroundColor: spec.color }}
+            aria-hidden
+          />
+          <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-subtle)]">
+            {spec.label}
+          </span>
+        </>
+      )}
+      {showUnread && (
+        <span
+          className="w-[6px] h-[6px] rounded-full ml-1"
+          style={{ backgroundColor: "var(--color-accent)" }}
+          aria-label={`${unread} unread`}
+        />
+      )}
+    </span>
+  );
 }
