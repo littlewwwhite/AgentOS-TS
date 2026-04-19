@@ -1,6 +1,7 @@
 import { runAgent } from "./src/orchestrator";
 import { join } from "path";
 import { existsSync, readdirSync, readFileSync } from "fs";
+import { safeResolve, walkTree, mimeFor } from "./src/serverUtils";
 
 const WORKSPACE = join(import.meta.dir, "../../workspace");
 
@@ -55,6 +56,17 @@ Bun.serve({
         return Response.json({ error: "not found" }, { status: 404, headers: CORS });
       }
       return Response.json(JSON.parse(readFileSync(stateFile, "utf-8")), { headers: CORS });
+    }
+
+    const treeMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tree$/);
+    if (treeMatch) {
+      const projectRoot = join(WORKSPACE, decodeURIComponent(treeMatch[1]));
+      if (!existsSync(projectRoot)) {
+        return Response.json({ error: "not found" }, { status: 404, headers: CORS });
+      }
+      const includeDraft = url.searchParams.get("include_draft") === "1";
+      const tree = walkTree(projectRoot, { maxDepth: 4, includeDraft });
+      return Response.json(tree, { headers: CORS });
     }
 
     return Response.json({ error: "not found" }, { status: 404, headers: CORS });
