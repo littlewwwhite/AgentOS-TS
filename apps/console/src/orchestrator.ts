@@ -46,6 +46,7 @@ export function createSession(project?: string, resumeId?: string): AgentSession
       cwd,
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
+      includePartialMessages: true,
       ...(resumeId ? { resume: resumeId } : {}),
     },
   });
@@ -67,7 +68,23 @@ export function createSession(project?: string, resumeId?: string): AgentSession
           continue;
         }
 
+        if (type === "stream_event") {
+          // Token-level partial updates when includePartialMessages=true.
+          // Shape: { type: 'stream_event', event: BetaRawMessageStreamEvent }
+          // We only care about content_block_delta with text_delta — tokens
+          // the assistant is currently producing.
+          const ev = (msg as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
+          if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && typeof ev.delta.text === "string") {
+            textEmittedThisTurn = true;
+            events.push({ type: "text", text: ev.delta.text });
+          }
+          continue;
+        }
+
         if (type === "assistant") {
+          // Final per-turn snapshot. Text was already streamed via stream_event,
+          // so only emit text here as a fallback when partial streaming didn't fire
+          // (defensive — shouldn't normally happen with includePartialMessages=true).
           const content = (msg as { message?: { content?: unknown[] } }).message?.content ?? [];
           for (const block of content as Array<{
             type: string;
@@ -76,11 +93,9 @@ export function createSession(project?: string, resumeId?: string): AgentSession
             name?: string;
             input?: unknown;
           }>) {
-            if (block.type === "text" && block.text) {
+            if (block.type === "text" && block.text && !textEmittedThisTurn) {
               textEmittedThisTurn = true;
-              for (const ch of block.text) {
-                events.push({ type: "text", text: ch });
-              }
+              events.push({ type: "text", text: block.text });
             }
             if (block.type === "tool_use") {
               events.push({
@@ -132,9 +147,10 @@ export function createSession(project?: string, resumeId?: string): AgentSession
             r.result.length > 0 &&
             !textEmittedThisTurn
           ) {
-            for (const ch of r.result) {
-              events.push({ type: "text", text: ch });
-            }
+            // Final-reply fallback — emit as a single text event. Happens only
+            // when neither stream_event nor assistant-block text surfaced
+            // (e.g., pre-partial-message SDK behavior or empty-text corner cases).
+            events.push({ type: "text", text: r.result });
           }
           events.push({
             type: "result",
