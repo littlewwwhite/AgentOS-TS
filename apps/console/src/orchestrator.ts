@@ -49,17 +49,33 @@ export async function* runMock(message: string): AsyncGenerator<WsEvent> {
 export async function* runReal(
   message: string,
   project?: string,
+  sessionId?: string,
 ): AsyncGenerator<WsEvent> {
   const cwd = project
     ? join(PROJECT_ROOT, "workspace", project)
     : PROJECT_ROOT;
 
   try {
-    for await (const msg of query({ prompt: message, options: { cwd } })) {
+    for await (const msg of query({
+      prompt: message,
+      options: {
+        cwd,
+        permissionMode: "bypassPermissions",
+        ...(sessionId ? { resume: sessionId } : {}),
+      },
+    })) {
       const type = msg.type;
 
+      if (type === "system") {
+        const sys = msg as { subtype?: string; session_id?: string };
+        if (sys.subtype === "init" && typeof sys.session_id === "string") {
+          yield { type: "session", sessionId: sys.session_id };
+        }
+        yield { type: "system", subtype: sys.subtype ?? "unknown", data: msg };
+        continue;
+      }
+
       if (type === "assistant") {
-        // msg.message is BetaMessage — content is BetaContentBlock[]
         const content = (msg as { message?: { content?: unknown[] } }).message
           ?.content ?? [];
 
@@ -71,7 +87,6 @@ export async function* runReal(
           input?: unknown;
         }>) {
           if (block.type === "text" && block.text) {
-            // Stream char-by-char for smooth UI rendering
             for (const char of block.text) {
               yield { type: "text", text: char };
             }
@@ -85,10 +100,10 @@ export async function* runReal(
             };
           }
         }
+        continue;
       }
 
       if (type === "user") {
-        // Tool results are delivered back as user messages
         const content = (msg as { message?: { content?: unknown[] } }).message
           ?.content ?? [];
 
@@ -111,6 +126,7 @@ export async function* runReal(
             };
           }
         }
+        continue;
       }
 
       if (type === "result") {
@@ -125,7 +141,10 @@ export async function* runReal(
           exitCode: isError ? 1 : 0,
           duration: r.duration_ms ?? 0,
         };
+        continue;
       }
+
+      yield { type: "system", subtype: String(type), data: msg };
     }
   } catch (err) {
     yield { type: "error", message: String(err) };
