@@ -10,10 +10,12 @@ interface Props {
 export function ProjectSwitcher({ selected, onSelect }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   useEffect(() => {
+    let alive = true;
     fetch("/api/projects")
       .then((r) => r.json())
-      .then((data) => setProjects(Array.isArray(data) ? data : []))
-      .catch(() => setProjects([]));
+      .then((data) => { if (alive) setProjects(Array.isArray(data) ? data : []); })
+      .catch(() => { if (alive) setProjects([]); });
+    return () => { alive = false; };
   }, []);
   return (
     <select
