@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "wangwen": {
+      "type": "http",
+      "url": "${MCP_WANGWEN_URL}",
+      "headers": {
+        "X-MCP-API-Key": "${MCP_WANGWEN_API_KEY}"
+      }
+    }
+  }
+}
