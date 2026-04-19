@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "path";
 import { mkdirSync, writeFileSync, rmSync } from "fs";
-import { safeResolve, walkTree } from "../src/serverUtils";
+import { safeResolve, walkTree, mimeFor } from "../src/serverUtils";
 
 const FIX = "/tmp/console-serverutils-fix";
 
@@ -37,5 +37,17 @@ describe("walkTree", () => {
   test("includes draft when asked", () => {
     const t = walkTree(join(FIX, "a"), { maxDepth: 2, includeDraft: true });
     expect(t.some((n) => n.path === "draft/d.md")).toBe(true);
+  });
+});
+
+describe("mimeFor", () => {
+  test("known extensions", () => {
+    expect(mimeFor("a/b.png")).toBe("image/png");
+    expect(mimeFor("foo.mp4")).toBe("video/mp4");
+    expect(mimeFor("x.json")).toBe("application/json");
+  });
+  test("unknown defaults to octet-stream", () => {
+    expect(mimeFor("x.xyz")).toBe("application/octet-stream");
+    expect(mimeFor("noext")).toBe("application/octet-stream");
   });
 });

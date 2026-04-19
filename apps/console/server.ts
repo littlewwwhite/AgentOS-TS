@@ -69,6 +69,45 @@ Bun.serve({
       return Response.json(tree, { headers: CORS });
     }
 
+    const fileMatch = url.pathname.match(/^\/files\/([^/]+)\/(.+)$/);
+    if (fileMatch) {
+      const projectRoot = join(WORKSPACE, decodeURIComponent(fileMatch[1]));
+      if (!existsSync(projectRoot)) {
+        return new Response("not found", { status: 404 });
+      }
+      let abs: string;
+      try {
+        abs = safeResolve(projectRoot, decodeURIComponent(fileMatch[2]));
+      } catch {
+        return new Response("forbidden", { status: 403 });
+      }
+      if (!existsSync(abs)) return new Response("not found", { status: 404 });
+      const file = Bun.file(abs);
+      const mime = mimeFor(abs);
+      const range = req.headers.get("range");
+      if (range && mime.startsWith("video/")) {
+        const size = file.size;
+        const m = range.match(/bytes=(\d+)-(\d*)/);
+        if (m) {
+          const start = parseInt(m[1], 10);
+          const end = m[2] ? parseInt(m[2], 10) : size - 1;
+          const slice = file.slice(start, end + 1);
+          return new Response(slice, {
+            status: 206,
+            headers: {
+              "Content-Type": mime,
+              "Content-Range": `bytes ${start}-${end}/${size}`,
+              "Accept-Ranges": "bytes",
+              "Content-Length": String(end - start + 1),
+            },
+          });
+        }
+      }
+      return new Response(file, {
+        headers: { "Content-Type": mime, "Accept-Ranges": "bytes" },
+      });
+    }
+
     return Response.json({ error: "not found" }, { status: 404, headers: CORS });
   },
 
