@@ -25,6 +25,7 @@ workspace/               # 可选项目工作目录
 
 ## 当前 Skills
 
+- `wangwen` — 数据支撑型灵感调研（Stage 0）
 - `script-adapt`
 - `script-writer`
 - `asset-gen`
