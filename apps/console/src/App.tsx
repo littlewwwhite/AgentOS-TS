@@ -4,6 +4,7 @@ import { ChatPane } from "./components/Chat/ChatPane";
 import { ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { TabsProvider } from "./contexts/TabsContext";
 import { ProjectSwitcher } from "./components/Navigator/ProjectSwitcher";
+import { Viewer } from "./components/Viewer/Viewer";
 
 const WS_URL = "ws://localhost:3001/ws";
 
@@ -35,7 +36,7 @@ function Shell() {
           <div className="p-3 text-[11px] text-[oklch(42%_0_0)]">Navigator — 待实现</div>
         </div>
         <div className="flex-1 overflow-hidden">
-          <div className="p-3 text-[11px] text-[oklch(42%_0_0)]">Viewer — 待实现</div>
+          <Viewer />
         </div>
         <div className="w-[380px] shrink-0 border-l border-[oklch(20%_0_0)] flex flex-col overflow-hidden">
           <ChatPane messages={messages} isStreaming={isStreaming} isConnected={isConnected} onSend={handleSend} />
