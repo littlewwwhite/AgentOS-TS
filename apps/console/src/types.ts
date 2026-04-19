@@ -36,10 +36,12 @@ export interface Project {
 
 // WebSocket 事件（服务端 → 前端）
 export type WsEvent =
+  | { type: "session"; sessionId: string }
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; tool: string; input: unknown }
   | { type: "tool_result"; id: string; tool: string; output: string; path?: string }
   | { type: "result"; exitCode: number; duration: number }
+  | { type: "system"; subtype: string; data: unknown }
   | { type: "error"; message: string };
 
 // 对话消息（前端渲染用）
