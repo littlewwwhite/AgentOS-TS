@@ -13,7 +13,11 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export async function* runMock(message: string): AsyncGenerator<WsEvent> {
+export async function* runMock(
+  message: string,
+  _project?: string,
+  _sessionId?: string,
+): AsyncGenerator<WsEvent> {
   yield { type: "text", text: "正在分析请求" };
   await sleep(200);
   yield { type: "text", text: `：「${message}」\n\n` };
