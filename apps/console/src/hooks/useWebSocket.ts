@@ -114,6 +114,7 @@ export function useWebSocket(
       if (event.type === "error") {
         setIsStreaming(false);
         streamingIdRef.current = null;
+        onSessionRef.current?.(null);
         setMessages((prev) => [
           ...prev,
           { id: uid(), role: "assistant", content: `错误：${event.message}`, timestamp: Date.now() },
