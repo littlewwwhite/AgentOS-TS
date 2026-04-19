@@ -25,7 +25,8 @@ Novel → SCRIPT → VISUAL → STORYBOARD → VIDEO → EDITING → MUSIC → S
 
 | # | Stage | Skill | Input | Output | Gate |
 |---|-------|-------|-------|--------|------|
-| 1 | SCRIPT | `script-adapt` (long novel ≥3000 chars) or `script-writer` (original/short story) | source text | `${OUTPUT}/script.json` | script.json exists with episodes[] |
+| 0 | INSPIRATION | `wangwen` | user inspiration brief / market-research request | `${OUTPUT}/inspiration.json` | inspiration.json exists and passes self-check in `docs/inspiration-contract.md` |
+| 1 | SCRIPT | `script-adapt` (long novel ≥3000 chars) or `script-writer` (original/short story) | source text or `${OUTPUT}/inspiration.json` | `${OUTPUT}/script.json` | script.json exists with episodes[] |
 | 2 | VISUAL | `asset-gen` | script.json actors/locations/props | `${OUTPUT}/{actors,locations,props}/` images + element_id | actors have visual + element_id |
 | 3 | STORYBOARD | `storyboard` | script.json + real asset images | script.json with scenes[].shots[].prompt | shots contain prompt field |
 | 4 | VIDEO | `video-gen` | script.json with shots + element_id | `${OUTPUT}/ep{NNN}/` videos | video files exist |
@@ -35,6 +36,7 @@ Novel → SCRIPT → VISUAL → STORYBOARD → VIDEO → EDITING → MUSIC → S
 
 ### Dispatch Rules
 
+- When the user needs data-backed inspiration / market research / benchmark discovery ("什么题材在涨"、"找对标"、"改编漏斗") → invoke `wangwen`
 - When the user provides a novel or says "write a script" → invoke `script-adapt` or `script-writer`
 - When script.json exists and user says "generate assets/visuals" → invoke `asset-gen`
 - When assets exist and user says "storyboard/shots" → invoke `storyboard`
@@ -135,6 +137,7 @@ State transition rules:
 
 | Domain | Skills | Responsibilities |
 |--------|--------|-----------------|
+| Researcher | wangwen | Market-research only (SQL via MCP). Never create script/asset/video content. |
 | Screenwriter | script-adapt, script-writer | Script creation only. Never generate images or videos. |
 | Director | asset-gen, storyboard | Visual design + asset gen + shot planning. Never modify existing script text. |
 | Producer | video-gen, video-editing, music-matcher, subtitle-maker | Execution only. Zero creative decisions — all text from script.json. |
