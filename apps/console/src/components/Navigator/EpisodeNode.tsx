@@ -12,11 +12,11 @@ interface Props {
 }
 
 const SUBS: Array<{ label: string; path: (epId: string) => string }> = [
-  { label: "Storyboard", path: (id) => `output/${id}/${id}_storyboard.json` },
-  { label: "Raw", path: (id) => `output/${id}` },
-  { label: "Edited", path: (id) => `output/${id}/edited` },
-  { label: "Scored", path: (id) => `output/${id}/scored` },
-  { label: "Final", path: (id) => `output/${id}/final` },
+  { label: "分镜", path: (id) => `output/${id}/${id}_storyboard.json` },
+  { label: "原片", path: (id) => `output/${id}` },
+  { label: "剪辑", path: (id) => `output/${id}/edited` },
+  { label: "配乐", path: (id) => `output/${id}/scored` },
+  { label: "成片", path: (id) => `output/${id}/final` },
 ];
 
 const STATUS_PRIORITY: StageStatus[] = [

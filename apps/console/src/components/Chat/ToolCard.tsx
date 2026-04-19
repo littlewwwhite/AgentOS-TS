@@ -44,8 +44,8 @@ export function ToolCard({ message, isFirst }: Props) {
         {path && (
           <span className="font-mono text-[11px] text-[var(--color-ink-subtle)] truncate">{path}</span>
         )}
-        <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-subtle)]">
-          {isStreaming ? "running" : formatTime(timestamp)}
+        <span className="ml-auto font-mono text-[10px] tracking-[0.04em] text-[var(--color-ink-subtle)]">
+          {isStreaming ? "运行中" : formatTime(timestamp)}
         </span>
         {/* Toggle affordance: only shown when output is available */}
         {hasOutput && (

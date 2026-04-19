@@ -27,7 +27,7 @@ export function TabBar() {
             <button
               onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}
               className="font-mono text-[10px] text-[var(--color-ink-faint)] opacity-0 group-hover:opacity-100 hover:text-[var(--color-ink)] transition-opacity"
-              aria-label="Close"
+              aria-label="关闭"
             >×</button>
             {active && (
               <span

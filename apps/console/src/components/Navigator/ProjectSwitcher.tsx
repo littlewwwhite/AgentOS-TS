@@ -23,13 +23,13 @@ export function ProjectSwitcher({ selected, onSelect }: Props) {
         onChange={(e) => onSelect(e.target.value || null)}
         className="bg-transparent border-0 border-b border-[var(--color-rule-strong)] rounded-none px-1 py-0.5 text-[12px] text-[var(--color-ink)] focus:outline-none focus:border-[var(--color-accent)]"
       >
-        <option value="">— project —</option>
+        <option value="">— 项目 —</option>
         {projects.map((p) => (
           <option key={p.name} value={p.name}>{p.name}</option>
         ))}
       </select>
-      <span className="font-mono text-[10px] text-[var(--color-ink-subtle)] uppercase tracking-wider">
-        {projects.length} {projects.length === 1 ? "project" : "projects"}
+      <span className="font-mono text-[10px] text-[var(--color-ink-subtle)] tracking-[0.04em]">
+        {projects.length} 个项目
       </span>
     </label>
   );

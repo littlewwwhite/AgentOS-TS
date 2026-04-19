@@ -38,10 +38,10 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend }: Props) 
           <div className="flex flex-col justify-center h-full gap-8">
             <div>
               <div className="font-serif text-[28px] leading-tight text-[var(--color-ink)]">
-                Say something.
+                聊点什么吧。
               </div>
               <div className="mt-2 text-[13px] text-[var(--color-ink-muted)] leading-relaxed">
-                Instruct the agent in natural language. The session persists across messages.
+                用自然语言指挥代理，同一会话在多轮之间保持上下文。
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -112,7 +112,7 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend }: Props) 
               handleSubmit(e as unknown as React.FormEvent);
             }
           }}
-          placeholder={isConnected ? "Message…" : "Connecting…"}
+          placeholder={isConnected ? "输入消息…" : "连接中…"}
           disabled={!isConnected || isStreaming}
           rows={1}
           className="flex-1 bg-[var(--color-paper-sunk)] border-0 rounded-[2px] px-3 py-2.5 text-[13px] text-[var(--color-ink)] placeholder-[var(--color-ink-faint)] resize-none focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-40"
@@ -120,9 +120,9 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend }: Props) 
         <button
           type="submit"
           disabled={!input.trim() || isStreaming || !isConnected}
-          className="shrink-0 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-accent)] hover:text-[var(--color-ink)] px-2 py-2.5 disabled:text-[var(--color-ink-faint)] disabled:cursor-not-allowed transition-colors"
+          className="shrink-0 font-sans text-[11px] font-semibold tracking-[0.04em] text-[var(--color-accent)] hover:text-[var(--color-ink)] px-2 py-2.5 disabled:text-[var(--color-ink-faint)] disabled:cursor-not-allowed transition-colors"
         >
-          Send
+          发送
         </button>
       </form>
     </div>

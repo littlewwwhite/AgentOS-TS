@@ -77,8 +77,8 @@ export function JsonView({ projectName, path }: Props) {
   const tokens = useMemo(() => tokenize(pretty), [pretty]);
   const lineCount = pretty.split("\n").length;
 
-  if (error) return <div className="p-6 text-[13px] text-[var(--color-err)]">Load failed: {error}</div>;
-  if (text == null) return <div className="p-6 text-[13px] text-[var(--color-ink-subtle)]">Loading…</div>;
+  if (error) return <div className="p-6 text-[13px] text-[var(--color-err)]">加载失败：{error}</div>;
+  if (text == null) return <div className="p-6 text-[13px] text-[var(--color-ink-subtle)]">加载中…</div>;
 
   return (
     <div className="flex font-mono text-[12px] leading-[1.7]">

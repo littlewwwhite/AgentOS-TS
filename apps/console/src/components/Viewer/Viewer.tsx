@@ -52,7 +52,7 @@ export function Viewer() {
   if (!name) {
     return (
       <div className="h-full flex items-center justify-center p-10 font-serif italic text-[15px] text-[var(--color-ink-faint)]">
-        Select a project to begin.
+        选择一个项目以开始。
       </div>
     );
   }

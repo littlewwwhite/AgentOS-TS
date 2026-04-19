@@ -22,7 +22,7 @@ export function StageNode({ label, status, unread, expandable, defaultOpen = fal
   return (
     <div>
       <div
-        className="group flex items-center gap-2 px-4 py-2 text-[13px] font-medium uppercase tracking-[0.06em] text-[var(--color-ink)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
+        className="group flex items-center gap-2 px-4 py-2 text-[13px] font-medium tracking-[0.02em] text-[var(--color-ink)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
         onClick={handleRowClick}
       >
         <span>{label}</span>

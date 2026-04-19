@@ -20,7 +20,7 @@ export function Navigator() {
   }, [tree]);
 
   if (!name) {
-    return <div className="p-6 font-serif italic text-[13px] text-[var(--color-ink-faint)]">Select a project to begin.</div>;
+    return <div className="p-6 font-serif italic text-[13px] text-[var(--color-ink-faint)]">选择一个项目以开始。</div>;
   }
 
   const has = (path: string) => paths.has(path);
@@ -36,50 +36,50 @@ export function Navigator() {
   return (
     <div className="py-4 overflow-y-auto h-full">
       <StageNode
-        label="Overview"
+        label="总览"
         status={anyRunning ? "running" : undefined}
-        onClick={() => open("", "Overview")}
+        onClick={() => open("", "总览")}
       />
       {has("output/inspiration.json") && (
         <StageNode
-          label="Inspiration"
+          label="灵感"
           status={state?.stages?.INSPIRATION?.status}
           unread={unread.get("output/inspiration.json")}
-          onClick={() => { open("output/inspiration.json", "Inspiration"); markSeen("output/inspiration.json"); }}
+          onClick={() => { open("output/inspiration.json", "灵感"); markSeen("output/inspiration.json"); }}
         />
       )}
       {has("output/script.json") && (
         <StageNode
-          label="Script"
+          label="剧本"
           status={state?.stages?.SCRIPT?.status}
           unread={unread.get("output/script.json")}
-          onClick={() => { open("output/script.json", "Script"); markSeen("output/script.json"); }}
+          onClick={() => { open("output/script.json", "剧本"); markSeen("output/script.json"); }}
         />
       )}
       {(hasPrefix("output/actors") || hasPrefix("output/locations") || hasPrefix("output/props")) && (
-        <StageNode label="Assets" status={state?.stages?.VISUAL?.status} expandable defaultOpen>
+        <StageNode label="素材" status={state?.stages?.VISUAL?.status} expandable defaultOpen>
           {hasPrefix("output/actors") && (
             <div
               className="pl-6 pr-4 py-1.5 text-[13px] text-[var(--color-ink-muted)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
-              onClick={() => { open("output/actors", "Actors"); markSeen("output/actors"); }}
-            >Actors</div>
+              onClick={() => { open("output/actors", "演员"); markSeen("output/actors"); }}
+            >演员</div>
           )}
           {hasPrefix("output/locations") && (
             <div
               className="pl-6 pr-4 py-1.5 text-[13px] text-[var(--color-ink-muted)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
-              onClick={() => { open("output/locations", "Locations"); markSeen("output/locations"); }}
-            >Locations</div>
+              onClick={() => { open("output/locations", "场景"); markSeen("output/locations"); }}
+            >场景</div>
           )}
           {hasPrefix("output/props") && (
             <div
               className="pl-6 pr-4 py-1.5 text-[13px] text-[var(--color-ink-muted)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
-              onClick={() => { open("output/props", "Props"); markSeen("output/props"); }}
-            >Props</div>
+              onClick={() => { open("output/props", "道具"); markSeen("output/props"); }}
+            >道具</div>
           )}
         </StageNode>
       )}
       {epIds.length > 0 && (
-        <StageNode label="Episodes" expandable defaultOpen>
+        <StageNode label="分集" expandable defaultOpen>
           {epIds.map((id) => (
             <EpisodeNode key={id} epId={id} ep={state?.episodes?.[id]} unread={unread} markSeen={markSeen} />
           ))}
@@ -87,9 +87,9 @@ export function Navigator() {
       )}
       {has("draft") && (
         <StageNode
-          label="Draft"
+          label="草稿"
           unread={unread.get("draft")}
-          onClick={() => { open("draft", "Draft"); markSeen("draft"); }}
+          onClick={() => { open("draft", "草稿"); markSeen("draft"); }}
         />
       )}
     </div>

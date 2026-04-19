@@ -21,14 +21,14 @@ export function VideoGridView({ projectName, path }: Props) {
   }, [tree, path]);
 
   if (videos.length === 0) {
-    return <div className="px-10 py-10 font-serif italic text-[15px] text-[var(--color-ink-faint)]">No video files found.</div>;
+    return <div className="px-10 py-10 font-serif italic text-[15px] text-[var(--color-ink-faint)]">暂无视频文件。</div>;
   }
 
   return (
     <div className="px-10 py-8">
       <header className="flex items-baseline gap-3 mb-4">
-        <span className="font-mono text-[11px] text-[var(--color-ink-subtle)] uppercase tracking-wider">
-          {videos.length} clips
+        <span className="font-mono text-[11px] text-[var(--color-ink-subtle)] tracking-[0.04em]">
+          {videos.length} 个片段
         </span>
       </header>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-5">

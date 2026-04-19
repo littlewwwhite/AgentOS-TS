@@ -5,11 +5,11 @@ interface Props { status?: StageStatus | null; unread?: number; }
 interface StatusSpec { color: string; label: string }
 
 const MAP: Record<StageStatus, StatusSpec | null> = {
-  running:     { color: "var(--color-run)",       label: "RUN" },
-  partial:     { color: "var(--color-warn)",      label: "PART" },
-  completed:   { color: "var(--color-ok)",        label: "OK" },
+  running:     { color: "var(--color-run)",       label: "运行" },
+  partial:     { color: "var(--color-warn)",      label: "部分" },
+  completed:   { color: "var(--color-ok)",        label: "完成" },
   validated:   { color: "var(--color-ok)",        label: "✓" },
-  failed:      { color: "var(--color-err)",       label: "FAIL" },
+  failed:      { color: "var(--color-err)",       label: "失败" },
   not_started: { color: "var(--color-ink-faint)", label: "—" },
 };
 
@@ -26,7 +26,7 @@ export function StatusBadge({ status, unread }: Props) {
             style={{ backgroundColor: spec.color }}
             aria-hidden
           />
-          <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-subtle)]">
+          <span className="font-sans text-[10px] font-semibold tracking-[0.04em] text-[var(--color-ink-subtle)]">
             {spec.label}
           </span>
         </>

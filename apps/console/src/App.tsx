@@ -22,7 +22,7 @@ function Shell() {
     send(message, name ?? undefined, sessionId ?? undefined);
   }
 
-  const statusLabel = !isConnected ? "OFFLINE" : isStreaming ? "STREAMING" : "CONNECTED";
+  const statusLabel = !isConnected ? "离线" : isStreaming ? "流式中" : "已连接";
   const statusColor = !isConnected
     ? "var(--color-ink-faint)"
     : isStreaming
@@ -37,7 +37,7 @@ function Shell() {
         </span>
         <span className="font-serif text-[28px] leading-none text-[var(--color-ink)]">
           {name ?? (
-            <span className="italic text-[var(--color-ink-faint)]">— select project</span>
+            <span className="italic text-[var(--color-ink-faint)]">— 选择项目</span>
           )}
         </span>
         <div className="ml-auto flex items-center gap-3">
@@ -46,14 +46,14 @@ function Shell() {
             className="flex items-center gap-3"
             role="status"
             aria-live="polite"
-            aria-label={`Connection: ${statusLabel}`}
+            aria-label={`连接状态：${statusLabel}`}
           >
             <span
               className="w-[6px] h-[6px]"
               style={{ backgroundColor: statusColor }}
               aria-hidden
             />
-            <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-subtle)]">
+            <span className="font-mono text-[11px] tracking-[0.04em] text-[var(--color-ink-subtle)]">
               {statusLabel}
             </span>
           </div>
