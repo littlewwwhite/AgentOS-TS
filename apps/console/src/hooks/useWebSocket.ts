@@ -41,6 +41,10 @@ export function useWebSocket(
     ws.onmessage = (e) => {
       const event: WsEvent = JSON.parse(e.data);
 
+      if (import.meta.env.DEV) {
+        console.debug("[ws]", event.type, event);
+      }
+
       if (event.type === "session") {
         onSessionRef.current?.(event.sessionId);
         return;
