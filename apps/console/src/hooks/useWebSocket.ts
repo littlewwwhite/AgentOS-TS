@@ -16,6 +16,7 @@ export function useWebSocket(
   url: string,
   onToolResult?: (path: string) => void,
   onResult?: () => void,
+  onSession?: (sessionId: string | null) => void,
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -25,8 +26,10 @@ export function useWebSocket(
 
   const onToolResultRef = useRef(onToolResult);
   const onResultRef = useRef(onResult);
+  const onSessionRef = useRef(onSession);
   useEffect(() => { onToolResultRef.current = onToolResult; }, [onToolResult]);
   useEffect(() => { onResultRef.current = onResult; }, [onResult]);
+  useEffect(() => { onSessionRef.current = onSession; }, [onSession]);
 
   useEffect(() => {
     const ws = new WebSocket(url);
@@ -37,6 +40,17 @@ export function useWebSocket(
 
     ws.onmessage = (e) => {
       const event: WsEvent = JSON.parse(e.data);
+
+      if (event.type === "session") {
+        onSessionRef.current?.(event.sessionId);
+        return;
+      }
+
+      if (event.type === "system") {
+        // Lossless passthrough; no UI surface yet. Keep for debugging.
+        console.debug("[ws] system", event.subtype, event.data);
+        return;
+      }
 
       if (event.type === "text") {
         setIsStreaming(true);
@@ -111,7 +125,7 @@ export function useWebSocket(
   }, [url]);
 
   const send = useCallback(
-    (message: string, project?: string) => {
+    (message: string, project?: string, sessionId?: string) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
       const userMsg: ChatMessage = {
         id: uid(),
@@ -120,7 +134,7 @@ export function useWebSocket(
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, userMsg]);
-      wsRef.current.send(JSON.stringify({ message, project }));
+      wsRef.current.send(JSON.stringify({ message, project, sessionId }));
     },
     []
   );
