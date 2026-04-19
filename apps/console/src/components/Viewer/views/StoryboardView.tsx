@@ -4,7 +4,7 @@
 // pos: StoryboardView panel inside the Viewer; replaces the old prompt-only metadata list
 
 import { useCallback } from "react";
-import { useEditableJson } from "../../../hooks/useEditableJson";
+import { useEditableJson, getAtPath } from "../../../hooks/useEditableJson";
 import { useFileJson } from "../../../hooks/useFile";
 import { buildRefDict, resolveRefs, type ScriptJson } from "../../../lib/fountain";
 import { EditableText } from "../../common/EditableText";
@@ -19,28 +19,6 @@ interface ClipRef { clip_id: string; expected_duration: string; script_source: s
 interface EnvRef { space: string; time: string; }
 interface SceneRef { scene_id: string; environment: EnvRef; locations: Array<{ location_id: string; state_id?: string | null }>; actors: Array<{ actor_id: string; state_id?: string | null }>; props: Array<{ prop_id: string; state_id?: string | null }>; clips: ClipRef[]; }
 interface StoryboardJson { episode_id: string; title: string | null; scenes: SceneRef[]; }
-
-// ---------------------------------------------------------------------------
-// getAtPath — same pattern as ScriptView
-// ---------------------------------------------------------------------------
-
-function getAtPath(obj: unknown, path: string): unknown {
-  const segments = path.split(".");
-  let node: unknown = obj;
-  for (const seg of segments) {
-    if (node === null || node === undefined) return undefined;
-    const idx = Number(seg);
-    const isIndex = !Number.isNaN(idx) && String(idx) === seg;
-    if (isIndex) {
-      if (!Array.isArray(node)) return undefined;
-      node = (node as unknown[])[idx];
-    } else {
-      if (typeof node !== "object" || Array.isArray(node)) return undefined;
-      node = (node as Record<string, unknown>)[seg];
-    }
-  }
-  return node;
-}
 
 // ---------------------------------------------------------------------------
 // SaveStatusLabel

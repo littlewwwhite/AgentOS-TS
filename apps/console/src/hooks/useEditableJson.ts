@@ -10,6 +10,24 @@ import { fileUrl } from "../lib/fileUrl";
 // Exported for unit-testing; not part of the public hook surface.
 // ---------------------------------------------------------------------------
 
+export function getAtPath(obj: unknown, path: string): unknown {
+  const segments = path.split(".");
+  let node: unknown = obj;
+  for (const seg of segments) {
+    if (node === null || node === undefined) return undefined;
+    const idx = Number(seg);
+    const isArrayIndex = !Number.isNaN(idx) && String(idx) === seg;
+    if (isArrayIndex) {
+      if (!Array.isArray(node)) return undefined;
+      node = node[idx];
+    } else {
+      if (typeof node !== "object" || Array.isArray(node)) return undefined;
+      node = (node as Record<string, unknown>)[seg];
+    }
+  }
+  return node;
+}
+
 export function setAtPath<T>(obj: T, path: string, value: unknown): T {
   const segments = path.split(".");
   if (segments.length === 0) return obj;
@@ -172,8 +190,10 @@ export function useEditableJson<T = unknown>(
         }
       } catch (e: unknown) {
         if ((e as { name?: string }).name === "AbortError") {
-          // Aborted — a new save will take over, don't change status
+          // Aborted — a new save will take over. Reset status so UI doesn't
+          // remain stuck on "saving" if no successor fires.
           savingRef.current = false;
+          setStatus("idle");
           return;
         }
         savingRef.current = false;

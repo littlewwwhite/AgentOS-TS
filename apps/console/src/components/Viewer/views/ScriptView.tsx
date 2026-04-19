@@ -9,31 +9,9 @@ import {
   type ScriptJson,
   type FountainToken,
 } from "../../../lib/fountain";
-import { useEditableJson } from "../../../hooks/useEditableJson";
+import { useEditableJson, getAtPath } from "../../../hooks/useEditableJson";
 import { EditableText } from "../../common/EditableText";
 import { SaveStatusDot } from "../../common/SaveStatusDot";
-
-// ---------------------------------------------------------------------------
-// getAtPath — mirrors setAtPath semantics for reading raw JSON values
-// ---------------------------------------------------------------------------
-
-function getAtPath(obj: unknown, path: string): unknown {
-  const segments = path.split(".");
-  let node: unknown = obj;
-  for (const seg of segments) {
-    if (node === null || node === undefined) return undefined;
-    const idx = Number(seg);
-    const isIndex = !Number.isNaN(idx) && String(idx) === seg;
-    if (isIndex) {
-      if (!Array.isArray(node)) return undefined;
-      node = (node as unknown[])[idx];
-    } else {
-      if (typeof node !== "object" || Array.isArray(node)) return undefined;
-      node = (node as Record<string, unknown>)[seg];
-    }
-  }
-  return node;
-}
 
 // ---------------------------------------------------------------------------
 // SaveStatusLabel — human-readable Chinese label next to the dot

@@ -35,7 +35,7 @@ export function StatusBadge({ status, unread }: Props) {
         <span
           className="w-[6px] h-[6px] rounded-full ml-1"
           style={{ backgroundColor: "var(--color-accent)" }}
-          aria-label={`${unread} unread`}
+          aria-label={`${unread} 条未读`}
         />
       )}
     </span>
