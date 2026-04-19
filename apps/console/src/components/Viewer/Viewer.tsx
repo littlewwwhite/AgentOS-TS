@@ -29,20 +29,53 @@ function renderView(kind: ViewKind, projectName: string, path: string) {
   }
 }
 
+function kindLabel(kind: ViewKind): string {
+  switch (kind) {
+    case "json": return "JSON";
+    case "text": return "TEXT";
+    case "image": return "IMAGE";
+    case "video": return "VIDEO";
+    case "asset-gallery": return "GALLERY";
+    case "video-grid": return "VIDEO GRID";
+    case "script": return "SCRIPT";
+    case "storyboard": return "STORYBOARD";
+    case "inspiration": return "INSPIRATION";
+    case "overview": return "OVERVIEW";
+    default: return "FILE";
+  }
+}
+
 export function Viewer() {
   const { tabs, activeId } = useTabs();
   const { name } = useProject();
   const active = tabs.find((t) => t.id === activeId);
-  if (!name) return <div className="h-full flex items-center justify-center text-sm text-[oklch(42%_0_0)]">请从顶部选择项目</div>;
-  if (!active) return (
-    <div className="h-full flex flex-col">
-      <TabBar />
-      <div className="flex-1 flex items-center justify-center text-sm text-[oklch(42%_0_0)]">在左侧导航中单击节点以查看内容</div>
-    </div>
-  );
+  if (!name) {
+    return (
+      <div className="h-full flex items-center justify-center p-10 font-serif italic text-[15px] text-[var(--color-ink-faint)]">
+        Select a project to begin.
+      </div>
+    );
+  }
+  if (!active) {
+    return (
+      <div className="h-full flex flex-col">
+        <TabBar />
+        <FallbackView projectName={name} path="" />
+      </div>
+    );
+  }
+  const displayPath = active.path ? `workspace/${name}/${active.path}` : `workspace/${name}`;
   return (
     <div className="h-full flex flex-col">
       <TabBar />
+      <div className="flex items-center justify-between px-6 py-2 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] shrink-0">
+        <span className="font-mono text-[11px] text-[var(--color-ink-muted)] truncate">
+          {displayPath}
+        </span>
+        <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-subtle)] shrink-0 ml-4">
+          {kindLabel(active.view)}
+        </span>
+      </div>
       <div className="flex-1 overflow-auto">
         {renderView(active.view, name, active.path)}
       </div>
