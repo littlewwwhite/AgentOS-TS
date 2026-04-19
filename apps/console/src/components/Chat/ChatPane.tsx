@@ -1,6 +1,6 @@
-// apps/console/src/components/ChatPane.tsx
+// apps/console/src/components/Chat/ChatPane.tsx
 import { useEffect, useRef, useState } from "react";
-import type { ChatMessage } from "../types";
+import type { ChatMessage } from "../../types";
 import { MessageBubble } from "./MessageBubble";
 
 interface Props {

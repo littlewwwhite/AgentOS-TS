@@ -1,29 +1,13 @@
 // apps/console/src/hooks/useWebSocket.ts
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatMessage, CanvasView, WsEvent } from "../types";
+import type { ChatMessage, WsEvent } from "../types";
 
 function uid() {
   return Math.random().toString(36).slice(2);
 }
 
-function routeCanvas(event: Extract<WsEvent, { type: "tool_result" }>): CanvasView | null {
-  const path = event.path ?? "";
-  if (path.includes("pipeline-state.json")) {
-    const m = path.match(/workspace\/([^/]+)\//);
-    return m ? { type: "pipeline", projectName: m[1] } : null;
-  }
-  if (path.includes("/actors/") || path.includes("/locations/") || path.includes("/props/")) {
-    return { type: "images", paths: [path] };
-  }
-  if (/ep\d+/.test(path) && event.output) {
-    return { type: "text", content: event.output, label: path.split("/").pop() ?? path };
-  }
-  return null;
-}
-
 export function useWebSocket(url: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [canvas, setCanvas] = useState<CanvasView>({ type: "idle" });
   const [isConnected, setIsConnected] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -84,8 +68,6 @@ export function useWebSocket(url: string) {
             m.id === `tool_${event.id}` ? { ...m, toolOutput: event.output, isStreaming: false } : m
           )
         );
-        const view = routeCanvas(event);
-        if (view) setCanvas(view);
       }
 
       if (event.type === "result") {
@@ -124,5 +106,5 @@ export function useWebSocket(url: string) {
     []
   );
 
-  return { messages, canvas, isConnected, isStreaming, send };
+  return { messages, isConnected, isStreaming, send };
 }

@@ -1,5 +1,5 @@
-// apps/console/src/components/MessageBubble.tsx
-import type { ChatMessage } from "../types";
+// apps/console/src/components/Chat/MessageBubble.tsx
+import type { ChatMessage } from "../../types";
 import { ToolCard } from "./ToolCard";
 
 interface Props {

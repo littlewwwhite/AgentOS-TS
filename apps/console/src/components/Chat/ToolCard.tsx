@@ -1,5 +1,5 @@
-// apps/console/src/components/ToolCard.tsx
-import type { ChatMessage } from "../types";
+// apps/console/src/components/Chat/ToolCard.tsx
+import type { ChatMessage } from "../../types";
 
 interface Props {
   message: ChatMessage;
