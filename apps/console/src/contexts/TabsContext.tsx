@@ -58,7 +58,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       if (idx < 0) return prev;
       const next = prev.filter((t) => t.id !== id);
       if (activeId === id) {
-        const fallback = next[idx] ?? next[idx - 1] ?? null;
+        const fallback = next[Math.min(idx, next.length - 1)] ?? null;
         setActiveId(fallback?.id ?? null);
       }
       return next;
