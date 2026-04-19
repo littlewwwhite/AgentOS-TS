@@ -30,4 +30,7 @@ describe("detectSchema", () => {
     expect(detectSchema(null)).toBe("generic");
     expect(detectSchema([1, 2])).toBe("generic");
   });
+  test("script wins when both episodes and scenes are top-level", () => {
+    expect(detectSchema({ episodes: [{ scenes: [] }], scenes: [{ shots: [{ prompt: "x" }] }] })).toBe("script");
+  });
 });
