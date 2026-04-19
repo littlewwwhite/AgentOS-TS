@@ -48,7 +48,7 @@ export function useWebSocket(
 
       if (event.type === "system") {
         // Lossless passthrough; no UI surface yet. Keep for debugging.
-        console.debug("[ws] system", event.subtype, event.data);
+        if (import.meta.env.DEV) console.debug("[ws] system", event.subtype, event.data);
         return;
       }
 
