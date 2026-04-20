@@ -46,9 +46,16 @@ export interface ClipInspectorData {
 
 export interface StoryboardEditorShot {
   key: string;
+  clipKey: string;
+  sceneId: string;
+  clipId: string;
   shotId: string;
   timeRange: string | null;
   duration: number;
+  localStartOffset: number;
+  localEndOffset: number;
+  startOffset: number;
+  endOffset: number;
   prompt: string;
 }
 
@@ -61,6 +68,8 @@ export interface StoryboardEditorClip {
   videoPath: string;
   expectedDuration: string | null;
   totalDuration: number;
+  startOffset: number;
+  endOffset: number;
   shotCount: number;
   displayText: string;
   shots: StoryboardEditorShot[];
@@ -68,7 +77,11 @@ export interface StoryboardEditorClip {
 
 export interface StoryboardEditorModel {
   clips: StoryboardEditorClip[];
+  shots: StoryboardEditorShot[];
   defaultClipKey: string | null;
+  defaultShotKey: string | null;
+  totalDuration: number;
+  episodeVideoPath: string | null;
 }
 
 function uniqueNames(names: Array<string | null | undefined>): string[] {
@@ -84,6 +97,14 @@ function stripActionPrefix(text: string): string {
   return text.replace(/^(?:action|动作)\s*[：:]\s*/i, "").trim();
 }
 
+function numericDuration(text: string | undefined): number | null {
+  if (!text) return null;
+  const match = text.match(/(\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 function spaceCode(space: string | undefined): string | null {
   if (!space) return null;
   if (space === "interior") return "INT";
@@ -95,8 +116,35 @@ function compactStoryboardId(id: string): string {
   return id.trim().replace(/_/g, "");
 }
 
+function basenameOf(path: string): string {
+  const normalized = path.replace(/\/+$/, "");
+  const lastSlash = normalized.lastIndexOf("/");
+  return lastSlash >= 0 ? normalized.slice(lastSlash + 1) : normalized;
+}
+
+function dirnameOf(path: string): string {
+  const normalized = path.replace(/\/+$/, "");
+  const lastSlash = normalized.lastIndexOf("/");
+  return lastSlash >= 0 ? normalized.slice(0, lastSlash) : "";
+}
+
+function stripExtension(filename: string): string {
+  return filename.replace(/\.[^.]+$/, "");
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isVideoPath(path: string): boolean {
+  return /\.(?:mp4|mov|webm)$/i.test(path);
+}
+
 function episodeSlugFromPath(storyboardPath: string): string {
-  const match = storyboardPath.match(/(?:^|\/)(ep_?\d+)(?=\/)/i);
+  const basename = basenameOf(storyboardPath);
+  const match =
+    basename.match(/(ep_?\d+)(?=_storyboard\.json$|\.json$)/i) ??
+    storyboardPath.match(/(?:^|\/)(ep_?\d+)(?=\/)/i);
   return match ? compactStoryboardId(match[1]) : "ep";
 }
 
@@ -110,6 +158,66 @@ export function clipVideoPath(
   const sceneSlug = compactStoryboardId(sceneId);
   const clipSlug = compactStoryboardId(clipId);
   return `${episodeDir}/${sceneSlug}/${episodeSlug}_${sceneSlug}_${clipSlug}.mp4`;
+}
+
+function resolveEpisodeVideoPath(
+  storyboardPath: string,
+  availablePaths?: ReadonlyArray<string>,
+): string | null {
+  if (!availablePaths || availablePaths.length === 0) return null;
+
+  const episodeDir = dirnameOf(storyboardPath);
+  const episodeSlug = episodeSlugFromPath(storyboardPath);
+  const exactBasename = `${episodeSlug}.mp4`;
+  const exactCandidate = episodeDir ? `${episodeDir}/${exactBasename}` : exactBasename;
+
+  if (availablePaths.includes(exactCandidate)) return exactCandidate;
+
+  return availablePaths.find((path) => dirnameOf(path) === episodeDir && basenameOf(path) === exactBasename) ?? null;
+}
+
+function resolveClipVideoPath(
+  storyboardPath: string,
+  sceneId: string,
+  clipId: string,
+  availablePaths?: ReadonlyArray<string>,
+): string {
+  const fallbackPath = clipVideoPath(storyboardPath, sceneId, clipId);
+  if (!availablePaths || availablePaths.length === 0) return fallbackPath;
+
+  const episodeDir = dirnameOf(storyboardPath);
+  const episodeSlug = episodeSlugFromPath(storyboardPath);
+  const sceneSlug = compactStoryboardId(sceneId);
+  const clipSlug = compactStoryboardId(clipId);
+  const fileStem = `${episodeSlug}_${sceneSlug}_${clipSlug}`;
+
+  const preferredCandidates = [
+    `${episodeDir}/${sceneSlug}/${clipSlug}/${fileStem}.mp4`,
+    `${episodeDir}/${sceneSlug}/${fileStem}.mp4`,
+    fallbackPath,
+  ];
+
+  for (const candidate of preferredCandidates) {
+    if (availablePaths.includes(candidate)) return candidate;
+  }
+
+  const variantPattern = new RegExp(`^${escapeRegExp(fileStem)}(?:_(\\d+))?$`, "i");
+  const scopedMatches = availablePaths
+    .filter((path) => path.startsWith(`${episodeDir}/`))
+    .filter((path) => variantPattern.test(stripExtension(basenameOf(path))))
+    .sort((left, right) => {
+      const leftName = stripExtension(basenameOf(left));
+      const rightName = stripExtension(basenameOf(right));
+      const leftMatch = leftName.match(variantPattern);
+      const rightMatch = rightName.match(variantPattern);
+      const leftVariant = leftMatch?.[1] ? Number(leftMatch[1]) : 0;
+      const rightVariant = rightMatch?.[1] ? Number(rightMatch[1]) : 0;
+      if (leftVariant !== rightVariant) return leftVariant - rightVariant;
+      if (left.length !== right.length) return left.length - right.length;
+      return left.localeCompare(right);
+    });
+
+  return scopedMatches[0] ?? fallbackPath;
 }
 
 export function durationFromRange(range: string | undefined): number | null {
@@ -181,42 +289,107 @@ export function buildStoryboardEditorModel(
     }>;
   }>,
   dict: Record<string, string>,
+  availablePaths?: Iterable<string>,
 ): StoryboardEditorModel {
+  const mediaPaths = availablePaths
+    ? Array.from(new Set(Array.from(availablePaths).filter(isVideoPath)))
+    : undefined;
   const clips: StoryboardEditorClip[] = [];
+  const shots: StoryboardEditorShot[] = [];
+  let episodeOffset = 0;
 
   scenes.forEach((scene, sceneIndex) => {
     (scene.clips ?? []).forEach((clip, clipIndex) => {
       const key = `${scene.scene_id}::${clip.clip_id}`;
-      const shots = (clip.shots ?? []).map((shot, shotIndex) => ({
-        key: `${key}::${shot.shot_id ?? `shot_${shotIndex + 1}`}`,
-        shotId: shot.shot_id ?? `shot_${shotIndex + 1}`,
-        timeRange: shot.time_range ?? null,
-        duration: shotDuration(shot),
-        prompt: resolveRefs(shot.partial_prompt ?? shot.partial_prompt_v2 ?? "", dict).trim(),
-      }));
+      let clipOffset = 0;
+      const clipShots = (clip.shots ?? []).map((shot, shotIndex) => {
+        const duration = shotDuration(shot);
+        const localStartOffset = clipOffset;
+        const localEndOffset = localStartOffset + duration;
+        const startOffset = episodeOffset + localStartOffset;
+        const endOffset = episodeOffset + localEndOffset;
+
+        clipOffset = localEndOffset;
+
+        return {
+          key: `${key}::${shot.shot_id ?? `shot_${shotIndex + 1}`}`,
+          clipKey: key,
+          sceneId: scene.scene_id,
+          clipId: clip.clip_id,
+          shotId: shot.shot_id ?? `shot_${shotIndex + 1}`,
+          timeRange: shot.time_range ?? null,
+          duration,
+          localStartOffset,
+          localEndOffset,
+          startOffset,
+          endOffset,
+          prompt: resolveRefs(shot.partial_prompt ?? shot.partial_prompt_v2 ?? "", dict).trim(),
+        };
+      });
+
+      const totalDuration =
+        clipShots.reduce((sum, shot) => sum + shot.duration, 0) ||
+        numericDuration(clip.expected_duration) ||
+        1;
+      const startOffset = episodeOffset;
+      const endOffset = startOffset + totalDuration;
 
       const displayText = stripActionPrefix(
         resolveRefs(clip.script_source ?? clip.complete_prompt ?? clip.complete_prompt_v2 ?? "", dict),
       );
 
-      clips.push({
+      const editorClip = {
         key,
         sceneId: scene.scene_id,
         sceneIndex,
         clipId: clip.clip_id,
         clipIndex,
-        videoPath: clipVideoPath(storyboardPath, scene.scene_id, clip.clip_id),
+        videoPath: resolveClipVideoPath(storyboardPath, scene.scene_id, clip.clip_id, mediaPaths),
         expectedDuration: clip.expected_duration ?? null,
-        totalDuration: shots.reduce((sum, shot) => sum + shot.duration, 0),
-        shotCount: shots.length,
+        totalDuration,
+        startOffset,
+        endOffset,
+        shotCount: clipShots.length,
         displayText,
-        shots,
-      });
+        shots: clipShots,
+      } satisfies StoryboardEditorClip;
+
+      clips.push(editorClip);
+      shots.push(...clipShots);
+      episodeOffset = endOffset;
     });
   });
 
   return {
     clips,
+    shots,
     defaultClipKey: clips[0]?.key ?? null,
+    defaultShotKey: shots[0]?.key ?? null,
+    totalDuration: episodeOffset,
+    episodeVideoPath: resolveEpisodeVideoPath(storyboardPath, mediaPaths),
+  };
+}
+
+export function resolveStoryboardSelectionAtTime(
+  model: StoryboardEditorModel,
+  episodeTime: number,
+): { clipKey: string | null; shotKey: string | null } {
+  if (model.clips.length === 0) {
+    return { clipKey: null, shotKey: null };
+  }
+
+  const boundedTime = Math.max(0, episodeTime);
+  const activeClip =
+    model.clips.find((clip) => boundedTime >= clip.startOffset && boundedTime < clip.endOffset) ??
+    model.clips.at(-1) ??
+    null;
+  const activeShot =
+    model.shots.find((shot) => boundedTime >= shot.startOffset && boundedTime < shot.endOffset) ??
+    model.shots.at(-1) ??
+    null;
+
+  return {
+    clipKey: activeClip?.key ?? null,
+    shotKey: activeShot?.key ?? activeClip?.shots[0]?.key ?? null,
   };
 }

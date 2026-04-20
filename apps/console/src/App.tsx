@@ -2,7 +2,7 @@
 import { useWebSocket } from "./hooks/useWebSocket";
 import { ChatPane } from "./components/Chat/ChatPane";
 import { ProjectProvider, useProject } from "./contexts/ProjectContext";
-import { TabsProvider } from "./contexts/TabsContext";
+import { TabsProvider, useTabs } from "./contexts/TabsContext";
 import { ProjectSwitcher } from "./components/Navigator/ProjectSwitcher";
 import { Viewer } from "./components/Viewer/Viewer";
 import { Navigator } from "./components/Navigator/Navigator";
@@ -11,6 +11,7 @@ const WS_URL = "ws://localhost:3001/ws";
 
 function Shell() {
   const { name, setName, noteToolPath, refresh, sessionId, setSessionId } = useProject();
+  const { tabs, activeId } = useTabs();
   const { messages, isConnected, isStreaming, send } = useWebSocket(
     WS_URL,
     noteToolPath,
@@ -30,6 +31,8 @@ function Shell() {
     : isStreaming
       ? "var(--color-run)"
       : "var(--color-ok)";
+  const activeTab = tabs.find((tab) => tab.id === activeId) ?? null;
+  const chatPaneWidth = activeTab?.view === "storyboard" ? "w-[320px]" : "w-[560px]";
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[var(--color-paper)]">
@@ -68,7 +71,7 @@ function Shell() {
         <div className="flex-1 overflow-hidden">
           <Viewer />
         </div>
-        <div className="w-[560px] shrink-0 border-l border-[var(--color-rule)] flex flex-col overflow-hidden">
+        <div className={`${chatPaneWidth} shrink-0 border-l border-[var(--color-rule)] flex flex-col overflow-hidden`}>
           <ChatPane messages={messages} isStreaming={isStreaming} isConnected={isConnected} onSend={handleSend} />
         </div>
       </div>

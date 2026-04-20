@@ -25,9 +25,9 @@
   --color-err:   oklch(52% 0.18 25);
 
   /* Type */
-  --font-serif: "Fraunces Variable", "EB Garamond", Georgia, serif;
-  --font-sans:  "Geist Variable", "Inter", system-ui, sans-serif;
-  --font-mono:  "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-serif: "Fraunces Variable", "EB Garamond", "Songti SC", "Noto Serif CJK SC", Georgia, serif;
+  --font-sans:  "Geist Variable", "Inter", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono Variable", "SF Mono", "Menlo", "Noto Sans Mono CJK SC", "PingFang SC", ui-monospace, monospace;
 }
 
 *,

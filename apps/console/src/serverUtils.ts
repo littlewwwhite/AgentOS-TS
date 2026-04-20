@@ -74,3 +74,18 @@ export function mimeFor(path: string): string {
   if (i < 0) return "application/octet-stream";
   return MIME[path.slice(i).toLowerCase()] ?? "application/octet-stream";
 }
+
+function episodeSlugFromStoryboardPath(storyboardPath: string): string {
+  const base = storyboardPath.split("/").pop() ?? storyboardPath;
+  const match =
+    base.match(/(ep_?\d+)(?=_storyboard\.json$|\.json$)/i) ??
+    storyboardPath.match(/(?:^|\/)(ep_?\d+)(?=\/)/i);
+  return (match?.[1] ?? "episode").replace(/_/g, "");
+}
+
+export function episodePreviewPathForStoryboard(storyboardPath: string): string {
+  const slash = storyboardPath.lastIndexOf("/");
+  const dir = slash >= 0 ? storyboardPath.slice(0, slash) : "";
+  const slug = episodeSlugFromStoryboardPath(storyboardPath);
+  return dir ? `${dir}/${slug}.mp4` : `${slug}.mp4`;
+}

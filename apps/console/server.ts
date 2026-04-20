@@ -1,9 +1,9 @@
 import { createAgentSession, type AgentSession } from "./src/orchestrator";
 import type { ServerWebSocket } from "bun";
-import { join, normalize } from "path";
+import { dirname, extname, join, normalize } from "path";
 import { existsSync, readdirSync, readFileSync } from "fs";
-import { rename, unlink } from "fs/promises";
-import { safeResolve, walkTree, mimeFor } from "./src/serverUtils";
+import { mkdir, rename, rm, symlink, unlink } from "fs/promises";
+import { episodePreviewPathForStoryboard, safeResolve, walkTree, mimeFor } from "./src/serverUtils";
 
 const WORKSPACE = join(import.meta.dir, "../../workspace");
 
@@ -18,6 +18,134 @@ const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Content-Type": "application/json",
 };
+
+const JSON_POST_CORS = {
+  ...CORS,
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+async function runFfmpeg(args: string[], cwd: string): Promise<{ ok: boolean; stderr: string }> {
+  const proc = Bun.spawn(["ffmpeg", ...args], {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stderr = await new Response(proc.stderr).text();
+  const exitCode = await proc.exited;
+  return { ok: exitCode === 0, stderr };
+}
+
+function normalizedRelPath(path: string): string {
+  return normalize(path).replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+async function ensureEpisodePreview(
+  projectRoot: string,
+  storyboardPath: string,
+  clipPaths: string[],
+): Promise<{ path: string; created: boolean }> {
+  const normalizedStoryboardPath = normalizedRelPath(storyboardPath);
+  if (!/^output\/.+_storyboard\.json$/.test(normalizedStoryboardPath)) {
+    throw new Error("storyboardPath must be an output storyboard json");
+  }
+
+  const targetRelPath = normalizedRelPath(episodePreviewPathForStoryboard(normalizedStoryboardPath));
+  if (!/^output\/.+\.mp4$/.test(targetRelPath)) {
+    throw new Error("episode preview path must be an output mp4");
+  }
+
+  const targetAbsPath = safeResolve(projectRoot, targetRelPath);
+  if (existsSync(targetAbsPath)) {
+    return { path: targetRelPath, created: false };
+  }
+
+  const sourceAbsPaths = uniqueStrings(clipPaths.map(normalizedRelPath))
+    .filter((relPath) => /^output\/.+\.(?:mp4|mov|webm)$/i.test(relPath))
+    .map((relPath) => safeResolve(projectRoot, relPath))
+    .filter((absPath) => existsSync(absPath));
+
+  if (sourceAbsPaths.length === 0) {
+    throw new Error("no existing clip videos to concatenate");
+  }
+
+  const targetDir = dirname(targetAbsPath);
+  await mkdir(targetDir, { recursive: true });
+  const tempDir = join(targetDir, `.episode-preview-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  await mkdir(tempDir, { recursive: true });
+
+  try {
+    const manifestLines: string[] = [];
+    for (let index = 0; index < sourceAbsPaths.length; index += 1) {
+      const ext = extname(sourceAbsPaths[index]) || ".mp4";
+      const linkName = `clip-${String(index + 1).padStart(4, "0")}${ext}`;
+      await symlink(sourceAbsPaths[index], join(tempDir, linkName));
+      manifestLines.push(`file '${linkName}'`);
+    }
+
+    await Bun.write(join(tempDir, "concat.txt"), `${manifestLines.join("\n")}\n`);
+    const tempOutput = join(tempDir, "episode.mp4");
+
+    const copyResult = await runFfmpeg([
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      "concat.txt",
+      "-c",
+      "copy",
+      "-movflags",
+      "+faststart",
+      tempOutput,
+    ], tempDir);
+
+    if (!copyResult.ok) {
+      const encodeResult = await runFfmpeg([
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-fflags",
+        "+genpts",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        "concat.txt",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        tempOutput,
+      ], tempDir);
+
+      if (!encodeResult.ok) {
+        throw new Error(`ffmpeg concat failed: ${encodeResult.stderr || copyResult.stderr}`);
+      }
+    }
+
+    await rename(tempOutput, targetAbsPath);
+    return { path: targetRelPath, created: true };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
 
 function scanProjects() {
   return readdirSync(WORKSPACE, { withFileTypes: true })
@@ -76,6 +204,44 @@ Bun.serve({
       const includeDraft = url.searchParams.get("include_draft") === "1";
       const tree = walkTree(projectRoot, { maxDepth: 4, includeDraft });
       return Response.json(tree, { headers: CORS });
+    }
+
+    const episodePreviewMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/episode-preview$/);
+    if (episodePreviewMatch) {
+      if (req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: JSON_POST_CORS });
+      }
+
+      if (req.method !== "POST") {
+        return Response.json({ error: "method not allowed" }, { status: 405, headers: JSON_POST_CORS });
+      }
+
+      const projectRoot = join(WORKSPACE, decodeURIComponent(episodePreviewMatch[1]));
+      if (!existsSync(projectRoot)) {
+        return Response.json({ error: "project not found" }, { status: 404, headers: JSON_POST_CORS });
+      }
+
+      let payload: { storyboardPath?: unknown; clipPaths?: unknown };
+      try {
+        payload = await req.json();
+      } catch {
+        return Response.json({ error: "invalid JSON body" }, { status: 400, headers: JSON_POST_CORS });
+      }
+
+      if (typeof payload.storyboardPath !== "string" || !Array.isArray(payload.clipPaths)) {
+        return Response.json({ error: "storyboardPath and clipPaths are required" }, { status: 400, headers: JSON_POST_CORS });
+      }
+
+      try {
+        const result = await ensureEpisodePreview(
+          projectRoot,
+          payload.storyboardPath,
+          payload.clipPaths.filter((path): path is string => typeof path === "string"),
+        );
+        return Response.json({ ok: true, ...result }, { headers: JSON_POST_CORS });
+      } catch (err) {
+        return Response.json({ error: String(err) }, { status: 500, headers: JSON_POST_CORS });
+      }
     }
 
     const fileMatch = url.pathname.match(/^\/files\/([^/]+)\/(.+)$/);

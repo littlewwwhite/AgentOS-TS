@@ -1,9 +1,17 @@
 // input: projectName + relPath → storyboard JSON (ep*_storyboard.json)
 //        + output/script.json and draft/catalog.json for placeholder dictionaries
-// output: storyboard deck with text track and generated video track aligned per clip
+// output: PR-style episode viewer with continuous clip playback and episode timeline
 // pos: StoryboardView panel inside the Viewer
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useEditableJson, getAtPath } from "../../../hooks/useEditableJson";
 import { useFileJson } from "../../../hooks/useFile";
 import { useProject } from "../../../contexts/ProjectContext";
@@ -11,14 +19,13 @@ import { buildRefDict, resolveRefs, type ScriptJson } from "../../../lib/fountai
 import { fileUrl } from "../../../lib/fileUrl";
 import {
   buildClipInspectorData,
-  clipVideoPath,
-  shotDuration,
+  buildStoryboardEditorModel,
+  resolveStoryboardSelectionAtTime,
   splitStoryboardText,
+  type ClipInspectorData,
+  type StoryboardClipLike,
   type StoryboardEditorClip,
   type StoryboardEditorShot,
-  type ClipInspectorData,
-  buildStoryboardEditorModel,
-  type StoryboardClipLike,
   type StoryboardSceneLike,
   type StoryboardShotLike,
 } from "../../../lib/storyboard";
@@ -48,11 +55,15 @@ interface SceneRef extends StoryboardSceneLike {
   props?: Array<{ prop_id: string; state_id?: string | null }>;
   clips?: ClipRef[];
 }
+
 interface StoryboardJson {
   episode_id: string;
   title?: string | null;
   scenes?: SceneRef[];
 }
+
+type PlaybackStatus = "idle" | "playing" | "paused";
+type EpisodePreviewStatus = "idle" | "building" | "ready" | "error";
 
 function savedAtLabel(savedAt: number | null): string {
   if (savedAt === null) return "";
@@ -95,7 +106,7 @@ function SaveStatusLabel({
 
 function FieldLabel({ children }: { children: string }) {
   return (
-    <div className="font-[Geist,sans-serif] text-[11px] font-semibold uppercase tracking-wider text-[var(--color-ink-subtle)] mb-1">
+    <div className="mb-1 font-[Geist,sans-serif] text-[11px] font-semibold tracking-[0.08em] text-[var(--color-ink-subtle)]">
       {children}
     </div>
   );
@@ -103,7 +114,7 @@ function FieldLabel({ children }: { children: string }) {
 
 function TrackLabel({ children }: { children: string }) {
   return (
-    <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-ink-subtle)] mb-2">
+    <div className="font-[Geist,sans-serif] text-[11px] font-semibold tracking-[0.08em] text-[var(--color-ink-subtle)]">
       {children}
     </div>
   );
@@ -117,8 +128,8 @@ function MetaBadge({
   value: string;
 }) {
   return (
-    <span className="inline-flex items-center gap-2 border border-[var(--color-rule)] bg-[var(--color-paper)] px-2.5 py-1">
-      <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-faint)]">
+    <span className="inline-flex items-center gap-2 border border-[var(--color-rule)] bg-[var(--color-paper)] px-2 py-1">
+      <span className="font-[Geist,sans-serif] text-[10px] tracking-[0.08em] text-[var(--color-ink-faint)]">
         {label}
       </span>
       <span className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-muted)]">
@@ -138,7 +149,7 @@ function InfoPanelSection({
   return (
     <section className="space-y-1.5">
       <FieldLabel>{title}</FieldLabel>
-      <div className="font-[Geist,sans-serif] text-[12px] leading-relaxed text-[var(--color-ink-muted)] whitespace-pre-wrap break-words">
+      <div className="whitespace-pre-wrap break-words font-[Geist,sans-serif] text-[12px] leading-relaxed text-[var(--color-ink-muted)]">
         {children}
       </div>
     </section>
@@ -154,107 +165,173 @@ function durationLabel(duration: number): string {
   return `${duration.toFixed(duration % 1 === 0 ? 0 : 1)}s`;
 }
 
+function timecodeLabel(seconds: number): string {
+  const safeSeconds = Math.max(0, seconds);
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = Math.floor(safeSeconds % 60);
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+function timelineCanvasWidth(totalDuration: number): number {
+  const safeDuration = Math.max(totalDuration, 1);
+  const pxPerSecond =
+    safeDuration > 240 ? 8 :
+    safeDuration > 120 ? 10 :
+    safeDuration > 60 ? 12 :
+    16;
+
+  return Math.max(960, Math.round(safeDuration * pxPerSecond));
+}
+
+function playbackLabel(status: PlaybackStatus): string {
+  if (status === "playing") return "连续播放中";
+  if (status === "paused") return "已暂停";
+  return "待播放";
+}
+
 function PreviewStage({
   projectName,
   videoPath,
+  clip,
+  selectedShot,
   exists,
-  clipId,
-  sceneId,
+  sourceLabel,
+  placeholderTitle,
+  playbackStatus,
+  episodeTime,
+  episodeDuration,
+  videoRef,
+  onLoadedMetadata,
+  onTimeUpdate,
+  onEnded,
+  onPlay,
+  onPause,
 }: {
   projectName: string;
-  videoPath: string;
+  videoPath: string | null;
+  clip: StoryboardEditorClip;
+  selectedShot: StoryboardEditorShot | null;
   exists: boolean;
-  clipId: string;
-  sceneId: string;
+  sourceLabel: string;
+  placeholderTitle: string;
+  playbackStatus: PlaybackStatus;
+  episodeTime: number;
+  episodeDuration: number;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  onLoadedMetadata: () => void;
+  onTimeUpdate: () => void;
+  onEnded: () => void;
+  onPlay: () => void;
+  onPause: () => void;
 }) {
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col space-y-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <TrackLabel>剪影预览</TrackLabel>
-        <span
-          className={
-            "font-mono text-[10px] uppercase tracking-wider " +
-            (exists ? "text-[var(--color-ok)]" : "text-[var(--color-warn)]")
-          }
-        >
-          {exists ? "已生成" : "待生成"}
-        </span>
+    <section className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-2 border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <TrackLabel>{sourceLabel}</TrackLabel>
+          <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-faint)]">
+            {timecodeLabel(episodeTime)} / {timecodeLabel(episodeDuration)}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <MetaBadge label="scene" value={clip.sceneId} />
+          <MetaBadge label="clip" value={clip.clipId} />
+          <MetaBadge label="status" value={playbackLabel(playbackStatus)} />
+        </div>
       </div>
 
-      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden border border-[var(--color-rule)] bg-[var(--color-ink)]">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.48)_100%)]" />
+      <div className="relative min-h-0 min-w-0 overflow-hidden border border-[var(--color-rule)] bg-[var(--color-ink)]">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08)_0%,rgba(0,0,0,0.42)_100%)]" />
         {exists ? (
           <video
+            key={videoPath ?? clip.key}
+            ref={videoRef}
             controls
             preload="metadata"
-            src={fileUrl(projectName, videoPath)}
-            className="relative z-10 h-full w-full min-w-0 object-contain bg-black"
+            src={videoPath ? fileUrl(projectName, videoPath) : undefined}
+            className="relative z-10 h-full w-full object-contain bg-black"
+            onLoadedMetadata={onLoadedMetadata}
+            onTimeUpdate={onTimeUpdate}
+            onEnded={onEnded}
+            onPlay={onPlay}
+            onPause={onPause}
           />
         ) : (
           <div className="relative z-10 flex h-full items-center justify-center px-6 text-center">
             <div className="space-y-3">
-              <div className="font-serif text-[20px] italic text-white/90">
-                这里展示 clip 预览舞台
+              <div className="font-serif text-[22px] italic text-white/88">
+                {placeholderTitle}
               </div>
-              <div className="font-[Geist,sans-serif] text-[13px] leading-relaxed text-white/70">
-                当前还没有匹配到生成视频，但音轨与脚本信息仍可在右侧继续校对。
+              <div className="mx-auto max-w-[28rem] font-[Geist,sans-serif] text-[13px] leading-relaxed text-white/68">
+                你仍然可以通过下方时间轴切换片段 / 镜头，并在右侧检查剧本原文、角色、提示词等元信息。
               </div>
             </div>
           </div>
         )}
 
-        <div className="pointer-events-none absolute left-4 top-4 z-20 flex flex-wrap gap-2">
-          <span className="border border-white/15 bg-black/35 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/85">
-            {sceneId}
+        <div className="pointer-events-none absolute left-3 top-3 z-20 flex flex-wrap gap-2">
+          <span className="border border-white/10 bg-black/35 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/90">
+            {clip.sceneId}
           </span>
-          <span className="border border-white/15 bg-black/35 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/85">
-            {clipId}
+          <span className="border border-white/10 bg-black/35 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/90">
+            {clip.clipId}
           </span>
+          {selectedShot && (
+            <span className="border border-white/10 bg-black/35 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/90">
+              {selectedShot.shotId}
+            </span>
+          )}
         </div>
       </div>
-
-      <div className="font-mono text-[10px] text-[var(--color-ink-faint)] break-all">
-        {videoPath}
-      </div>
-    </div>
+    </section>
   );
 }
 
 function TimelineClipButton({
   clip,
-  selected,
+  active,
   onSelect,
 }: {
   clip: StoryboardEditorClip;
-  selected: boolean;
+  active: boolean;
   onSelect: (clipKey: string) => void;
 }) {
-  const basisDuration = Math.max(clip.totalDuration, 1);
-
   return (
     <button
       type="button"
       onClick={() => onSelect(clip.key)}
+      title={clip.displayText || `${clip.sceneId} ${clip.clipId}`}
       className={
-        "group flex min-w-[120px] flex-col justify-between border-r border-[var(--color-rule)] px-3 py-2 text-left last:border-r-0 " +
-        (selected ? "bg-[var(--color-accent-soft)]" : "bg-transparent hover:bg-[var(--color-paper)]")
+        "flex min-w-0 flex-col justify-between gap-3 border-r border-[var(--color-rule)] px-3 py-2 text-left transition-colors last:border-r-0 " +
+        (active ? "bg-[var(--color-accent-soft)]" : "bg-transparent hover:bg-[var(--color-paper)]")
       }
-      style={{ flexGrow: basisDuration, flexBasis: `${Math.max(12, basisDuration * 10)}%` }}
+      style={{ flex: `${Math.max(clip.totalDuration, 0.75)} 0 0` }}
     >
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-accent)]">
-          {clip.sceneId}
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-subtle)]">
-          {clip.clipId}
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <span className="block font-mono text-[10px] uppercase tracking-wider text-[var(--color-accent)]">
+            {clip.sceneId}
+          </span>
+          <span className="block font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink)]">
+            {clip.clipId}
+          </span>
+        </div>
+        <span className="shrink-0 font-mono text-[10px] text-[var(--color-ink-faint)]">
+          {durationLabel(clip.totalDuration)}
         </span>
       </div>
-      <div className="mt-2 line-clamp-2 font-[Geist,sans-serif] text-[12px] leading-snug text-[var(--color-ink-muted)]">
-        {clip.displayText || "（无剧本原文）"}
+      <div className="h-1.5 overflow-hidden bg-[var(--color-paper-sunk)]">
+        <div className="h-full bg-[var(--color-accent)]" />
       </div>
-      <div className="mt-3 flex items-center justify-between gap-3 font-mono text-[10px] text-[var(--color-ink-faint)]">
+      <div className="flex items-center justify-between gap-3 font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-subtle)]">
         <span>{clip.shotCount} 镜</span>
-        <span>{durationLabel(clip.totalDuration || 1)}</span>
+        <span className="font-mono text-[10px] text-[var(--color-ink-faint)]">
+          {timecodeLabel(clip.startOffset)}
+        </span>
       </div>
     </button>
   );
@@ -262,11 +339,11 @@ function TimelineClipButton({
 
 function TimelineShotButton({
   shot,
-  selected,
+  active,
   onSelect,
 }: {
   shot: StoryboardEditorShot;
-  selected: boolean;
+  active: boolean;
   onSelect: (shotKey: string) => void;
 }) {
   const waveformBars = Math.max(3, Math.min(9, Math.round(Math.max(shot.duration, 1) * 2)));
@@ -275,17 +352,16 @@ function TimelineShotButton({
     <button
       type="button"
       onClick={() => onSelect(shot.key)}
-      className={
-        "group flex min-w-[96px] flex-col gap-2 border-r border-[var(--color-rule)] px-3 py-2 text-left last:border-r-0 " +
-        (selected ? "bg-[var(--color-accent-soft)]" : "bg-transparent hover:bg-[var(--color-paper)]")
-      }
-      style={{ flexGrow: Math.max(shot.duration, 1), flexBasis: `${Math.max(10, shot.duration * 16)}%` }}
       title={shot.prompt}
+      className={
+        "flex min-w-0 flex-col justify-between gap-2 border-r border-[var(--color-rule)] px-3 py-2 text-left transition-colors last:border-r-0 " +
+        (active ? "bg-[var(--color-accent-soft)]" : "bg-transparent hover:bg-[var(--color-paper)]")
+      }
+      style={{ flex: `${Math.max(shot.duration, 0.5)} 0 0` }}
     >
-      <div className="flex h-10 items-end gap-1">
+      <div className="flex h-9 items-end gap-1">
         {Array.from({ length: waveformBars }).map((_, barIndex) => {
-          const barHeight =
-            22 + (((barIndex + 1) * 17 + Math.round(shot.duration * 11)) % 56);
+          const barHeight = 22 + (((barIndex + 1) * 17 + Math.round(shot.duration * 11)) % 56);
           return (
             <span
               key={`${shot.key}-${barIndex}`}
@@ -296,7 +372,7 @@ function TimelineShotButton({
         })}
       </div>
       <div className="flex items-center justify-between gap-2 font-mono text-[10px] text-[var(--color-ink-subtle)]">
-        <span className="text-[var(--color-accent)]">{shot.shotId}</span>
+        <span className="truncate text-[var(--color-accent)]">{shot.shotId}</span>
         <span>{shot.timeRange ?? durationLabel(shot.duration)}</span>
       </div>
     </button>
@@ -304,78 +380,81 @@ function TimelineShotButton({
 }
 
 function EditorTimeline({
-  selectedClip,
-  hasPlayableMedia,
   clips,
-  selectedClipKey,
+  shots,
+  totalDuration,
+  currentClipKey,
+  currentShotKey,
+  episodeTime,
   onSelectClip,
-  selectedShotKey,
   onSelectShot,
-  summary,
 }: {
-  selectedClip: StoryboardEditorClip;
-  hasPlayableMedia: boolean;
   clips: StoryboardEditorClip[];
-  selectedClipKey: string;
+  shots: StoryboardEditorShot[];
+  totalDuration: number;
+  currentClipKey: string;
+  currentShotKey: string | null;
+  episodeTime: number;
   onSelectClip: (clipKey: string) => void;
-  selectedShotKey: string | null;
   onSelectShot: (shotKey: string) => void;
-  summary: ClipInspectorData;
 }) {
+  const safeDuration = Math.max(totalDuration, 1);
+  const playheadPercent = clampPercent((episodeTime / safeDuration) * 100);
+  const canvasWidth = timelineCanvasWidth(totalDuration);
+
   return (
-    <section className="grid h-full min-h-0 min-w-0 grid-rows-[auto_1fr] gap-3 border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <TrackLabel>时间轴</TrackLabel>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-subtle)]">
-            当前片段 {selectedClip.clipId}
-          </span>
-          <span className="font-mono text-[10px] text-[var(--color-ink-faint)]">
-            {selectedClip.shotCount} 镜 · {durationLabel(selectedClip.totalDuration || 1)}
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-faint)]">
-            {hasPlayableMedia ? "media linked" : "media pending"}
-          </span>
+    <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2 border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <TrackLabel>整集时间轴</TrackLabel>
+          <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-muted)]">
+            点击任意片段或镜头即可跳转。
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <MetaBadge label="总时长" value={durationLabel(totalDuration)} />
+          <MetaBadge label="当前游标" value={timecodeLabel(episodeTime)} />
         </div>
       </div>
 
-      <div className="grid min-h-0 grid-rows-[minmax(58px,0.8fr)_minmax(96px,1.2fr)] gap-3">
-        <div className="space-y-2">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-faint)]">
-            片段轨
+      <div className="min-h-0 overflow-x-auto border border-[var(--color-rule)] bg-[var(--color-paper-sunk)]">
+        <div className="grid gap-2 p-2" style={{ width: `${canvasWidth}px` }}>
+          <div className="grid grid-cols-[68px_minmax(0,1fr)] items-stretch gap-3">
+            <div className="pt-2">
+              <TrackLabel>片段轨</TrackLabel>
+            </div>
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-y-0 z-20 w-px bg-[var(--color-accent)]/90" style={{ left: `${playheadPercent}%` }} />
+              <div className="flex min-h-[68px] overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper)]">
+                {clips.map((clip) => (
+                  <TimelineClipButton
+                    key={clip.key}
+                    clip={clip}
+                    active={clip.key === currentClipKey}
+                    onSelect={onSelectClip}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="flex overflow-x-auto border border-[var(--color-rule)] bg-[var(--color-paper-sunk)]">
-            {clips.map((clip) => (
-              <TimelineClipButton
-                key={clip.key}
-                clip={clip}
-                selected={clip.key === selectedClipKey}
-                onSelect={onSelectClip}
-              />
-            ))}
-          </div>
-        </div>
 
-        <div className="space-y-2 min-h-0">
-          <div className="flex items-center justify-between gap-3">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-faint)]">
-              音轨 / 镜头轨
+          <div className="grid grid-cols-[68px_minmax(0,1fr)] items-stretch gap-3">
+            <div className="pt-2">
+              <TrackLabel>镜头轨</TrackLabel>
             </div>
-            <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-muted)]">
-              {hasPlayableMedia
-                ? "点击镜头条切换查看；音频沿用当前 clip 的真实音轨"
-                : summary.sfxPrompt || "点击镜头条切换查看当前分镜"}
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-y-0 z-20 w-px bg-[var(--color-accent)]/90" style={{ left: `${playheadPercent}%` }} />
+              <div className="flex min-h-[70px] overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper)]">
+                {shots.map((shot) => (
+                  <TimelineShotButton
+                    key={shot.key}
+                    shot={shot}
+                    active={shot.key === currentShotKey}
+                    onSelect={onSelectShot}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-          <div className="flex min-h-[108px] overflow-x-auto border border-[var(--color-rule)] bg-[var(--color-paper-sunk)]">
-            {selectedClip.shots.map((shot) => (
-              <TimelineShotButton
-                key={shot.key}
-                shot={shot}
-                selected={shot.key === selectedShotKey}
-                onSelect={onSelectShot}
-              />
-            ))}
           </div>
         </div>
       </div>
@@ -384,16 +463,22 @@ function EditorTimeline({
 }
 
 function ClipInfoPanel({
+  clip,
   summary,
   source,
   selectedShot,
+  episodeTime,
+  episodeDuration,
   dict,
   children,
   className = "",
 }: {
+  clip: StoryboardEditorClip;
   summary: ClipInspectorData;
   source: string;
   selectedShot: StoryboardEditorShot | null;
+  episodeTime: number;
+  episodeDuration: number;
   dict: Record<string, string>;
   children?: ReactNode;
   className?: string;
@@ -401,90 +486,100 @@ function ClipInfoPanel({
   const scriptBeats = splitStoryboardText(source, dict);
 
   return (
-    <aside className={`min-w-0 bg-[var(--color-paper)] border border-[var(--color-rule)] px-3 py-3 space-y-4 ${className}`.trim()}>
-      <div className="flex flex-wrap gap-2">
-        {summary.environment && <MetaBadge label="场域" value={summary.environment} />}
-        {summary.location && <MetaBadge label="场景" value={summary.location} />}
-        {summary.expectedDuration && <MetaBadge label="时长" value={summary.expectedDuration} />}
-        <MetaBadge label="镜头" value={`${summary.shotCount}`} />
-        <MetaBadge
-          label="节奏"
-          value={`${summary.totalDuration.toFixed(summary.totalDuration % 1 === 0 ? 0 : 1)}s`}
-        />
-      </div>
-
-      {summary.characters.length > 0 && (
-        <InfoPanelSection title="出场人物">
+    <aside className={`min-w-0 border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-3 ${className}`.trim()}>
+      <div className="space-y-4">
+        <div className="space-y-2 border-b border-[var(--color-rule)] pb-3">
+          <TrackLabel>当前段元信息</TrackLabel>
           <div className="flex flex-wrap gap-2">
-            {summary.characters.map((character) => (
-              <MetaBadge key={character} label="角色" value={character} />
-            ))}
+            <MetaBadge label="scene" value={clip.sceneId} />
+            <MetaBadge label="clip" value={clip.clipId} />
+            <MetaBadge label="游标" value={`${timecodeLabel(episodeTime)} / ${timecodeLabel(episodeDuration)}`} />
+            <MetaBadge label="片段时长" value={durationLabel(clip.totalDuration)} />
+            {selectedShot && <MetaBadge label="shot" value={selectedShot.shotId} />}
           </div>
-        </InfoPanelSection>
-      )}
+        </div>
 
-      {summary.props.length > 0 && (
-        <InfoPanelSection title="场景道具">
+        {(summary.environment || summary.location) && (
           <div className="flex flex-wrap gap-2">
-            {summary.props.map((prop) => (
-              <MetaBadge key={prop} label="道具" value={prop} />
-            ))}
+            {summary.environment && <MetaBadge label="场域" value={summary.environment} />}
+            {summary.location && <MetaBadge label="场景" value={summary.location} />}
+            {summary.expectedDuration && <MetaBadge label="预估" value={summary.expectedDuration} />}
           </div>
-        </InfoPanelSection>
-      )}
-
-      {selectedShot && (
-        <InfoPanelSection title="当前镜头">
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-2">
-              <MetaBadge label="镜头" value={selectedShot.shotId} />
-              <MetaBadge label="时段" value={selectedShot.timeRange ?? durationLabel(selectedShot.duration)} />
-            </div>
-            <div>{selectedShot.prompt || "（无镜头提示词）"}</div>
-          </div>
-        </InfoPanelSection>
-      )}
-
-      <InfoPanelSection title="剧本原文">
-        {scriptBeats.length === 0 ? (
-          <span className="font-serif italic text-[14px] text-[var(--color-ink-faint)]">
-            （无剧本原文）
-          </span>
-        ) : (
-          <ol className="space-y-2">
-            {scriptBeats.map((beat, index) => (
-              <li key={`${index}-${beat}`} className="grid grid-cols-[28px_1fr] gap-3">
-                <span className="font-mono text-[10px] text-[var(--color-ink-faint)] pt-0.5">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span className="font-serif italic text-[14px] leading-relaxed text-[var(--color-ink)]">
-                  {beat}
-                </span>
-              </li>
-            ))}
-          </ol>
         )}
-      </InfoPanelSection>
 
-      {summary.layoutPrompt && (
-        <InfoPanelSection title="场面提示词">
-          {summary.layoutPrompt}
+        {selectedShot && (
+          <InfoPanelSection title="当前镜头">
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <MetaBadge label="时段" value={selectedShot.timeRange ?? durationLabel(selectedShot.duration)} />
+                <MetaBadge label="局部偏移" value={`${timecodeLabel(selectedShot.localStartOffset)} → ${timecodeLabel(selectedShot.localEndOffset)}`} />
+              </div>
+              <div>{selectedShot.prompt || "（无镜头提示词）"}</div>
+            </div>
+          </InfoPanelSection>
+        )}
+
+        {summary.characters.length > 0 && (
+          <InfoPanelSection title="出场人物">
+            <div className="flex flex-wrap gap-2">
+              {summary.characters.map((character) => (
+                <MetaBadge key={character} label="角色" value={character} />
+              ))}
+            </div>
+          </InfoPanelSection>
+        )}
+
+        {summary.props.length > 0 && (
+          <InfoPanelSection title="场景道具">
+            <div className="flex flex-wrap gap-2">
+              {summary.props.map((prop) => (
+                <MetaBadge key={prop} label="道具" value={prop} />
+              ))}
+            </div>
+          </InfoPanelSection>
+        )}
+
+        <InfoPanelSection title="剧本原文">
+          {scriptBeats.length === 0 ? (
+            <span className="font-serif italic text-[14px] text-[var(--color-ink-faint)]">
+              （无剧本原文）
+            </span>
+          ) : (
+            <ol className="space-y-2">
+              {scriptBeats.map((beat, index) => (
+                <li key={`${index}-${beat}`} className="grid grid-cols-[24px_1fr] gap-3">
+                  <span className="pt-0.5 font-mono text-[10px] text-[var(--color-ink-faint)]">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="font-serif italic text-[14px] leading-relaxed text-[var(--color-ink)]">
+                    {beat}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
         </InfoPanelSection>
-      )}
 
-      {summary.sfxPrompt && (
-        <InfoPanelSection title="音轨提示词">
-          {summary.sfxPrompt}
-        </InfoPanelSection>
-      )}
+        {summary.layoutPrompt && (
+          <InfoPanelSection title="场面提示词">
+            {summary.layoutPrompt}
+          </InfoPanelSection>
+        )}
 
-      {summary.promptPreview && (
-        <InfoPanelSection title="合成提示词摘要">
-          {summarizeText(summary.promptPreview, 280)}
-        </InfoPanelSection>
-      )}
+        {summary.sfxPrompt && (
+          <InfoPanelSection title="音轨提示词">
+            {summary.sfxPrompt}
+          </InfoPanelSection>
+        )}
 
-      {children}
+        {summary.promptPreview && (
+          <InfoPanelSection title="合成提示词摘要">
+            {summarizeText(summary.promptPreview, 280)}
+          </InfoPanelSection>
+        )}
+
+        {children}
+      </div>
     </aside>
   );
 }
@@ -497,9 +592,10 @@ function ShotList({
   dict: Record<string, string>;
 }) {
   if (shots.length === 0) return null;
+
   return (
     <details className="border-t border-[var(--color-rule)] pt-3">
-      <summary className="font-mono text-[11px] text-[var(--color-ink-subtle)] cursor-pointer select-none hover:text-[var(--color-ink)] transition-colors">
+      <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
         展开镜头轨明细（{shots.length} 镜）
       </summary>
       <div className="mt-3 space-y-3">
@@ -509,7 +605,7 @@ function ShotList({
             className="grid grid-cols-[72px_1fr] gap-3 border-l-2 border-[var(--color-accent)] pl-3"
           >
             <div>
-              <div className="font-mono text-[11px] text-[var(--color-accent)] uppercase tracking-wider">
+              <div className="font-mono text-[11px] uppercase tracking-wider text-[var(--color-accent)]">
                 {shot.shot_id}
               </div>
               <div className="font-mono text-[10px] text-[var(--color-ink-faint)]">
@@ -552,48 +648,48 @@ function EditableClipFields({
 
   return (
     <details className="border-t border-[var(--color-rule)] pt-3">
-      <summary className="font-mono text-[11px] text-[var(--color-ink-subtle)] cursor-pointer select-none hover:text-[var(--color-ink)] transition-colors">
+      <summary className="cursor-pointer select-none font-mono text-[11px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
         原始字段 / 可编辑
       </summary>
       <div className="mt-3 space-y-4">
         <div>
           <FieldLabel>剧本原文</FieldLabel>
-          <div className="font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] w-full">
+          <div className="w-full font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)]">
             <EditableText
               value={rawSS}
-              onChange={(v) => patch(ssPath, v)}
+              onChange={(value) => patch(ssPath, value)}
               placeholder="（剧本原文）"
               multiline
               status={editStatus}
-              className="w-full block"
+              className="block w-full"
               ariaLabel={`${clip.clip_id} 剧本原文`}
             />
           </div>
         </div>
         <div>
           <FieldLabel>场景布局</FieldLabel>
-          <div className="font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] w-full">
+          <div className="w-full font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)]">
             <EditableText
               value={rawLP}
-              onChange={(v) => patch(lpPath, v)}
+              onChange={(value) => patch(lpPath, value)}
               placeholder="（场景布局指令）"
               multiline
               status={editStatus}
-              className="w-full block"
+              className="block w-full"
               ariaLabel={`${clip.clip_id} 场景布局`}
             />
           </div>
         </div>
         <div>
           <FieldLabel>音效指令</FieldLabel>
-          <div className="font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] w-full">
+          <div className="w-full font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)]">
             <EditableText
               value={rawSFX}
-              onChange={(v) => patch(sfxPath, v)}
+              onChange={(value) => patch(sfxPath, value)}
               placeholder="（音效指令）"
               multiline
               status={editStatus}
-              className="w-full block"
+              className="block w-full"
               ariaLabel={`${clip.clip_id} 音效指令`}
             />
           </div>
@@ -609,7 +705,7 @@ function scriptPathFor(storyboardPath: string): string {
 }
 
 export function StoryboardView({ projectName, path }: { projectName: string; path: string }) {
-  const { tree } = useProject();
+  const { tree, refresh } = useProject();
   const { data, error, status, patch, savedAt } =
     useEditableJson<StoryboardJson>(projectName, path);
 
@@ -623,38 +719,286 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     }),
     [catalogData, scriptData],
   );
+
   const treePaths = useMemo(() => new Set(tree.map((node) => node.path)), [tree]);
+  const scenes = data?.scenes ?? [];
   const editorModel = useMemo(
-    () => buildStoryboardEditorModel(path, data?.scenes ?? [], dict),
-    [data?.scenes, dict, path],
+    () => buildStoryboardEditorModel(path, scenes, dict, treePaths),
+    [dict, path, scenes, treePaths],
   );
 
-  const [selectedClipKey, setSelectedClipKey] = useState<string | null>(editorModel.defaultClipKey);
-  const [selectedShotKey, setSelectedShotKey] = useState<string | null>(null);
+  const [currentClipKey, setCurrentClipKey] = useState<string | null>(editorModel.defaultClipKey);
+  const [selectedShotKey, setSelectedShotKey] = useState<string | null>(editorModel.defaultShotKey);
+  const [episodeTime, setEpisodeTime] = useState(0);
+  const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>("idle");
+  const [generatedEpisodeVideoPath, setGeneratedEpisodeVideoPath] = useState<string | null>(null);
+  const [episodePreviewStatus, setEpisodePreviewStatus] = useState<EpisodePreviewStatus>("idle");
+  const [episodePreviewError, setEpisodePreviewError] = useState<string | null>(null);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const pendingSeekRef = useRef<number | null>(0);
+  const pendingAutoplayRef = useRef(false);
+
+  useEffect(() => {
+    setGeneratedEpisodeVideoPath(null);
+    setEpisodePreviewStatus("idle");
+    setEpisodePreviewError(null);
+    pendingSeekRef.current = 0;
+    pendingAutoplayRef.current = false;
+  }, [path, projectName]);
+
+  const clipMap = useMemo(
+    () => new Map(editorModel.clips.map((clip) => [clip.key, clip])),
+    [editorModel.clips],
+  );
+  const shotMap = useMemo(
+    () => new Map(editorModel.shots.map((shot) => [shot.key, shot])),
+    [editorModel.shots],
+  );
 
   useEffect(() => {
     if (!editorModel.defaultClipKey) {
-      setSelectedClipKey(null);
+      setCurrentClipKey(null);
       setSelectedShotKey(null);
+      setEpisodeTime(0);
       return;
     }
-    if (!selectedClipKey || !editorModel.clips.some((clip) => clip.key === selectedClipKey)) {
-      setSelectedClipKey(editorModel.defaultClipKey);
-    }
-  }, [editorModel, selectedClipKey]);
 
-  const scenes = data?.scenes ?? [];
-  const selectedClip = editorModel.clips.find((clip) => clip.key === selectedClipKey) ?? null;
+    if (!currentClipKey || !clipMap.has(currentClipKey)) {
+      const defaultClip = clipMap.get(editorModel.defaultClipKey) ?? null;
+      setCurrentClipKey(editorModel.defaultClipKey);
+      setSelectedShotKey(editorModel.defaultShotKey);
+      setEpisodeTime(defaultClip?.startOffset ?? 0);
+      pendingSeekRef.current = 0;
+    }
+  }, [clipMap, currentClipKey, editorModel.defaultClipKey, editorModel.defaultShotKey]);
+
+  const currentClip = currentClipKey ? clipMap.get(currentClipKey) ?? null : null;
 
   useEffect(() => {
-    if (!selectedClip) {
-      setSelectedShotKey(null);
+    if (!currentClip) return;
+    if (!selectedShotKey || currentClip.shots.every((shot) => shot.key !== selectedShotKey)) {
+      setSelectedShotKey(currentClip.shots[0]?.key ?? null);
+    }
+  }, [currentClip, selectedShotKey]);
+
+  const currentShot = selectedShotKey ? shotMap.get(selectedShotKey) ?? null : null;
+  const selectedShot = currentShot?.clipKey === currentClipKey
+    ? currentShot
+    : currentClip?.shots[0] ?? null;
+
+  const totalClips = editorModel.clips.length;
+  const totalShots = editorModel.shots.length;
+  const playableClipPaths = useMemo(
+    () => editorModel.clips.map((clip) => clip.videoPath).filter((videoPath) => treePaths.has(videoPath)),
+    [editorModel.clips, treePaths],
+  );
+  const mergedEpisodeVideoPath = editorModel.episodeVideoPath ?? generatedEpisodeVideoPath;
+  const hasEpisodeVideo = mergedEpisodeVideoPath !== null &&
+    (treePaths.has(mergedEpisodeVideoPath) || mergedEpisodeVideoPath === generatedEpisodeVideoPath);
+  const currentClipExists = currentClip ? treePaths.has(currentClip.videoPath) : false;
+  const previewVideoPath = hasEpisodeVideo ? mergedEpisodeVideoPath : currentClip?.videoPath ?? null;
+  const previewExists = hasEpisodeVideo || currentClipExists;
+  const previewSourceLabel = hasEpisodeVideo
+    ? "整集成片"
+    : episodePreviewStatus === "building"
+      ? "正在合并整集"
+      : "片段预览";
+  const previewPlaceholderTitle = episodePreviewStatus === "building"
+    ? "正在合并整集预览…"
+    : "当前没有可播放的预览视频";
+  const episodePreviewLabel = hasEpisodeVideo
+    ? "整集"
+    : episodePreviewStatus === "building"
+      ? "合并中"
+      : episodePreviewStatus === "error"
+        ? "合并失败"
+        : "片段";
+  const currentScene = currentClip ? scenes[currentClip.sceneIndex] ?? null : null;
+  const currentClipData = currentClip && currentScene
+    ? currentScene.clips?.[currentClip.clipIndex] ?? null
+    : null;
+  const currentClipPath = currentClip
+    ? `scenes.${currentClip.sceneIndex}.clips.${currentClip.clipIndex}`
+    : null;
+  const currentScriptPath = currentClipPath ? `${currentClipPath}.script_source` : null;
+  const currentScriptSource = data && currentScriptPath && currentClipData
+    ? String(getAtPath(data, currentScriptPath) ?? currentClipData.script_source ?? "")
+    : "";
+  const currentSummary = currentClip && currentScene && currentClipData
+    ? buildClipInspectorData(
+        currentScene,
+        { ...currentClipData, script_source: currentScriptSource },
+        dict,
+      )
+    : null;
+  const dictEntries = Object.entries(dict);
+
+  useEffect(() => {
+    if (!data) return;
+    if (editorModel.episodeVideoPath || generatedEpisodeVideoPath) return;
+    if (episodePreviewStatus !== "idle") return;
+    if (playableClipPaths.length === 0) return;
+
+    const abortController = new AbortController();
+    setEpisodePreviewStatus("building");
+    setEpisodePreviewError(null);
+
+    fetch(`/api/projects/${encodeURIComponent(projectName)}/episode-preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storyboardPath: path, clipPaths: playableClipPaths }),
+      signal: abortController.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || typeof payload.path !== "string") {
+          throw new Error(typeof payload.error === "string" ? payload.error : `episode-preview ${response.status}`);
+        }
+        return payload as { path: string };
+      })
+      .then((payload) => {
+        setGeneratedEpisodeVideoPath(payload.path);
+        setEpisodePreviewStatus("ready");
+        refresh();
+      })
+      .catch((err) => {
+        if (abortController.signal.aborted) return;
+        setEpisodePreviewStatus("error");
+        setEpisodePreviewError(String(err));
+      });
+
+    return () => abortController.abort();
+  }, [
+    data,
+    editorModel.episodeVideoPath,
+    generatedEpisodeVideoPath,
+    path,
+    playableClipPaths,
+    projectName,
+    refresh,
+  ]);
+
+  const applyTimeSelection = useCallback((clip: StoryboardEditorClip, localTime: number, autoplay: boolean) => {
+    const boundedLocalTime = Math.max(0, Math.min(localTime, Math.max(clip.totalDuration - 0.05, 0)));
+    const nextGlobalTime = clip.startOffset + boundedLocalTime;
+    const nextSelection = resolveStoryboardSelectionAtTime(editorModel, nextGlobalTime);
+
+    setCurrentClipKey(nextSelection.clipKey ?? clip.key);
+    setSelectedShotKey(nextSelection.shotKey);
+    setEpisodeTime(nextGlobalTime);
+
+    const currentVideo = videoRef.current;
+    const canPlayCurrentClip = treePaths.has(clip.videoPath);
+    const canPlayPreview = hasEpisodeVideo || canPlayCurrentClip;
+
+    if (currentVideo && canPlayPreview && (hasEpisodeVideo || currentClipKey === clip.key)) {
+      currentVideo.currentTime = hasEpisodeVideo ? nextGlobalTime : boundedLocalTime;
+      if (autoplay) {
+        void currentVideo.play().catch(() => undefined);
+      }
       return;
     }
-    if (!selectedShotKey || !selectedClip.shots.some((shot) => shot.key === selectedShotKey)) {
-      setSelectedShotKey(selectedClip.shots[0]?.key ?? null);
+
+    pendingSeekRef.current = nextGlobalTime;
+    pendingAutoplayRef.current = autoplay && canPlayPreview;
+    if (!canPlayPreview) {
+      setPlaybackStatus("idle");
     }
-  }, [selectedClip, selectedShotKey]);
+  }, [currentClipKey, editorModel, hasEpisodeVideo, treePaths]);
+
+  const handleSelectClip = useCallback((clipKey: string) => {
+    const clip = clipMap.get(clipKey);
+    if (!clip) return;
+    applyTimeSelection(clip, 0, playbackStatus === "playing");
+  }, [applyTimeSelection, clipMap, playbackStatus]);
+
+  const handleSelectShot = useCallback((shotKey: string) => {
+    const shot = shotMap.get(shotKey);
+    if (!shot) return;
+    const clip = clipMap.get(shot.clipKey);
+    if (!clip) return;
+    applyTimeSelection(clip, shot.localStartOffset, playbackStatus === "playing");
+  }, [applyTimeSelection, clipMap, playbackStatus, shotMap]);
+
+  const handleLoadedMetadata = useCallback(() => {
+    const clip = currentClipKey ? clipMap.get(currentClipKey) ?? null : null;
+    const video = videoRef.current;
+    if (!video || (!hasEpisodeVideo && !clip)) return;
+
+    const pendingGlobalTime = pendingSeekRef.current ?? (clip?.startOffset ?? 0);
+    const boundedGlobalTime = Math.max(0, Math.min(pendingGlobalTime, Math.max(editorModel.totalDuration - 0.05, 0)));
+    const boundedLocalTime = clip
+      ? Math.max(0, Math.min(boundedGlobalTime - clip.startOffset, Math.max(clip.totalDuration - 0.05, 0)))
+      : boundedGlobalTime;
+    const targetTime = hasEpisodeVideo ? boundedGlobalTime : boundedLocalTime;
+    if (Math.abs(video.currentTime - targetTime) > 0.05) {
+      video.currentTime = targetTime;
+    }
+
+    const nextSelection = resolveStoryboardSelectionAtTime(editorModel, boundedGlobalTime);
+    setCurrentClipKey(nextSelection.clipKey);
+    setEpisodeTime(boundedGlobalTime);
+    setSelectedShotKey(nextSelection.shotKey);
+
+    const shouldAutoplay = pendingAutoplayRef.current;
+    pendingSeekRef.current = null;
+    pendingAutoplayRef.current = false;
+
+    if (shouldAutoplay) {
+      void video.play().catch(() => undefined);
+    }
+  }, [clipMap, currentClipKey, editorModel, hasEpisodeVideo]);
+
+  const handleTimeUpdate = useCallback(() => {
+    const video = videoRef.current;
+    const clip = currentClipKey ? clipMap.get(currentClipKey) ?? null : null;
+    if (!video || (!hasEpisodeVideo && !clip)) return;
+
+    const nextGlobalTime = hasEpisodeVideo ? video.currentTime : (clip?.startOffset ?? 0) + video.currentTime;
+    const nextSelection = resolveStoryboardSelectionAtTime(editorModel, nextGlobalTime);
+    setEpisodeTime(nextGlobalTime);
+    setCurrentClipKey((previous) => previous === nextSelection.clipKey ? previous : nextSelection.clipKey);
+    setSelectedShotKey((previous) => previous === nextSelection.shotKey ? previous : nextSelection.shotKey);
+  }, [clipMap, currentClipKey, editorModel, hasEpisodeVideo]);
+
+  const handleEnded = useCallback(() => {
+    if (hasEpisodeVideo) {
+      const nextSelection = resolveStoryboardSelectionAtTime(editorModel, editorModel.totalDuration);
+      setPlaybackStatus("idle");
+      setCurrentClipKey(nextSelection.clipKey);
+      setSelectedShotKey(nextSelection.shotKey);
+      setEpisodeTime(editorModel.totalDuration);
+      return;
+    }
+
+    if (!currentClip) return;
+    const currentIndex = editorModel.clips.findIndex((clip) => clip.key === currentClip.key);
+    const nextPlayableClip = editorModel.clips
+      .slice(currentIndex + 1)
+      .find((clip) => treePaths.has(clip.videoPath));
+
+    if (!nextPlayableClip) {
+      setPlaybackStatus("idle");
+      setEpisodeTime(editorModel.totalDuration);
+      return;
+    }
+
+    pendingSeekRef.current = 0;
+    pendingAutoplayRef.current = true;
+    setCurrentClipKey(nextPlayableClip.key);
+    setSelectedShotKey(nextPlayableClip.shots[0]?.key ?? null);
+    setEpisodeTime(nextPlayableClip.startOffset);
+  }, [currentClip, editorModel, hasEpisodeVideo, treePaths]);
+
+  const handlePlay = useCallback(() => {
+    setPlaybackStatus("playing");
+  }, []);
+
+  const handlePause = useCallback(() => {
+    const video = videoRef.current;
+    setPlaybackStatus(video?.ended ? "idle" : "paused");
+  }, []);
 
   if (status === "error" && !data) {
     return (
@@ -663,6 +1007,7 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
       </div>
     );
   }
+
   if (!data) {
     return (
       <div className="p-6 text-[13px] text-[var(--color-ink-subtle)]">
@@ -671,43 +1016,36 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     );
   }
 
-  const totalClips = scenes.reduce((acc, sc) => acc + (sc.clips?.length ?? 0), 0);
-  const totalShots = scenes.reduce(
-    (acc, sc) => acc + (sc.clips ?? []).reduce((clipAcc, cl) => clipAcc + (cl.shots?.length ?? 0), 0),
-    0,
-  );
-  const dictEntries = Object.entries(dict);
-  const selectedShot =
-    selectedClip?.shots.find((shot) => shot.key === selectedShotKey) ?? selectedClip?.shots[0] ?? null;
-  const selectedScene = selectedClip ? scenes[selectedClip.sceneIndex] ?? null : null;
-  const selectedClipData = selectedClip && selectedScene
-    ? selectedScene.clips?.[selectedClip.clipIndex] ?? null
-    : null;
-  const selectedClipPath = selectedClip
-    ? `scenes.${selectedClip.sceneIndex}.clips.${selectedClip.clipIndex}`
-    : null;
-  const selectedScriptPath = selectedClipPath ? `${selectedClipPath}.script_source` : null;
-  const selectedScriptSource = selectedScriptPath && selectedClipData
-    ? String(getAtPath(data, selectedScriptPath) ?? selectedClipData.script_source ?? "")
-    : "";
-  const selectedSummary = selectedClipData && selectedScene
-    ? buildClipInspectorData(
-        selectedScene,
-        { ...selectedClipData, script_source: selectedScriptSource },
-        dict,
-      )
-    : null;
-  const selectedVideoExists = selectedClip ? treePaths.has(selectedClip.videoPath) : false;
+  if (!currentClip || !currentClipData || !currentScene || !currentSummary || !currentClipPath) {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div className="flex items-center justify-between gap-6 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-6 py-3 shrink-0">
+          <header className="space-y-1">
+            <h1 className="font-serif text-[24px] leading-tight text-[var(--color-ink)]">
+              {data.title ? data.title : `${data.episode_id} 分镜脚本`}
+            </h1>
+            <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
+              PR 工作台模式 · 播放器和时间轴已对齐
+            </div>
+          </header>
+          <SaveStatusLabel status={status} savedAt={savedAt} error={error} />
+        </div>
+        <div className="flex flex-1 items-center justify-center border border-dashed border-[var(--color-rule)] bg-[var(--color-paper)] px-6 py-8 font-serif italic text-[15px] text-[var(--color-ink-faint)]">
+          当前分镜文件里还没有可浏览的片段。
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-6 px-6 py-3 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] shrink-0">
+      <div className="flex items-center justify-between gap-6 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-6 py-2 shrink-0">
         <header className="space-y-1">
-          <h1 className="font-serif text-[28px] leading-tight text-[var(--color-ink)]">
+          <h1 className="font-serif text-[24px] leading-tight text-[var(--color-ink)]">
             {data.title ? data.title : `${data.episode_id} 分镜脚本`}
           </h1>
-          <div className="font-mono text-[11px] text-[var(--color-ink-subtle)]">
-            固定舞台模式 · 点击底部时间轴查看片段 / 镜头
+          <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
+            PR 工作台模式 · 主播放器优先使用整集成片，底部时间轴负责跳转
           </div>
         </header>
 
@@ -716,95 +1054,111 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
           <MetaBadge label="场次" value={`${scenes.length}`} />
           <MetaBadge label="片段" value={`${totalClips}`} />
           <MetaBadge label="镜头" value={`${totalShots}`} />
+          <MetaBadge label="总时长" value={durationLabel(editorModel.totalDuration)} />
+          <MetaBadge label="预览" value={episodePreviewLabel} />
         </div>
       </div>
 
-      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden px-6 py-4">
-        {!selectedClip || !selectedClipData || !selectedScene || !selectedSummary || !selectedClipPath ? (
-          <div className="flex h-full items-center justify-center border border-dashed border-[var(--color-rule)] bg-[var(--color-paper)] px-6 py-8 font-serif italic text-[15px] text-[var(--color-ink-faint)]">
-            当前分镜文件里还没有可编辑的 clip。
-          </div>
-        ) : (
-          <div className="grid flex-1 min-h-0 grid-rows-[minmax(0,1fr)_240px] gap-4">
-            <div
-              className="grid min-h-0 gap-3 overflow-hidden"
-              style={{ gridTemplateColumns: "minmax(0, 1fr) clamp(180px, 34%, 320px)" }}
-            >
-              <PreviewStage
-                projectName={projectName}
-                videoPath={selectedClip.videoPath}
-                exists={selectedVideoExists}
-                clipId={selectedClip.clipId}
-                sceneId={selectedClip.sceneId}
-              />
-
-              <ClipInfoPanel
-                summary={selectedSummary}
-                source={selectedScriptSource}
-                selectedShot={selectedShot}
-                dict={dict}
-                className="h-full min-h-0 overflow-y-auto overscroll-contain"
-              >
-                {dictEntries.length > 0 && (
-                  <details className="border-t border-[var(--color-rule)] pt-3">
-                    <summary className="font-mono text-[11px] text-[var(--color-ink-subtle)] cursor-pointer select-none hover:text-[var(--color-ink)] transition-colors">
-                      参考表（{dictEntries.length} 项）
-                    </summary>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] text-[var(--color-ink-subtle)]">
-                      {dictEntries.map(([id, name]) => (
-                        <span key={id}>
-                          <span className="text-[var(--color-ink-faint)]">{`{${id}}`}</span>
-                          <span className="ml-1">{name}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </details>
-                )}
-
-                <ShotList shots={(selectedClipData.shots as ShotRef[] | undefined) ?? []} dict={dict} />
-
-                {(selectedClipData.complete_prompt || selectedClipData.complete_prompt_v2) && (
-                  <details className="border-t border-[var(--color-rule)] pt-3">
-                    <summary className="font-mono text-[11px] text-[var(--color-ink-subtle)] cursor-pointer select-none hover:text-[var(--color-ink)] transition-colors">
-                      展开完整合成提示词 complete_prompt
-                    </summary>
-                    <div className="mt-2 space-y-2">
-                      {selectedClipData.complete_prompt && (
-                        <pre className="font-[Geist,sans-serif] text-[12px] italic text-[var(--color-ink-muted)] whitespace-pre-wrap break-words">
-                          {resolveRefs(selectedClipData.complete_prompt, dict)}
-                        </pre>
-                      )}
-                      {selectedClipData.complete_prompt_v2 && (
-                        <pre className="font-[Geist,sans-serif] text-[12px] italic text-[var(--color-ink-muted)] whitespace-pre-wrap break-words">
-                          {resolveRefs(selectedClipData.complete_prompt_v2, dict)}
-                        </pre>
-                      )}
-                    </div>
-                  </details>
-                )}
-
-                <EditableClipFields
-                  clip={selectedClipData}
-                  clipPath={selectedClipPath}
-                  data={data}
-                  patch={patch}
-                  status={status}
-                />
-              </ClipInfoPanel>
-            </div>
-
-            <EditorTimeline
-              selectedClip={selectedClip}
-              hasPlayableMedia={selectedVideoExists}
-              clips={editorModel.clips}
-              selectedClipKey={selectedClip.key}
-              onSelectClip={setSelectedClipKey}
-              selectedShotKey={selectedShot?.key ?? null}
-              onSelectShot={setSelectedShotKey}
-              summary={selectedSummary}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4">
+        <div className="grid flex-1 min-h-0 grid-rows-[minmax(320px,1fr)_215px] gap-3">
+          <div
+            className="grid min-h-0 gap-3 overflow-hidden"
+            style={{ gridTemplateColumns: "minmax(480px, 1fr) minmax(260px, 300px)" }}
+          >
+            <PreviewStage
+              projectName={projectName}
+              videoPath={previewVideoPath}
+              clip={currentClip}
+              selectedShot={selectedShot}
+              exists={previewExists}
+              sourceLabel={previewSourceLabel}
+              placeholderTitle={previewPlaceholderTitle}
+              playbackStatus={playbackStatus}
+              episodeTime={episodeTime}
+              episodeDuration={editorModel.totalDuration}
+              videoRef={videoRef}
+              onLoadedMetadata={handleLoadedMetadata}
+              onTimeUpdate={handleTimeUpdate}
+              onEnded={handleEnded}
+              onPlay={handlePlay}
+              onPause={handlePause}
             />
+
+            <ClipInfoPanel
+              clip={currentClip}
+              summary={currentSummary}
+              source={currentScriptSource}
+              selectedShot={selectedShot}
+              episodeTime={episodeTime}
+              episodeDuration={editorModel.totalDuration}
+              dict={dict}
+              className="min-h-0 overflow-y-auto overscroll-contain"
+            >
+              {episodePreviewError && (
+                <InfoPanelSection title="整集预览状态">
+                  {episodePreviewError}
+                </InfoPanelSection>
+              )}
+
+              {dictEntries.length > 0 && (
+                <details className="border-t border-[var(--color-rule)] pt-3">
+                  <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
+                    展开参考表（{dictEntries.length} 项）
+                  </summary>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-subtle)]">
+                    {dictEntries.map(([id, name]) => (
+                      <span key={id}>
+                        <span className="font-mono text-[var(--color-ink-faint)]">{`{${id}}`}</span>
+                        <span className="ml-1">{name}</span>
+                      </span>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              <ShotList shots={(currentClipData.shots as ShotRef[] | undefined) ?? []} dict={dict} />
+
+              {(currentClipData.complete_prompt || currentClipData.complete_prompt_v2) && (
+                <details className="border-t border-[var(--color-rule)] pt-3">
+                  <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
+                    展开完整合成提示词 complete_prompt
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    {currentClipData.complete_prompt && (
+                      <pre className="whitespace-pre-wrap break-words font-[Geist,sans-serif] text-[12px] italic text-[var(--color-ink-muted)]">
+                        {resolveRefs(currentClipData.complete_prompt, dict)}
+                      </pre>
+                    )}
+                    {currentClipData.complete_prompt_v2 && (
+                      <pre className="whitespace-pre-wrap break-words font-[Geist,sans-serif] text-[12px] italic text-[var(--color-ink-muted)]">
+                        {resolveRefs(currentClipData.complete_prompt_v2, dict)}
+                      </pre>
+                    )}
+                  </div>
+                </details>
+              )}
+
+              <EditableClipFields
+                clip={currentClipData}
+                clipPath={currentClipPath}
+                data={data}
+                patch={patch}
+                status={status}
+              />
+            </ClipInfoPanel>
           </div>
-        )}
+
+          <EditorTimeline
+            clips={editorModel.clips}
+            shots={editorModel.shots}
+            totalDuration={editorModel.totalDuration}
+            currentClipKey={currentClip.key}
+            currentShotKey={selectedShot?.key ?? null}
+            episodeTime={episodeTime}
+            onSelectClip={handleSelectClip}
+            onSelectShot={handleSelectShot}
+          />
+        </div>
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import {
   buildStoryboardEditorModel,
   clipVideoPath,
   durationFromRange,
+  resolveStoryboardSelectionAtTime,
   splitStoryboardText,
 } from "../src/lib/storyboard";
 
@@ -183,20 +184,129 @@ describe("storyboard helpers", () => {
     );
 
     expect(model.defaultClipKey).toBe("scn_001::clip_001");
+    expect(model.defaultShotKey).toBe("scn_001::clip_001::shot_001");
     expect(model.clips).toHaveLength(2);
+    expect(model.shots).toHaveLength(3);
+    expect(model.totalDuration).toBe(11);
     expect(model.clips[0]).toMatchObject({
       key: "scn_001::clip_001",
       sceneId: "scn_001",
       clipId: "clip_001",
       totalDuration: 6,
       shotCount: 2,
+      startOffset: 0,
+      endOffset: 6,
       videoPath: "output/ep001/scn001/ep001_scn001_clip001.mp4",
       displayText: "灵霜看向陆云",
+    });
+    expect(model.clips[1]).toMatchObject({
+      key: "scn_002::clip_003",
+      startOffset: 6,
+      endOffset: 11,
     });
     expect(model.clips[0]?.shots[1]).toMatchObject({
       key: "scn_001::clip_001::shot_002",
       shotId: "shot_002",
       duration: 2,
+      startOffset: 4,
+      endOffset: 6,
+      clipKey: "scn_001::clip_001",
+    });
+    expect(model.shots[2]).toMatchObject({
+      key: "scn_002::clip_003::shot_001",
+      startOffset: 6,
+      endOffset: 11,
+      clipKey: "scn_002::clip_003",
+    });
+  });
+
+  test("prefers merged episode video when it exists beside the storyboard", () => {
+    const model = buildStoryboardEditorModel(
+      "output/ep001/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          clips: [{ clip_id: "clip_001", shots: [{ shot_id: "shot_001", time_range: "0-4s", partial_prompt: "A" }] }],
+        },
+      ],
+      {},
+      new Set([
+        "output/ep001/ep001.mp4",
+        "output/ep001/scn001/clip001/ep001_scn001_clip001.mp4",
+      ]),
+    );
+
+    expect(model.episodeVideoPath).toBe("output/ep001/ep001.mp4");
+  });
+
+  test("resolves real clip media paths from the tree instead of assuming one folder layout", () => {
+    const model = buildStoryboardEditorModel(
+      "output/ep001/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          clips: [{ clip_id: "clip_001", shots: [{ shot_id: "shot_001", time_range: "0-4s", partial_prompt: "A" }] }],
+        },
+        {
+          scene_id: "scn_002",
+          clips: [{ clip_id: "clip_001", shots: [{ shot_id: "shot_001", time_range: "0-3s", partial_prompt: "B" }] }],
+        },
+      ],
+      {},
+      new Set([
+        "output/ep001/scn001/clip001/ep001_scn001_clip001.mp4",
+        "output/ep001/scn002/ep001_scn002_clip001_003.mp4",
+      ]),
+    );
+
+    expect(model.clips[0]?.videoPath).toBe("output/ep001/scn001/clip001/ep001_scn001_clip001.mp4");
+    expect(model.clips[1]?.videoPath).toBe("output/ep001/scn002/ep001_scn002_clip001_003.mp4");
+  });
+
+  test("resolves active clip and shot from episode timeline time", () => {
+    const model = buildStoryboardEditorModel(
+      "output/ep001/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          clips: [
+            {
+              clip_id: "clip_001",
+              shots: [
+                { shot_id: "shot_001", time_range: "0-4s", partial_prompt: "A" },
+                { shot_id: "shot_002", time_range: "4-6s", partial_prompt: "B" },
+              ],
+            },
+          ],
+        },
+        {
+          scene_id: "scn_002",
+          clips: [
+            {
+              clip_id: "clip_002",
+              shots: [{ shot_id: "shot_001", time_range: "0-5s", partial_prompt: "C" }],
+            },
+          ],
+        },
+      ],
+      {},
+    );
+
+    expect(resolveStoryboardSelectionAtTime(model, 0.5)).toEqual({
+      clipKey: "scn_001::clip_001",
+      shotKey: "scn_001::clip_001::shot_001",
+    });
+    expect(resolveStoryboardSelectionAtTime(model, 4.5)).toEqual({
+      clipKey: "scn_001::clip_001",
+      shotKey: "scn_001::clip_001::shot_002",
+    });
+    expect(resolveStoryboardSelectionAtTime(model, 7.25)).toEqual({
+      clipKey: "scn_002::clip_002",
+      shotKey: "scn_002::clip_002::shot_001",
+    });
+    expect(resolveStoryboardSelectionAtTime(model, 99)).toEqual({
+      clipKey: "scn_002::clip_002",
+      shotKey: "scn_002::clip_002::shot_001",
     });
   });
 });

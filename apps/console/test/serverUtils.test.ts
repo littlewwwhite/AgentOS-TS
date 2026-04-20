@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "path";
 import { mkdirSync, writeFileSync, rmSync } from "fs";
-import { safeResolve, walkTree, mimeFor } from "../src/serverUtils";
+import { episodePreviewPathForStoryboard, safeResolve, walkTree, mimeFor } from "../src/serverUtils";
 
 const FIX = "/tmp/console-serverutils-fix";
 
@@ -49,5 +49,19 @@ describe("mimeFor", () => {
   test("unknown defaults to octet-stream", () => {
     expect(mimeFor("x.xyz")).toBe("application/octet-stream");
     expect(mimeFor("noext")).toBe("application/octet-stream");
+  });
+});
+
+describe("episodePreviewPathForStoryboard", () => {
+  test("places merged preview beside a nested storyboard", () => {
+    expect(episodePreviewPathForStoryboard("output/ep001/ep001_storyboard.json")).toBe(
+      "output/ep001/ep001.mp4",
+    );
+  });
+
+  test("supports legacy flat storyboard paths", () => {
+    expect(episodePreviewPathForStoryboard("output/ep006_storyboard.json")).toBe(
+      "output/ep006.mp4",
+    );
   });
 });
