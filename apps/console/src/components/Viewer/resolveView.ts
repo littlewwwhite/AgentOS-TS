@@ -1,3 +1,7 @@
+// input: project-relative artifact path
+// output: viewer kind used to render the artifact
+// pos: central path-to-view routing for the console workspace
+
 import type { ViewKind } from "../../types";
 
 export function resolveView(path: string): ViewKind {
@@ -13,7 +17,7 @@ export function resolveView(path: string): ViewKind {
   if (ext === ".json") {
     if (base === "script.json") return "script";
     if (base.endsWith("storyboard.json")) return "storyboard";
-    if (base === "inspiration.json") return "inspiration";
+    if (base.endsWith(".shots.json")) return "storyboard";
     return "json";
   }
 

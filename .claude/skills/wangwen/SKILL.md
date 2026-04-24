@@ -1,6 +1,6 @@
 ---
 name: wangwen
-description: 基于网文大数据 MCP（query_sql + 4 个 domain schema resource）为漫剧创作做市场调研。当用户需要"看什么题材在涨"、"找对标作品"、"查改编漏斗"、"深度分析某部小说/漫剧"、"判断市场趋势"等数据支撑型灵感问题时触发。产出 Pipeline Stage 0 契约规定的 inspiration.json。
+description: PAUSED。网文大数据 MCP 市场调研能力当前不作为默认项目入口；除非用户明确要求恢复/调用 wangwen，否则不要触发。本项目当前从完整小说、剧本或结构化源文档进入 SCRIPT。
 version: "0.2.0"
 author: "official"
 metadata:
@@ -10,6 +10,8 @@ metadata:
 ---
 
 # Wangwen — 网文大数据驱动的灵感调研 skill
+
+> 当前状态：暂停。`wangwen` 保留为历史/可选能力，但不参与当前 MVP 主流程、不自动生成 `output/inspiration.json`，也不作为 `pipeline-state.json` 的默认起点。当前业务起点是完整小说、剧本或结构化源文档，直接进入 `SCRIPT`。
 
 本 skill 是 MCP `query_sql` 工具的**使用经验封装层**：把灵感调研的常见问题意图翻译为"读哪个 resource → 跑什么风格的 SQL → 结果如何归纳进 inspiration.json"。
 
@@ -43,7 +45,7 @@ MCP 服务器注册在仓库根 `.mcp.json`（URL 和 API Key 由 `MCP_WANGWEN_U
 ## 工作流（6 步，顺序不可跳）
 
 1. **意图澄清**
-   用 **AskUserQuestion** 工具确认用户的灵感方向（题材 / 受众 / 核心钩子 / 期望对标样式）。意图模糊时不得擅自开跑查询。
+   若用户尚未明确题材 / 受众 / 核心钩子 / 期望对标样式，就先用一条简洁问题确认；若这些关键信息已明确给出，则直接继续。意图模糊时不得擅自开跑查询。
 
 2. **读 `resource://table-map`**
    按意图定位业务域（抖音漫剧 / 番茄小说 / 红果短剧+漫剧 / 跨域）。
@@ -58,7 +60,7 @@ MCP 服务器注册在仓库根 `.mcp.json`（URL 和 API Key 由 `MCP_WANGWEN_U
 5. **校验数据覆盖**
    按 `references/pitfalls.md` 的"空字段"、"样本强约束"两节逐项核。命中低覆盖字段主动告知用户并走 pitfalls 注明的降级路径，不得沉默。
 
-6. **写 `${OUTPUT}/inspiration.json`**
+6. **写 `output/inspiration.json`**
    按 `docs/inspiration-contract.md` 执行字段填充 + 自检清单。**自检任一项未通过不得写入**——回到第 4 步补查询，不得降级为"经验判断"。
 
 ---
@@ -77,5 +79,20 @@ MCP 服务器注册在仓库根 `.mcp.json`（URL 和 API Key 由 `MCP_WANGWEN_U
 
 ## 产物路径
 
-- `${OUTPUT}/inspiration.json` — 最终产物（供下游 SCRIPT 阶段消费）
-- 查询过程中的中间笔记可写入 `${WORKSPACE}/inspiration/` 目录（可选）
+- `output/inspiration.json` — 最终产物（供下游 SCRIPT 阶段消费）
+- 查询过程中的中间笔记可写入 `draft/inspiration/` 目录（可选）
+
+## 统一状态文件
+
+`wangwen` 是 `INSPIRATION` 阶段，必须同步维护 `pipeline-state.json`。
+
+- 进入本 skill 时：设置 `current_stage=INSPIRATION`、`stages.INSPIRATION.status=running`
+- 已完成查询与归纳但尚未通过自检时：设置 `stages.INSPIRATION.status=partial`
+- `output/inspiration.json` 写出后：设置 `stages.INSPIRATION.status=completed`
+- 自检全部通过后：设置 `stages.INSPIRATION.status=validated`、`next_action=enter SCRIPT`
+
+恢复顺序：
+
+1. 先读 `pipeline-state.json`
+2. 若缺失，再检查 `output/inspiration.json`
+3. 最后检查 `draft/inspiration/` 中是否已有调研笔记

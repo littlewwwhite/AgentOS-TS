@@ -17,10 +17,10 @@
 
 润色前必须确认以下材料就绪：
 
-1. **锚点文档**：从对话上下文或 `${PROJECT_DIR}/workspace/anchor.md`（含创作锚点清单 + 角色设定卡 + 风格DNA卡）
-2. **S7 剧本**：从对话上下文或 `${PROJECT_DIR}/workspace/s7-scripts.md`
-3. **风格指南**：从对话上下文或 `${PROJECT_DIR}/workspace/style-guide.md`
-4. **原文结构定位**（NTSV2 模式）：`${PROJECT_DIR}/workspace/draft/source-structure.json`（如存在，润色时必须优先据此回查原文片段）
+1. **锚点文档**：从对话上下文或 `${PROJECT_DIR}/draft/anchor.md`（含创作锚点清单 + 角色设定卡 + 风格DNA卡）
+2. **S7 剧本**：从对话上下文或 `${PROJECT_DIR}/draft/s7-scripts.md`
+3. **风格指南**：从对话上下文或 `${PROJECT_DIR}/draft/style-guide.md`
+4. **原文结构定位**（NTSV2 模式）：`${PROJECT_DIR}/draft/source-structure.json`（如存在，润色时必须优先据此回查原文片段）
 
 缺少任何材料则提示用户补充。
 
@@ -30,7 +30,7 @@
 
 若当前为 NTSV2 模式，润色时额外执行以下最小复核：
 
-- 🔴 若存在 `${PROJECT_DIR}/workspace/draft/source-structure.json`，涉及原文改编的修订必须先据此回查原文，不得只凭印象润色
+- 🔴 若存在 `${PROJECT_DIR}/draft/source-structure.json`，涉及原文改编的修订必须先据此回查原文，不得只凭印象润色
 - 🔴 不得把已具象的 action 润色回“她很痛苦”“两人争执”这类摘要句，必须保持可拍、可演、可切镜
 - 🔴 凡是对后续提示词有价值的细节，如手势、视线、站位、停顿、道具状态变化，优先保留，不做过度抹平
 
@@ -463,6 +463,6 @@
 1. 检查前置材料（锚点文档 + S7 剧本 + 风格指南）是否就绪
 2. 如果就绪，按顺序执行十四项专项检查（含过程式验算表格输出）
 3. 输出修订清单（含验算表格）+ 整合所有修订的终版剧本 + 卡点推荐方案
-4. 如果存在 `${PROJECT_DIR}/workspace/`，写入 `s8-polished.md`
+4. 如果存在 `${PROJECT_DIR}/draft/`，写入 `s8-polished.md`
 5. 提示用户进入下一阶段：进入 S9 格式交付
 6. 如果用户指定仅执行部分检查项，则只运行指定项并输出结果

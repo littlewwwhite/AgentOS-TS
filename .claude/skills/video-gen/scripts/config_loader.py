@@ -18,7 +18,7 @@ from typing import Any, Dict
 
 SCRIPT_DIR = Path(__file__).parent
 DEFAULT_CONFIG_PATH = SCRIPT_DIR / ".." / "assets" / "config.json"
-DEFAULT_CHATFIRE_GEMINI_BASE_URL = "https://api.chatfire.cn/gemini"
+DEFAULT_GEMINI_PROXY_BASE_URL = "https://api.chatfire.cn/gemini"
 
 # 内置默认值（与 assets/config.json 保持一致，用于找不到文件时兜底）
 _BUILTIN_DEFAULTS: Dict[str, Any] = {
@@ -51,7 +51,7 @@ _BUILTIN_DEFAULTS: Dict[str, Any] = {
         "max_consecutive_errors": 10,
     },
     "gemini": {
-        "base_url": DEFAULT_CHATFIRE_GEMINI_BASE_URL,
+        "base_url": DEFAULT_GEMINI_PROXY_BASE_URL,
         "api_key": "",
         "api_key_env": "GEMINI_API_KEY",
         "model": "gemini-3.1-pro-preview",

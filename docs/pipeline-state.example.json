@@ -1,70 +1,88 @@
 {
   "version": 1,
-  "updated_at": "2026-03-25T12:00:00Z",
-  "current_stage": "SCRIPT",
-  "next_action": "enter VISUAL",
+  "updated_at": "2026-03-25T12:30:00Z",
+  "current_stage": "STORYBOARD",
+  "next_action": "review STORYBOARD",
   "last_error": null,
   "stages": {
-    "INSPIRATION": {
-      "status": "validated",
-      "updated_at": "2026-04-19T09:00:00Z",
-      "artifacts": [
-        "output/inspiration.json"
-      ],
-      "notes": "data-backed inspiration brief passed self-check"
-    },
     "SCRIPT": {
-      "status": "validated",
-      "updated_at": "2026-03-25T12:00:00Z",
+      "status": "locked",
+      "updated_at": "2026-03-25T11:40:00Z",
       "artifacts": [
         "output/script.json"
       ],
-      "notes": "script.json exists with episodes[]"
+      "notes": "script lock passed",
+      "owner_role": "writer",
+      "revision": 3,
+      "locked": true
     },
     "VISUAL": {
-      "status": "running",
-      "updated_at": "2026-03-25T12:10:00Z",
+      "status": "approved",
+      "updated_at": "2026-03-25T12:00:00Z",
       "artifacts": [
-        "workspace/style.json",
-        "workspace/actors_gen.json"
+        "output/actors/actors.json",
+        "output/locations/locations.json",
+        "output/props/props.json"
       ],
-      "notes": "style selected and prompts generated"
+      "notes": "visual pack approved for storyboard use",
+      "owner_role": "visual",
+      "revision": 2,
+      "locked": false
     },
     "STORYBOARD": {
-      "status": "not_started",
-      "updated_at": null,
-      "artifacts": [],
-      "notes": null
+      "status": "in_review",
+      "updated_at": "2026-03-25T12:30:00Z",
+      "artifacts": [
+        "output/storyboard/draft/ep001_storyboard.json",
+        "output/storyboard/approved/ep002_storyboard.json"
+      ],
+      "notes": "director review pending",
+      "owner_role": "director",
+      "revision": 2,
+      "locked": false
     },
     "VIDEO": {
       "status": "not_started",
       "updated_at": null,
       "artifacts": [],
-      "notes": null
+      "notes": null,
+      "owner_role": "production",
+      "revision": 0,
+      "locked": false
     },
     "EDITING": {
       "status": "not_started",
       "updated_at": null,
       "artifacts": [],
-      "notes": null
+      "notes": null,
+      "owner_role": "post",
+      "revision": 0,
+      "locked": false
     },
     "MUSIC": {
       "status": "not_started",
       "updated_at": null,
       "artifacts": [],
-      "notes": null
+      "notes": null,
+      "owner_role": "post",
+      "revision": 0,
+      "locked": false
     },
     "SUBTITLE": {
       "status": "not_started",
       "updated_at": null,
       "artifacts": [],
-      "notes": null
+      "notes": null,
+      "owner_role": "post",
+      "revision": 0,
+      "locked": false
     }
   },
   "episodes": {
     "ep001": {
       "storyboard": {
-        "status": "not_started"
+        "status": "in_review",
+        "artifact": "output/storyboard/draft/ep001_storyboard.json"
       },
       "video": {
         "status": "not_started"
@@ -78,6 +96,110 @@
       "subtitle": {
         "status": "not_started"
       }
+    },
+    "ep002": {
+      "storyboard": {
+        "status": "approved",
+        "artifact": "output/storyboard/approved/ep002_storyboard.json"
+      },
+      "video": {
+        "status": "stale"
+      },
+      "editing": {
+        "status": "not_started"
+      },
+      "music": {
+        "status": "not_started"
+      },
+      "subtitle": {
+        "status": "not_started"
+      }
     }
-  }
+  },
+  "artifacts": {
+    "output/script.json": {
+      "kind": "canonical",
+      "owner_role": "writer",
+      "status": "locked",
+      "editable": true,
+      "revision": 3,
+      "depends_on": [
+        "draft/design.json",
+        "draft/catalog.json",
+        "draft/episodes/ep001.md",
+        "draft/episodes/ep002.md"
+      ],
+      "invalidates": [
+        "output/storyboard/draft/ep001_storyboard.json",
+        "output/storyboard/draft/ep002_storyboard.json",
+        "output/storyboard/approved/ep001_storyboard.json",
+        "output/storyboard/approved/ep002_storyboard.json",
+        "output/ep001/ep001_storyboard.json",
+        "output/ep002/ep002_storyboard.json"
+      ],
+      "updated_at": "2026-03-25T11:40:00Z",
+      "notes": null
+    },
+    "output/storyboard/draft/ep001_storyboard.json": {
+      "kind": "source",
+      "owner_role": "director",
+      "status": "in_review",
+      "editable": true,
+      "revision": 2,
+      "depends_on": [
+        "output/script.json",
+        "output/actors/actors.json",
+        "output/locations/locations.json"
+      ],
+      "invalidates": [
+        "output/storyboard/approved/ep001_storyboard.json",
+        "output/ep001/ep001_storyboard.json",
+        "output/ep001/ep001_delivery.json"
+      ],
+      "updated_at": "2026-03-25T12:30:00Z",
+      "notes": null
+    },
+    "output/storyboard/approved/ep002_storyboard.json": {
+      "kind": "canonical",
+      "owner_role": "director",
+      "status": "approved",
+      "editable": true,
+      "revision": 1,
+      "depends_on": [
+        "output/storyboard/draft/ep002_storyboard.json",
+        "output/script.json"
+      ],
+      "invalidates": [
+        "output/ep002/ep002_storyboard.json",
+        "output/ep002/ep002_delivery.json"
+      ],
+      "updated_at": "2026-03-25T12:12:00Z",
+      "notes": "approved storyboard contract for video runtime export"
+    },
+    "output/ep002/ep002_delivery.json": {
+      "kind": "derived",
+      "owner_role": "production",
+      "status": "stale",
+      "editable": false,
+      "revision": 1,
+      "depends_on": [
+        "output/storyboard/approved/ep002_storyboard.json"
+      ],
+      "invalidates": [
+        "output/ep002/ep002.mp4"
+      ],
+      "updated_at": "2026-03-25T12:15:00Z",
+      "notes": "storyboard revision invalidated previous delivery"
+    }
+  },
+  "change_requests": [
+    {
+      "id": "cr_001",
+      "target_artifact": "output/script.json",
+      "requested_by_role": "director",
+      "reason": "scene motivation mismatch in ep002 climax",
+      "created_at": "2026-03-25T12:05:00Z",
+      "status": "open"
+    }
+  ]
 }

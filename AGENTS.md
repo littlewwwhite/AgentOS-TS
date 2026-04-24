@@ -2,9 +2,9 @@
 
 ## 仓库定位
 
-- 当前仓库是给 `Claude Code` / `Codex` 直接消费的 **skill pack**。
-- 仓库不再承载 `bun start` CLI、web、server、sandbox、orchestrator 等应用运行时。
-- 除非用户明确要求恢复应用层，否则默认不要重新引入 `src/`、`tests/`、`web/`、E2B、OpenViking 一类壳层。
+- 当前仓库的主体定位仍然是给 `Claude Code` / `Codex` 直接消费的 **skill pack**。
+- 仓库默认不以传统 `bun start` / Web 平台 / 多壳层运行时为主；但当前**保留** `apps/console/` 作为基于 Claude Agent SDK 的交互控制台。
+- 除非用户明确要求扩展应用层，否则默认不要再新增额外的 `src/`、`tests/`、`web/`、E2B、OpenViking 一类壳层或平行 runtime。
 
 ## Skills 适配
 

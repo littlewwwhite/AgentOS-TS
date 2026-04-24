@@ -100,11 +100,11 @@ Logline：...
 current_stage: S2-基础设定（已确认）
 first_mover: 情感推动力
 core_style: A.虐心催泪流
-style_guide_path: ${PROJECT_DIR}/workspace/style-guide.md
-anchor_path: ${PROJECT_DIR}/workspace/anchor.md
+style_guide_path: ${PROJECT_DIR}/draft/style-guide.md
+anchor_path: ${PROJECT_DIR}/draft/anchor.md
 completed:
-  - S1-创意构思 → ${PROJECT_DIR}/workspace/s1-ideation.md
-  - S2-基础设定 → ${PROJECT_DIR}/workspace/s2-setting.md
+  - S1-创意构思 → ${PROJECT_DIR}/draft/s1-ideation.md
+  - S2-基础设定 → ${PROJECT_DIR}/draft/s2-setting.md
 next_stage: S3-故事大纲
 notes: 基础设定已完成，进入故事大纲阶段
 [/SWS-CHECKPOINT]

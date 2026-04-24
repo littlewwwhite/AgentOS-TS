@@ -6,7 +6,7 @@
 """
 Prepare source material for the script-adapt pipeline.
 
-Converts any supported file format into workspace/source.txt (markdown),
+Converts any supported file format into PROJECT_DIR/source.txt (markdown),
 ready for Phase 1 consumption.
 
 Supported formats:
@@ -21,7 +21,7 @@ Dependencies (install as needed):
   - pdfplumber     → for .pdf
 
 Usage:
-  python3 prepare_source_project.py --source-path <file> --workspace-path workspace
+  python3 prepare_source_project.py --source-path <file> --workspace-path "${PROJECT_DIR}"
 """
 
 import json
@@ -32,6 +32,11 @@ import zipfile
 import tempfile
 from pathlib import Path
 from typing import List
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from pipeline_state import ensure_state, update_stage
 
 
 # ---------- Format converters ----------
@@ -249,6 +254,13 @@ def prepare_source_project(source_path: str, workspace_path: str) -> dict:
         has_storyboard = False
 
     source_text_path.write_text(content, encoding='utf-8')
+    ensure_state(str(project_path))
+    update_stage(
+        str(project_path),
+        "SCRIPT",
+        "running",
+        next_action="review SCRIPT",
+    )
 
     # mode: "storyboard" = format conversion, "novel" = creative adaptation
     mode = 'storyboard' if has_storyboard else 'novel'

@@ -11,6 +11,7 @@ const PROJECT_ROOT = join(import.meta.dirname, "../../..");
 
 export interface AgentSession {
   push(message: string): void;
+  interrupt(): Promise<void>;
   close(): Promise<void>;
   events: AsyncIterable<WsEvent>;
   readonly projectKey: string | null;
@@ -27,6 +28,11 @@ function buildSDKUserMessage(text: string): SDKUserMessage {
 function extractWorkspacePath(content: string): string | undefined {
   const m = content.match(/(?:workspace|output)\/[^\s"']+/);
   return m?.[0];
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -47,11 +53,17 @@ export function createSession(project?: string, resumeId?: string): AgentSession
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
+      thinking: { type: "adaptive" },
+      settings: {
+        showThinkingSummaries: true,
+        alwaysThinkingEnabled: true,
+      },
       ...(resumeId ? { resume: resumeId } : {}),
     },
   });
 
   let textEmittedThisTurn = false;
+  let thinkingEmittedThisTurn = false;
   let closed = false;
 
   const pump = (async () => {
@@ -60,9 +72,22 @@ export function createSession(project?: string, resumeId?: string): AgentSession
         const type = msg.type;
 
         if (type === "system") {
-          const sys = msg as { subtype?: string; session_id?: string };
+          const sys = msg as {
+            subtype?: string;
+            session_id?: string;
+            slash_commands?: unknown;
+            content?: unknown;
+          };
           if (sys.subtype === "init" && typeof sys.session_id === "string") {
             events.push({ type: "session", sessionId: sys.session_id });
+            const commands = stringArray(sys.slash_commands);
+            if (commands.length > 0) {
+              events.push({ type: "slash_commands", commands });
+            }
+          }
+          if (sys.subtype === "local_command_output" && typeof sys.content === "string" && sys.content.length > 0) {
+            textEmittedThisTurn = true;
+            events.push({ type: "text", text: sys.content });
           }
           events.push({ type: "system", subtype: sys.subtype ?? "unknown", data: msg });
           continue;
@@ -71,12 +96,29 @@ export function createSession(project?: string, resumeId?: string): AgentSession
         if (type === "stream_event") {
           // Token-level partial updates when includePartialMessages=true.
           // Shape: { type: 'stream_event', event: BetaRawMessageStreamEvent }
-          // We only care about content_block_delta with text_delta — tokens
-          // the assistant is currently producing.
-          const ev = (msg as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
+          const ev = (msg as {
+            event?: {
+              type?: string;
+              content_block?: { type?: string; thinking?: string };
+              delta?: { type?: string; text?: string; thinking?: string };
+            };
+          }).event;
+          if (
+            ev?.type === "content_block_start" &&
+            ev.content_block?.type === "thinking" &&
+            typeof ev.content_block.thinking === "string" &&
+            ev.content_block.thinking.length > 0
+          ) {
+            thinkingEmittedThisTurn = true;
+            events.push({ type: "thinking", text: ev.content_block.thinking });
+          }
           if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && typeof ev.delta.text === "string") {
             textEmittedThisTurn = true;
             events.push({ type: "text", text: ev.delta.text });
+          }
+          if (ev?.type === "content_block_delta" && ev.delta?.type === "thinking_delta" && typeof ev.delta.thinking === "string") {
+            thinkingEmittedThisTurn = true;
+            events.push({ type: "thinking", text: ev.delta.thinking });
           }
           continue;
         }
@@ -89,10 +131,15 @@ export function createSession(project?: string, resumeId?: string): AgentSession
           for (const block of content as Array<{
             type: string;
             text?: string;
+            thinking?: string;
             id?: string;
             name?: string;
             input?: unknown;
           }>) {
+            if (block.type === "thinking" && block.thinking && !thinkingEmittedThisTurn) {
+              thinkingEmittedThisTurn = true;
+              events.push({ type: "thinking", text: block.thinking });
+            }
             if (block.type === "text" && block.text && !textEmittedThisTurn) {
               textEmittedThisTurn = true;
               events.push({ type: "text", text: block.text });
@@ -158,6 +205,7 @@ export function createSession(project?: string, resumeId?: string): AgentSession
             duration: r.duration_ms ?? 0,
           });
           textEmittedThisTurn = false;
+          thinkingEmittedThisTurn = false;
           continue;
         }
 
@@ -178,6 +226,10 @@ export function createSession(project?: string, resumeId?: string): AgentSession
     push(message: string) {
       if (closed) return;
       inputQueue.push(buildSDKUserMessage(message));
+    },
+    async interrupt() {
+      if (closed) return;
+      await sdkQuery.interrupt();
     },
     async close() {
       if (closed) return;
@@ -241,6 +293,9 @@ export function createMockSession(project?: string): AgentSession {
     push(message: string) {
       if (closed) return;
       void runTurn(message);
+    },
+    async interrupt() {
+      events.push({ type: "result", exitCode: 130, duration: 0 });
     },
     async close() {
       if (closed) return;

@@ -4,6 +4,12 @@ import { dirname, extname, join, normalize } from "path";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { mkdir, rename, rm, symlink, unlink } from "fs/promises";
 import { episodePreviewPathForStoryboard, safeResolve, walkTree, mimeFor } from "./src/serverUtils";
+import { applyManualEditToPipelineState, getEditPolicy } from "./src/lib/editPolicy";
+import { applyArtifactActionToPipelineState } from "./src/lib/artifactActions";
+import { validateEditableArtifact } from "./src/lib/artifactValidators";
+import { approvedStoryboardPathFromAnyPath } from "./src/lib/storyboardPaths";
+import { buildSourceUploadTargets } from "./src/lib/sourceUpload";
+import { buildProjectBootstrap } from "./src/lib/projectBootstrap";
 
 const WORKSPACE = join(import.meta.dir, "../../workspace");
 
@@ -34,6 +40,40 @@ async function runFfmpeg(args: string[], cwd: string): Promise<{ ok: boolean; st
   const stderr = await new Response(proc.stderr).text();
   const exitCode = await proc.exited;
   return { ok: exitCode === 0, stderr };
+}
+
+async function writeTextAtomically(absPath: string, text: string) {
+  const tmp = `${absPath}.tmp-${Math.random().toString(36).slice(2)}`;
+  try {
+    await Bun.write(tmp, text);
+    await rename(tmp, absPath);
+  } catch (err) {
+    try { await unlink(tmp); } catch { /* ignore cleanup failure */ }
+    throw err;
+  }
+}
+
+async function syncApprovedStoryboard(projectRoot: string, relPath: string) {
+  const approvedPath = approvedStoryboardPathFromAnyPath(relPath);
+  if (!approvedPath || approvedPath === relPath) return;
+
+  const sourceAbs = safeResolve(projectRoot, relPath);
+  if (!existsSync(sourceAbs)) return;
+
+  const targetAbs = safeResolve(projectRoot, approvedPath);
+  await mkdir(dirname(targetAbs), { recursive: true });
+  const text = readFileSync(sourceAbs, "utf-8");
+  try {
+    const data = JSON.parse(text);
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      data.status = "approved";
+      await writeTextAtomically(targetAbs, `${JSON.stringify(data, null, 2)}\n`);
+      return;
+    }
+  } catch {
+    // Non-JSON storyboard-like artifacts are copied byte-for-byte.
+  }
+  await writeTextAtomically(targetAbs, text);
 }
 
 function normalizedRelPath(path: string): string {
@@ -168,6 +208,15 @@ function scanProjects() {
     });
 }
 
+function readPipelineState(projectRoot: string) {
+  const statePath = join(projectRoot, "pipeline-state.json");
+  if (!existsSync(statePath)) return null;
+  return {
+    path: statePath,
+    state: JSON.parse(readFileSync(statePath, "utf-8")),
+  };
+}
+
 Bun.serve({
   port: 3001,
 
@@ -184,6 +233,85 @@ Bun.serve({
     // 保留原有 REST API
     if (url.pathname === "/api/projects") {
       return Response.json(scanProjects(), { headers: CORS });
+    }
+
+    if (url.pathname === "/api/projects/bootstrap") {
+      const corsWithMethods = {
+        ...CORS,
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      };
+
+      if (req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsWithMethods });
+      }
+
+      if (req.method !== "POST") {
+        return Response.json({ error: "method not allowed" }, { status: 405, headers: corsWithMethods });
+      }
+
+      let form: FormData;
+      try {
+        form = await req.formData();
+      } catch {
+        return Response.json({ error: "invalid multipart form data" }, { status: 400, headers: corsWithMethods });
+      }
+
+      const projectName = form.get("projectName");
+      const file = form.get("file");
+      if (typeof projectName !== "string" || !(file instanceof File)) {
+        return Response.json({ error: "projectName and file are required" }, { status: 400, headers: corsWithMethods });
+      }
+
+      let plan;
+      try {
+        plan = buildProjectBootstrap({
+          projectName,
+          sourceFilename: file.name,
+          sourceContentType: file.type,
+        });
+      } catch (err) {
+        return Response.json({ error: String(err instanceof Error ? err.message : err) }, { status: 400, headers: corsWithMethods });
+      }
+
+      const projectRoot = join(WORKSPACE, plan.projectKey);
+      if (existsSync(projectRoot)) {
+        return Response.json({ error: "project already exists" }, { status: 409, headers: corsWithMethods });
+      }
+
+      await mkdir(projectRoot, { recursive: true });
+
+      try {
+        const rawPath = plan.files.find((entry) => entry.kind === "raw")?.path;
+        if (!rawPath) {
+          throw new Error("bootstrap plan missing raw input path");
+        }
+
+        const rawAbs = safeResolve(projectRoot, rawPath);
+        await mkdir(dirname(rawAbs), { recursive: true });
+        await Bun.write(rawAbs, file);
+
+        if (plan.sourceUpdated) {
+          const sourceAbs = safeResolve(projectRoot, "source.txt");
+          await writeTextAtomically(sourceAbs, await file.text());
+        }
+
+        const stateAbs = safeResolve(projectRoot, "pipeline-state.json");
+        await writeTextAtomically(stateAbs, `${JSON.stringify(plan.initialState, null, 2)}\n`);
+
+        return Response.json({
+          ok: true,
+          project: plan.projectKey,
+          rawPath,
+          sourcePath: plan.sourceUpdated ? "source.txt" : null,
+          sourceUpdated: plan.sourceUpdated,
+          currentStage: plan.initialState.current_stage,
+          nextAction: plan.initialState.next_action,
+        }, { status: 200, headers: corsWithMethods });
+      } catch (err) {
+        await rm(projectRoot, { recursive: true, force: true });
+        return Response.json({ error: `bootstrap failed: ${String(err instanceof Error ? err.message : err)}` }, { status: 500, headers: corsWithMethods });
+      }
     }
 
     const m = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
@@ -204,6 +332,86 @@ Bun.serve({
       const includeDraft = url.searchParams.get("include_draft") === "1";
       const tree = walkTree(projectRoot, { maxDepth: 4, includeDraft });
       return Response.json(tree, { headers: CORS });
+    }
+
+    const sourceUploadMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/source-upload$/);
+    if (sourceUploadMatch) {
+      const corsWithMethods = {
+        ...CORS,
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      };
+
+      if (req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsWithMethods });
+      }
+
+      if (req.method !== "POST") {
+        return Response.json({ error: "method not allowed" }, { status: 405, headers: corsWithMethods });
+      }
+
+      const projectRoot = join(WORKSPACE, decodeURIComponent(sourceUploadMatch[1]));
+      if (!existsSync(projectRoot)) {
+        return Response.json({ error: "project not found" }, { status: 404, headers: corsWithMethods });
+      }
+
+      let form: FormData;
+      try {
+        form = await req.formData();
+      } catch {
+        return Response.json({ error: "invalid multipart form data" }, { status: 400, headers: corsWithMethods });
+      }
+
+      const file = form.get("file");
+      if (!(file instanceof File)) {
+        return Response.json({ error: "missing file field" }, { status: 400, headers: corsWithMethods });
+      }
+
+      const targets = buildSourceUploadTargets(file.name, file.type);
+      const stateEntry = readPipelineState(projectRoot);
+
+      if (targets.sourcePath) {
+        const sourceState = stateEntry?.state?.artifacts?.[targets.sourcePath];
+        if (sourceState && (sourceState.status === "locked" || sourceState.editable === false)) {
+          return Response.json(
+            { error: "source artifact is locked; unlock it before replacing source.txt" },
+            { status: 409, headers: corsWithMethods },
+          );
+        }
+      }
+
+      let rawAbs: string;
+      try {
+        rawAbs = safeResolve(projectRoot, targets.rawPath);
+      } catch {
+        return Response.json({ error: "path escape detected" }, { status: 403, headers: corsWithMethods });
+      }
+
+      await mkdir(dirname(rawAbs), { recursive: true });
+      await Bun.write(rawAbs, file);
+
+      let sourceUpdated = false;
+      if (targets.sourcePath) {
+        const sourceAbs = safeResolve(projectRoot, targets.sourcePath);
+        await writeTextAtomically(sourceAbs, await file.text());
+        sourceUpdated = true;
+
+        if (stateEntry) {
+          const nextState = applyManualEditToPipelineState(stateEntry.state, targets.sourcePath);
+          await writeTextAtomically(stateEntry.path, `${JSON.stringify(nextState, null, 2)}\n`);
+        }
+      }
+
+      return Response.json(
+        {
+          ok: true,
+          rawPath: targets.rawPath,
+          sourcePath: targets.sourcePath ?? null,
+          sourceUpdated,
+          bytes: file.size,
+        },
+        { status: 200, headers: corsWithMethods },
+      );
     }
 
     const episodePreviewMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/episode-preview$/);
@@ -241,6 +449,73 @@ Bun.serve({
         return Response.json({ ok: true, ...result }, { headers: JSON_POST_CORS });
       } catch (err) {
         return Response.json({ error: String(err) }, { status: 500, headers: JSON_POST_CORS });
+      }
+    }
+
+    if (url.pathname === "/api/artifact-action" && (req.method === "POST" || req.method === "OPTIONS")) {
+      const corsWithMethods = {
+        ...CORS,
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      };
+
+      if (req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsWithMethods });
+      }
+
+      const project = url.searchParams.get("project");
+      const relPath = url.searchParams.get("path");
+      if (!project || !relPath) {
+        return Response.json({ error: "missing project or path param" }, { status: 400, headers: corsWithMethods });
+      }
+
+      const projectRoot = join(WORKSPACE, project);
+      if (!existsSync(projectRoot)) {
+        return Response.json({ error: "project not found" }, { status: 404, headers: corsWithMethods });
+      }
+
+      const normalized = normalize(relPath).replace(/\\/g, "/");
+      if (!getEditPolicy(normalized)) {
+        return Response.json({ error: "path not allowed: not a legal business artifact" }, { status: 403, headers: corsWithMethods });
+      }
+
+      const stateEntry = readPipelineState(projectRoot);
+      if (!stateEntry) {
+        return Response.json({ error: "pipeline-state.json not found" }, { status: 409, headers: corsWithMethods });
+      }
+
+      let payload: { action?: unknown; reason?: unknown };
+      try {
+        payload = await req.json();
+      } catch {
+        return Response.json({ error: "invalid JSON body" }, { status: 400, headers: corsWithMethods });
+      }
+
+      if (
+        payload.action !== "approve" &&
+        payload.action !== "request_change" &&
+        payload.action !== "lock" &&
+        payload.action !== "unlock"
+      ) {
+        return Response.json({ error: "invalid action" }, { status: 400, headers: corsWithMethods });
+      }
+
+      if (payload.action === "request_change" && typeof payload.reason !== "string") {
+        return Response.json({ error: "request_change requires reason" }, { status: 400, headers: corsWithMethods });
+      }
+
+      try {
+        if (payload.action === "approve") {
+          await syncApprovedStoryboard(projectRoot, normalized);
+        }
+        const nextState = applyArtifactActionToPipelineState(stateEntry.state, normalized, {
+          action: payload.action,
+          reason: typeof payload.reason === "string" ? payload.reason : undefined,
+        });
+        await writeTextAtomically(stateEntry.path, `${JSON.stringify(nextState, null, 2)}\n`);
+        return Response.json({ ok: true }, { status: 200, headers: corsWithMethods });
+      } catch (err) {
+        return Response.json({ error: String(err instanceof Error ? err.message : err) }, { status: 409, headers: corsWithMethods });
       }
     }
 
@@ -308,10 +583,20 @@ Bun.serve({
         return Response.json({ error: "project not found" }, { status: 404, headers: corsWithMethods });
       }
 
-      // Normalize and whitelist: must match output/**/*.json
+      // Normalize and check legal business edit points
       const normalized = normalize(relPath).replace(/\\/g, "/");
-      if (!/^output\/.+\.json$/.test(normalized)) {
-        return Response.json({ error: "path not allowed: must be under output/ and end in .json" }, { status: 403, headers: corsWithMethods });
+      const policy = getEditPolicy(normalized);
+      if (!policy) {
+        return Response.json({ error: "path not allowed: not a legal business edit point" }, { status: 403, headers: corsWithMethods });
+      }
+
+      const stateEntry = readPipelineState(projectRoot);
+      const artifactState = stateEntry?.state?.artifacts?.[normalized];
+      if (artifactState && (artifactState.status === "locked" || artifactState.editable === false)) {
+        return Response.json(
+          { error: "artifact is locked; unlock it before editing" },
+          { status: 409, headers: corsWithMethods },
+        );
       }
 
       // Safe resolve (throws on path escape)
@@ -328,22 +613,49 @@ Bun.serve({
         return Response.json({ error: "parent directory does not exist" }, { status: 404, headers: corsWithMethods });
       }
 
-      // Read body and validate JSON
+      // Read body and validate by content kind
       const text = await req.text();
-      try {
-        JSON.parse(text);
-      } catch {
-        return Response.json({ error: "request body is not valid JSON" }, { status: 409, headers: corsWithMethods });
+      if (policy.contentKind === "json") {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          return Response.json({ error: "request body is not valid JSON" }, { status: 409, headers: corsWithMethods });
+        }
+
+        const validation = validateEditableArtifact(normalized, parsed);
+        if (!validation.ok) {
+          return Response.json({ error: validation.error }, { status: 409, headers: corsWithMethods });
+        }
       }
 
-      // Atomic write: tmp → rename
-      const tmp = `${abs}.tmp-${Math.random().toString(36).slice(2)}`;
+      const previousText = existsSync(abs) ? readFileSync(abs, "utf-8") : null;
+
+      // Atomic write target artifact
       try {
-        await Bun.write(tmp, text);
-        await rename(tmp, abs);
+        await writeTextAtomically(abs, text);
       } catch (err) {
-        try { await unlink(tmp); } catch { /* ignore cleanup failure */ }
         return Response.json({ error: `write failed: ${String(err)}` }, { status: 500, headers: corsWithMethods });
+      }
+
+      // Best-effort but consistency-oriented pipeline-state update
+      if (stateEntry) {
+        try {
+          const nextState = applyManualEditToPipelineState(stateEntry.state, normalized);
+          await writeTextAtomically(stateEntry.path, `${JSON.stringify(nextState, null, 2)}\n`);
+        } catch (err) {
+          if (previousText !== null) {
+            try {
+              await writeTextAtomically(abs, previousText);
+            } catch {
+              // ignore rollback failure; report original state-sync error
+            }
+          }
+          return Response.json(
+            { error: `state sync failed after edit: ${String(err)}` },
+            { status: 500, headers: corsWithMethods },
+          );
+        }
       }
 
       return Response.json({ ok: true, bytes: Buffer.byteLength(text, "utf8") }, { status: 200, headers: corsWithMethods });
@@ -359,7 +671,7 @@ Bun.serve({
     },
 
     async message(ws: ServerWebSocket<unknown>, raw: string | Buffer) {
-      let payload: { message: string; project?: string; sessionId?: string };
+      let payload: { message?: string; project?: string; sessionId?: string; action?: string };
       try {
         payload = JSON.parse(raw as string);
       } catch {
@@ -371,6 +683,16 @@ Bun.serve({
       if (!slot) {
         slot = { project: null, session: null };
         sessions.set(ws, slot);
+      }
+
+      if (payload.action === "interrupt") {
+        await slot.session?.interrupt();
+        return;
+      }
+
+      if (typeof payload.message !== "string") {
+        ws.send(JSON.stringify({ type: "error", message: "Missing message" }));
+        return;
       }
 
       const incomingProject = payload.project ?? null;

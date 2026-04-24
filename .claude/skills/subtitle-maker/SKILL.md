@@ -29,14 +29,14 @@ argument-hint: "[视频文件路径] [--episode ep_001]"
 | ffmpeg (含 libass) | `ffmpeg -filters \| grep subtitle` | macOS: `brew tap homebrew-ffmpeg/ffmpeg && brew install homebrew-ffmpeg/ffmpeg/ffmpeg`；Linux: `apt install ffmpeg` |
 | google-genai | `pip show google-genai` | `pip install google-genai` |
 | python-dotenv | `pip show python-dotenv` | `pip install python-dotenv` |
-| GEMINI_API_KEY | `echo $GEMINI_API_KEY` | Google AI Studio 获取 |
+| GEMINI_API_KEY | `echo $GEMINI_API_KEY` | 填写 ChatFire key |
 | 中文字体 (Noto Sans CJK) | `fc-list :lang=zh` | macOS 自带；Linux: `apt install fonts-noto-cjk` |
 
 > **macOS 用户注意**：`brew install ffmpeg`（homebrew/core）是精简版，**不含 libass**，subtitles 滤镜不可用。必须用 `homebrew-ffmpeg/ffmpeg` tap 安装完整版。
 
 可用 Phase 0 脚本一键检查：`python3 ./.claude/skills/subtitle-maker/scripts/phase0_check.py`
 
-**GEMINI_API_KEY** 是唯一必需的用户配置。配置优先级同 music-matcher：
+**GEMINI_API_KEY** 是唯一必需的用户配置，值填写 ChatFire key。配置优先级同 music-matcher：
 1. 系统环境变量
 2. CWD `.env`
 3. skill 内置 `assets/default.env`
@@ -53,7 +53,7 @@ argument-hint: "[视频文件路径] [--episode ep_001]"
 
 ## 统一状态文件
 
-`subtitle-maker` 是 `SUBTITLE` 阶段，必须同步维护 `${PROJECT_DIR}/workspace/pipeline-state.json`。
+`subtitle-maker` 是 `SUBTITLE` 阶段，必须同步维护 `${PROJECT_DIR}/pipeline-state.json`。
 
 - 进入阶段时：设置 `current_stage=SUBTITLE`、`stages.SUBTITLE.status=running`
 - `glossary.json`、`asr.json`、`ep{NNN}.srt` 任一已生成但最终视频未完成时：设置 `episodes.ep{NNN}.subtitle.status=partial`
@@ -62,7 +62,7 @@ argument-hint: "[视频文件路径] [--episode ep_001]"
 
 恢复顺序：
 
-1. 优先读取 `${PROJECT_DIR}/workspace/pipeline-state.json`
+1. 优先读取 `${PROJECT_DIR}/pipeline-state.json`
 2. 若缺失，再检查 `output/ep{NNN}/_tmp/asr.json`
 3. 最后检查 `output/ep{NNN}/ep{NNN}.mp4`、`ep{NNN}.xml`、`ep{NNN}.srt`
 

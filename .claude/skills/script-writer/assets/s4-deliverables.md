@@ -139,11 +139,11 @@ graph TD
 [SWS-ANCHOR]
 
 [SWS-ITEM: 创作锚点清单]
-（从 ${PROJECT_DIR}/workspace/s1-ideation.md 中提取完整的创作锚点清单）
+（从 ${PROJECT_DIR}/draft/s1-ideation.md 中提取完整的创作锚点清单）
 [/SWS-ITEM]
 
 [SWS-ITEM: 风格DNA卡]
-（从 ${PROJECT_DIR}/workspace/s2-setting.md 中提取完整的风格DNA卡）
+（从 ${PROJECT_DIR}/draft/s2-setting.md 中提取完整的风格DNA卡）
 [/SWS-ITEM]
 
 [SWS-ITEM: 角色设定卡]

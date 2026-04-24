@@ -3,14 +3,19 @@
 """
 common_gemini_client.py - Gemini 客户端工厂
 
-通过 assets/common/gemini_backend.json 配置决定使用 ChatFire Gemini 代理：
+Creates a Google Gemini SDK client from assets/common/gemini_backend.json.
 
   {
-    "mode": "proxy",             // 默认 proxy，即 ChatFire
+    "mode": "official",
+    "model": "gemini-3.1-flash-lite-preview",
     "proxy": {
       "api_key":  "",
       "api_key_env": "GEMINI_API_KEY",
       "base_url": "https://api.chatfire.cn/gemini"
+    },
+    "official": {
+      "api_key": "",
+      "api_key_env": "GEMINI_API_KEY"
     }
   }
 
@@ -32,7 +37,7 @@ from google.genai import types
 from common_config import get_config
 
 
-DEFAULT_CHATFIRE_GEMINI_BASE_URL = "https://api.chatfire.cn/gemini"
+DEFAULT_GEMINI_PROXY_BASE_URL = "https://api.chatfire.cn/gemini"
 
 
 def _load_backend_config() -> dict:
@@ -71,14 +76,14 @@ def get_key(backend_config: dict = None) -> Optional[str]:
 
 
 def get_base_url(backend_config: dict = None) -> str:
-    """返回当前 Gemini 代理 base_url，默认使用 ChatFire。"""
+    """Return the configured Gemini proxy base URL."""
     if backend_config is None:
         backend_config = _load_backend_config()
     proxy_cfg = backend_config.get('proxy', {})
     return (
         os.getenv('GEMINI_BASE_URL')
         or proxy_cfg.get('base_url')
-        or DEFAULT_CHATFIRE_GEMINI_BASE_URL
+        or DEFAULT_GEMINI_PROXY_BASE_URL
     )
 
 
@@ -97,7 +102,7 @@ def create_client(backend_config: dict = None) -> genai.Client:
         api_key   = _resolve_key(proxy_cfg, 'GEMINI_API_KEY')
         base_url  = get_base_url(backend_config)
         if not api_key:
-            raise ValueError('ChatFire Gemini 代理模式：api_key 未配置（设置 GEMINI_API_KEY 为 ChatFire key 或 proxy.api_key）')
+            raise ValueError('ChatFire Gemini proxy mode: api_key is missing')
         if not base_url:
             raise ValueError('ChatFire Gemini 代理模式：base_url 未配置')
         return genai.Client(api_key=api_key, http_options={'base_url': base_url})

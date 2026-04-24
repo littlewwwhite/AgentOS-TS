@@ -1,6 +1,8 @@
 # Inspiration Contract
 
-本文档定义 Pipeline Stage 0 (INSPIRATION) 的产物 `${OUTPUT}/inspiration.json` 的 schema、字段填充来源、自检清单与反模式。`wangwen` skill 以本文件为单一事实源；下游 SCRIPT 阶段以本文件为消费契约。
+本文档定义上游创作输入 `output/inspiration.json` 的 schema、字段填充来源、自检清单与反模式。`wangwen` skill 以本文件为单一事实源；`script-writer` 可消费它作为灵感/创作起点。
+
+`INSPIRATION` 当前不是默认主流程 stage。正式 `SCRIPT` 阶段不直接消费未解析的灵感，而是消费 `script-writer` 或其它上游创作入口产出的终版剧本文本，并负责解析、映射分析、资产分析、剧情拆解与 `output/script.json` 契约交付。
 
 ## Schema
 
@@ -38,7 +40,7 @@
 
 ## 写入前自检清单（硬门控）
 
-写 `${OUTPUT}/inspiration.json` 前逐项检查：
+写 `output/inspiration.json` 前逐项检查：
 
 - [ ] 每个 `reference_works[].id` / `.name` 来自**真实查询结果**，未编造
 - [ ] 每个 `reference_works[].reason` **包含具体字段+数值**（如 "reader_uv_14day=77 万"），不是"很火"这种空话
@@ -73,4 +75,4 @@
 
 ## 下游契约
 
-`inspiration.json` 由下游 SCRIPT 阶段（`script-writer` 或未来迁入的 `idea-to-script`）消费为创作起点。"数据支撑"字段不得擅改；"AI 归纳"字段允许下游重写；"数据+AI"字段的事实部分不得擅改、判断部分允许重写。**契约字段以本文件为准**——skill 内部文档（SKILL.md / references）不得重复 schema 定义，避免漂移。
+`inspiration.json` 由上游创作入口（当前为 `script-writer`，未来可迁入 `idea-to-script`）消费为创作起点。"数据支撑"字段不得擅改；"AI 归纳"字段允许创作入口重写；"数据+AI"字段的事实部分不得擅改、判断部分允许重写。**契约字段以本文件为准**——skill 内部文档（SKILL.md / references）不得重复 schema 定义，避免漂移。

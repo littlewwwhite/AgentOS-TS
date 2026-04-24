@@ -20,9 +20,12 @@ import { fileUrl } from "../../../lib/fileUrl";
 import {
   buildClipInspectorData,
   buildStoryboardEditorModel,
+  parseDraftStoryboardPrompt,
   resolveStoryboardSelectionAtTime,
+  summarizeSourceRefs,
   splitStoryboardText,
   type ClipInspectorData,
+  type DraftStoryboardPromptSummary,
   type StoryboardClipLike,
   type StoryboardEditorClip,
   type StoryboardEditorShot,
@@ -31,6 +34,7 @@ import {
 } from "../../../lib/storyboard";
 import { EditableText } from "../../common/EditableText";
 import { SaveStatusDot } from "../../common/SaveStatusDot";
+import { ArtifactLifecycleActions } from "../../common/ArtifactLifecycleActions";
 
 interface ShotRef extends StoryboardShotLike {
   shot_id: string;
@@ -60,6 +64,13 @@ interface StoryboardJson {
   episode_id: string;
   title?: string | null;
   scenes?: SceneRef[];
+  scene_id?: string;
+  shots?: DraftStoryboardPart[];
+}
+
+interface DraftStoryboardPart {
+  source_refs?: unknown;
+  prompt?: string;
 }
 
 type PlaybackStatus = "idle" | "playing" | "paused";
@@ -187,23 +198,12 @@ function timelineCanvasWidth(totalDuration: number): number {
   return Math.max(960, Math.round(safeDuration * pxPerSecond));
 }
 
-function playbackLabel(status: PlaybackStatus): string {
-  if (status === "playing") return "连续播放中";
-  if (status === "paused") return "已暂停";
-  return "待播放";
-}
-
 function PreviewStage({
   projectName,
   videoPath,
   clip,
-  selectedShot,
   exists,
-  sourceLabel,
   placeholderTitle,
-  playbackStatus,
-  episodeTime,
-  episodeDuration,
   videoRef,
   onLoadedMetadata,
   onTimeUpdate,
@@ -214,13 +214,8 @@ function PreviewStage({
   projectName: string;
   videoPath: string | null;
   clip: StoryboardEditorClip;
-  selectedShot: StoryboardEditorShot | null;
   exists: boolean;
-  sourceLabel: string;
   placeholderTitle: string;
-  playbackStatus: PlaybackStatus;
-  episodeTime: number;
-  episodeDuration: number;
   videoRef: RefObject<HTMLVideoElement | null>;
   onLoadedMetadata: () => void;
   onTimeUpdate: () => void;
@@ -229,22 +224,8 @@ function PreviewStage({
   onPause: () => void;
 }) {
   return (
-    <section className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-2 border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <TrackLabel>{sourceLabel}</TrackLabel>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-faint)]">
-            {timecodeLabel(episodeTime)} / {timecodeLabel(episodeDuration)}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <MetaBadge label="scene" value={clip.sceneId} />
-          <MetaBadge label="clip" value={clip.clipId} />
-          <MetaBadge label="status" value={playbackLabel(playbackStatus)} />
-        </div>
-      </div>
-
-      <div className="relative min-h-0 min-w-0 overflow-hidden border border-[var(--color-rule)] bg-[var(--color-ink)]">
+    <section className="min-h-0 min-w-0 border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
+      <div className="relative h-full min-h-0 min-w-0 overflow-hidden border border-[var(--color-rule)] bg-[var(--color-ink)]">
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08)_0%,rgba(0,0,0,0.42)_100%)]" />
         {exists ? (
           <video
@@ -272,20 +253,6 @@ function PreviewStage({
             </div>
           </div>
         )}
-
-        <div className="pointer-events-none absolute left-3 top-3 z-20 flex flex-wrap gap-2">
-          <span className="border border-white/10 bg-black/35 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/90">
-            {clip.sceneId}
-          </span>
-          <span className="border border-white/10 bg-black/35 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/90">
-            {clip.clipId}
-          </span>
-          {selectedShot && (
-            <span className="border border-white/10 bg-black/35 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/90">
-              {selectedShot.shotId}
-            </span>
-          )}
-        </div>
       </div>
     </section>
   );
@@ -413,7 +380,6 @@ function EditorTimeline({
         </div>
         <div className="flex flex-wrap gap-2">
           <MetaBadge label="总时长" value={durationLabel(totalDuration)} />
-          <MetaBadge label="当前游标" value={timecodeLabel(episodeTime)} />
         </div>
       </div>
 
@@ -463,22 +429,16 @@ function EditorTimeline({
 }
 
 function ClipInfoPanel({
-  clip,
   summary,
   source,
   selectedShot,
-  episodeTime,
-  episodeDuration,
   dict,
   children,
   className = "",
 }: {
-  clip: StoryboardEditorClip;
   summary: ClipInspectorData;
   source: string;
   selectedShot: StoryboardEditorShot | null;
-  episodeTime: number;
-  episodeDuration: number;
   dict: Record<string, string>;
   children?: ReactNode;
   className?: string;
@@ -488,17 +448,6 @@ function ClipInfoPanel({
   return (
     <aside className={`min-w-0 border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-3 ${className}`.trim()}>
       <div className="space-y-4">
-        <div className="space-y-2 border-b border-[var(--color-rule)] pb-3">
-          <TrackLabel>当前段元信息</TrackLabel>
-          <div className="flex flex-wrap gap-2">
-            <MetaBadge label="scene" value={clip.sceneId} />
-            <MetaBadge label="clip" value={clip.clipId} />
-            <MetaBadge label="游标" value={`${timecodeLabel(episodeTime)} / ${timecodeLabel(episodeDuration)}`} />
-            <MetaBadge label="片段时长" value={durationLabel(clip.totalDuration)} />
-            {selectedShot && <MetaBadge label="shot" value={selectedShot.shotId} />}
-          </div>
-        </div>
-
         {(summary.environment || summary.location) && (
           <div className="flex flex-wrap gap-2">
             {summary.environment && <MetaBadge label="场域" value={summary.environment} />}
@@ -509,13 +458,7 @@ function ClipInfoPanel({
 
         {selectedShot && (
           <InfoPanelSection title="当前镜头">
-            <div className="space-y-2">
-              <div className="flex flex-wrap gap-2">
-                <MetaBadge label="时段" value={selectedShot.timeRange ?? durationLabel(selectedShot.duration)} />
-                <MetaBadge label="局部偏移" value={`${timecodeLabel(selectedShot.localStartOffset)} → ${timecodeLabel(selectedShot.localEndOffset)}`} />
-              </div>
-              <div>{selectedShot.prompt || "（无镜头提示词）"}</div>
-            </div>
+            {selectedShot.prompt || "（无镜头提示词）"}
           </InfoPanelSection>
         )}
 
@@ -628,12 +571,14 @@ function EditableClipFields({
   data,
   patch,
   status,
+  readOnly,
 }: {
   clip: ClipRef;
   clipPath: string;
   data: StoryboardJson;
   patch: (path: string, value: unknown) => void;
   status: "idle" | "loading" | "saving" | "saved" | "error";
+  readOnly: boolean;
 }) {
   const editStatus: "idle" | "saving" | "saved" | "error" =
     status === "loading" ? "idle" : status;
@@ -663,6 +608,7 @@ function EditableClipFields({
               status={editStatus}
               className="block w-full"
               ariaLabel={`${clip.clip_id} 剧本原文`}
+              readOnly={readOnly}
             />
           </div>
         </div>
@@ -677,6 +623,7 @@ function EditableClipFields({
               status={editStatus}
               className="block w-full"
               ariaLabel={`${clip.clip_id} 场景布局`}
+              readOnly={readOnly}
             />
           </div>
         </div>
@@ -691,6 +638,7 @@ function EditableClipFields({
               status={editStatus}
               className="block w-full"
               ariaLabel={`${clip.clip_id} 音效指令`}
+              readOnly={readOnly}
             />
           </div>
         </div>
@@ -699,18 +647,159 @@ function EditableClipFields({
   );
 }
 
+function isDraftStoryboard(data: StoryboardJson): data is StoryboardJson & { shots: DraftStoryboardPart[] } {
+  return Array.isArray(data.shots) && (!Array.isArray(data.scenes) || data.scenes.length === 0);
+}
+
+function DraftShotSummaryList({ summary }: { summary: DraftStoryboardPromptSummary }) {
+  if (summary.shots.length === 0) {
+    return (
+      <div className="font-[Geist,sans-serif] text-[12px] italic text-[var(--color-ink-faint)]">
+        未解析到内嵌 shots 结构；仍可安全编辑外层 prompt 字段。
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-1.5">
+      {summary.shots.map((shot) => (
+        <div
+          key={`${shot.shotId}-${shot.timeRange ?? "na"}`}
+          className="grid grid-cols-[56px_92px_minmax(0,1fr)] items-center gap-3 border-l-2 border-[var(--color-accent)] bg-[var(--color-paper-soft)] px-3 py-2"
+        >
+          <span className="font-mono text-[11px] font-semibold text-[var(--color-accent)]">
+            {shot.shotId}
+          </span>
+          <span className="font-mono text-[10px] text-[var(--color-ink-subtle)]">
+            {shot.timeRange ?? "未标时"}
+          </span>
+          <span className="truncate font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-muted)]">
+            {shot.cameraType ?? "未标镜型"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DraftStoryboardEditor({
+  data,
+  path,
+  projectName,
+  patch,
+  status,
+  savedAt,
+  error,
+  readOnly,
+  onActionDone,
+}: {
+  data: StoryboardJson & { shots: DraftStoryboardPart[] };
+  path: string;
+  projectName: string;
+  patch: (path: string, value: unknown) => void;
+  status: "idle" | "loading" | "saving" | "saved" | "error";
+  savedAt: number | null;
+  error: string | null;
+  readOnly: boolean;
+  onActionDone: () => void;
+}) {
+  const editStatus: "idle" | "saving" | "saved" | "error" =
+    status === "loading" ? "idle" : status;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex items-center justify-between gap-6 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-6 py-3 shrink-0">
+        <header className="space-y-1">
+          <h1 className="font-serif text-[24px] leading-tight text-[var(--color-ink)]">
+            {data.episode_id} 分镜草稿
+          </h1>
+          <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
+            结构保护：只编辑每个分段的 prompt 字段，episode_id / scene_id / source_refs / shots[] 外层结构保持不变。
+          </div>
+        </header>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <SaveStatusLabel status={status} savedAt={savedAt} error={error} />
+          <ArtifactLifecycleActions projectName={projectName} path={path} onActionDone={onActionDone} />
+          <MetaBadge label="场景" value={data.scene_id ?? "未标注"} />
+          <MetaBadge label="分段" value={`${data.shots.length}`} />
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--color-paper-sunk)] px-6 py-6">
+        <div className="mx-auto grid max-w-[1040px] gap-4">
+          {data.shots.map((part, partIndex) => {
+            const prompt = typeof part.prompt === "string" ? part.prompt : "";
+            const summary = parseDraftStoryboardPrompt(prompt);
+            const promptPath = `shots.${partIndex}.prompt`;
+
+            return (
+              <section
+                key={`${partIndex}-${summary.partLabel}`}
+                className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-4"
+              >
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-[12px] font-semibold text-[var(--color-accent)]">
+                      {summary.partLabel}
+                    </div>
+                    {summary.summary && (
+                      <div className="mt-1 max-w-[72ch] font-[Geist,sans-serif] text-[12px] leading-relaxed text-[var(--color-ink-muted)]">
+                        {summary.summary}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <MetaBadge label="原文 refs" value={summarizeSourceRefs(part.source_refs)} />
+                    <MetaBadge label="镜头" value={`${summary.shots.length}`} />
+                  </div>
+                </div>
+
+                <DraftShotSummaryList summary={summary} />
+
+                <details className="mt-4 border-t border-[var(--color-rule)] pt-3" open>
+                  <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
+                    原始分镜 prompt / 可编辑
+                  </summary>
+                  <div className="mt-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)]">
+                    <EditableText
+                      value={prompt}
+                      onChange={(value) => patch(promptPath, value)}
+                      placeholder="（分镜 prompt）"
+                      multiline
+                      status={editStatus}
+                      className="block w-full whitespace-pre-wrap"
+                      ariaLabel={`${summary.partLabel} 分镜 prompt`}
+                      readOnly={readOnly}
+                    />
+                  </div>
+                </details>
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function scriptPathFor(storyboardPath: string): string {
   if (storyboardPath.startsWith("output/")) return "output/script.json";
+  if (storyboardPath.endsWith(".shots.json")) return "output/script.json";
   return storyboardPath.replace(/(?:^|\/)[^/]+_storyboard\.json$/, "script.json");
 }
 
 export function StoryboardView({ projectName, path }: { projectName: string; path: string }) {
-  const { tree, refresh } = useProject();
+  const { tree, refresh, state } = useProject();
   const { data, error, status, patch, savedAt } =
     useEditableJson<StoryboardJson>(projectName, path);
+  const locked = state?.artifacts?.[path]?.status === "locked" || state?.artifacts?.[path]?.editable === false;
 
   const { data: scriptData } = useFileJson<ScriptJson>(projectName, scriptPathFor(path));
   const { data: catalogData } = useFileJson<ScriptJson>(projectName, "draft/catalog.json");
+
+  useEffect(() => {
+    if (savedAt !== null) refresh();
+  }, [refresh, savedAt]);
 
   const dict = useMemo(
     () => ({
@@ -733,16 +822,24 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>("idle");
   const [generatedEpisodeVideoPath, setGeneratedEpisodeVideoPath] = useState<string | null>(null);
   const [episodePreviewStatus, setEpisodePreviewStatus] = useState<EpisodePreviewStatus>("idle");
-  const [episodePreviewError, setEpisodePreviewError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pendingSeekRef = useRef<number | null>(0);
   const pendingAutoplayRef = useRef(false);
+  const episodeTimeRef = useRef(0);
+  const playbackStatusRef = useRef<PlaybackStatus>("idle");
+
+  useEffect(() => {
+    episodeTimeRef.current = episodeTime;
+  }, [episodeTime]);
+
+  useEffect(() => {
+    playbackStatusRef.current = playbackStatus;
+  }, [playbackStatus]);
 
   useEffect(() => {
     setGeneratedEpisodeVideoPath(null);
     setEpisodePreviewStatus("idle");
-    setEpisodePreviewError(null);
     pendingSeekRef.current = 0;
     pendingAutoplayRef.current = false;
   }, [path, projectName]);
@@ -799,21 +896,7 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
   const currentClipExists = currentClip ? treePaths.has(currentClip.videoPath) : false;
   const previewVideoPath = hasEpisodeVideo ? mergedEpisodeVideoPath : currentClip?.videoPath ?? null;
   const previewExists = hasEpisodeVideo || currentClipExists;
-  const previewSourceLabel = hasEpisodeVideo
-    ? "整集成片"
-    : episodePreviewStatus === "building"
-      ? "正在合并整集"
-      : "片段预览";
-  const previewPlaceholderTitle = episodePreviewStatus === "building"
-    ? "正在合并整集预览…"
-    : "当前没有可播放的预览视频";
-  const episodePreviewLabel = hasEpisodeVideo
-    ? "整集"
-    : episodePreviewStatus === "building"
-      ? "合并中"
-      : episodePreviewStatus === "error"
-        ? "合并失败"
-        : "片段";
+  const previewPlaceholderTitle = "当前没有可播放的预览视频";
   const currentScene = currentClip ? scenes[currentClip.sceneIndex] ?? null : null;
   const currentClipData = currentClip && currentScene
     ? currentScene.clips?.[currentClip.clipIndex] ?? null
@@ -841,34 +924,40 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     if (playableClipPaths.length === 0) return;
 
     const abortController = new AbortController();
-    setEpisodePreviewStatus("building");
-    setEpisodePreviewError(null);
+    const mergeTimer = window.setTimeout(() => {
+      setEpisodePreviewStatus("building");
 
-    fetch(`/api/projects/${encodeURIComponent(projectName)}/episode-preview`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storyboardPath: path, clipPaths: playableClipPaths }),
-      signal: abortController.signal,
-    })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || typeof payload.path !== "string") {
-          throw new Error(typeof payload.error === "string" ? payload.error : `episode-preview ${response.status}`);
-        }
-        return payload as { path: string };
+      fetch(`/api/projects/${encodeURIComponent(projectName)}/episode-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storyboardPath: path, clipPaths: playableClipPaths }),
+        signal: abortController.signal,
       })
-      .then((payload) => {
-        setGeneratedEpisodeVideoPath(payload.path);
-        setEpisodePreviewStatus("ready");
-        refresh();
-      })
-      .catch((err) => {
-        if (abortController.signal.aborted) return;
-        setEpisodePreviewStatus("error");
-        setEpisodePreviewError(String(err));
-      });
+        .then(async (response) => {
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || typeof payload.path !== "string") {
+            throw new Error(typeof payload.error === "string" ? payload.error : `episode-preview ${response.status}`);
+          }
+          return payload as { path: string };
+        })
+        .then((payload) => {
+          pendingSeekRef.current = episodeTimeRef.current;
+          pendingAutoplayRef.current = playbackStatusRef.current === "playing";
+          setGeneratedEpisodeVideoPath(payload.path);
+          setEpisodePreviewStatus("ready");
+          refresh();
+        })
+        .catch((err) => {
+          if (abortController.signal.aborted) return;
+          setEpisodePreviewStatus("error");
+          console.warn("[StoryboardView] episode preview generation failed", err);
+        });
+    }, 500);
 
-    return () => abortController.abort();
+    return () => {
+      window.clearTimeout(mergeTimer);
+      abortController.abort();
+    };
   }, [
     data,
     editorModel.episodeVideoPath,
@@ -1016,6 +1105,22 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     );
   }
 
+  if (isDraftStoryboard(data)) {
+    return (
+      <DraftStoryboardEditor
+        data={data}
+        path={path}
+        projectName={projectName}
+        patch={patch}
+        status={status}
+        savedAt={savedAt}
+        error={error}
+        readOnly={locked}
+        onActionDone={refresh}
+      />
+    );
+  }
+
   if (!currentClip || !currentClipData || !currentScene || !currentSummary || !currentClipPath) {
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -1028,7 +1133,10 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
               PR 工作台模式 · 播放器和时间轴已对齐
             </div>
           </header>
-          <SaveStatusLabel status={status} savedAt={savedAt} error={error} />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <SaveStatusLabel status={status} savedAt={savedAt} error={error} />
+            <ArtifactLifecycleActions projectName={projectName} path={path} onActionDone={refresh} />
+          </div>
         </div>
         <div className="flex flex-1 items-center justify-center border border-dashed border-[var(--color-rule)] bg-[var(--color-paper)] px-6 py-8 font-serif italic text-[15px] text-[var(--color-ink-faint)]">
           当前分镜文件里还没有可浏览的片段。
@@ -1045,37 +1153,32 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
             {data.title ? data.title : `${data.episode_id} 分镜脚本`}
           </h1>
           <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
-            PR 工作台模式 · 主播放器优先使用整集成片，底部时间轴负责跳转
+            PR 工作台模式 · 播放器和底部时间轴保持联动
           </div>
         </header>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           <SaveStatusLabel status={status} savedAt={savedAt} error={error} />
+          <ArtifactLifecycleActions projectName={projectName} path={path} onActionDone={refresh} />
           <MetaBadge label="场次" value={`${scenes.length}`} />
           <MetaBadge label="片段" value={`${totalClips}`} />
           <MetaBadge label="镜头" value={`${totalShots}`} />
           <MetaBadge label="总时长" value={durationLabel(editorModel.totalDuration)} />
-          <MetaBadge label="预览" value={episodePreviewLabel} />
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 py-4">
-        <div className="grid flex-1 min-h-0 grid-rows-[minmax(320px,1fr)_215px] gap-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-3 lg:px-6 lg:py-4">
+        <div className="grid flex-1 min-h-0 grid-rows-[minmax(320px,1fr)_215px] gap-2 lg:gap-3">
           <div
-            className="grid min-h-0 gap-3 overflow-hidden"
-            style={{ gridTemplateColumns: "minmax(480px, 1fr) minmax(260px, 300px)" }}
+            className="grid min-h-0 min-w-0 gap-2 overflow-hidden lg:gap-3"
+            style={{ gridTemplateColumns: "minmax(0, 1fr) clamp(220px, 26%, 320px)" }}
           >
             <PreviewStage
               projectName={projectName}
               videoPath={previewVideoPath}
               clip={currentClip}
-              selectedShot={selectedShot}
               exists={previewExists}
-              sourceLabel={previewSourceLabel}
               placeholderTitle={previewPlaceholderTitle}
-              playbackStatus={playbackStatus}
-              episodeTime={episodeTime}
-              episodeDuration={editorModel.totalDuration}
               videoRef={videoRef}
               onLoadedMetadata={handleLoadedMetadata}
               onTimeUpdate={handleTimeUpdate}
@@ -1085,21 +1188,12 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
             />
 
             <ClipInfoPanel
-              clip={currentClip}
               summary={currentSummary}
               source={currentScriptSource}
               selectedShot={selectedShot}
-              episodeTime={episodeTime}
-              episodeDuration={editorModel.totalDuration}
               dict={dict}
               className="min-h-0 overflow-y-auto overscroll-contain"
             >
-              {episodePreviewError && (
-                <InfoPanelSection title="整集预览状态">
-                  {episodePreviewError}
-                </InfoPanelSection>
-              )}
-
               {dictEntries.length > 0 && (
                 <details className="border-t border-[var(--color-rule)] pt-3">
                   <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
@@ -1144,6 +1238,7 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
                 data={data}
                 patch={patch}
                 status={status}
+                readOnly={locked}
               />
             </ClipInfoPanel>
           </div>

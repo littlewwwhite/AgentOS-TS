@@ -21,9 +21,9 @@
 
 | 输入项 | 来源 | 必需内容 |
 |--------|------|----------|
-| S1 交付物 | `${PROJECT_DIR}/workspace/s1-ideation.md` | 创意概念报告（Logline、六维度画像、第一推动力）+ 创作锚点清单 |
-| S2 交付物 | `${PROJECT_DIR}/workspace/s2-setting.md` | 世界观设定、势力设定、特殊设定卡、风格 DNA 卡 |
-| 风格指南 | `${PROJECT_DIR}/workspace/style-guide.md` | 风格 DNA、写作规范、情绪基调 |
+| S1 交付物 | `${PROJECT_DIR}/draft/s1-ideation.md` | 创意概念报告（Logline、六维度画像、第一推动力）+ 创作锚点清单 |
+| S2 交付物 | `${PROJECT_DIR}/draft/s2-setting.md` | 世界观设定、势力设定、特殊设定卡、风格 DNA 卡 |
+| 风格指南 | `${PROJECT_DIR}/draft/style-guide.md` | 风格 DNA、写作规范、情绪基调 |
 
 > **注意**：锚点文档（`anchor.md`）在 S4 完成后才组装，S3 阶段尚不可用。S3 直接从 S1/S2 交付物中提取所需信息。
 
@@ -518,7 +518,7 @@ Logline：[一句话概括全剧]
 
 1. 将全部交付物的 status 更新为 `已确认`
 2. 更新锚点文档，追加 S3 关键信息
-3. 如果存在 `${PROJECT_DIR}/workspace/`，将交付物写入 `s3-outline.md`
+3. 如果存在 `${PROJECT_DIR}/draft/`，将交付物写入 `s3-outline.md`
 4. 更新 `[SWS-CHECKPOINT]`：
 
 ```
@@ -526,9 +526,9 @@ Logline：[一句话概括全剧]
 current_stage: S3-故事大纲（已确认）
 ...
 completed:
-  - S1-创意构思 → ${PROJECT_DIR}/workspace/s1-ideation.md
-  - S2-基础设定 → ${PROJECT_DIR}/workspace/s2-setting.md
-  - S3-故事大纲 → ${PROJECT_DIR}/workspace/s3-outline.md
+  - S1-创意构思 → ${PROJECT_DIR}/draft/s1-ideation.md
+  - S2-基础设定 → ${PROJECT_DIR}/draft/s2-setting.md
+  - S3-故事大纲 → ${PROJECT_DIR}/draft/s3-outline.md
 next_stage: S4-角色开发
 ...
 [/SWS-CHECKPOINT]
@@ -540,9 +540,9 @@ next_stage: S4-角色开发
 
 ## 开始执行
 
-1. 检查 S1 交付物：从对话上下文或 `${PROJECT_DIR}/workspace/s1-ideation.md` 获取
-2. 检查 S2 交付物：从对话上下文或 `${PROJECT_DIR}/workspace/s2-setting.md` 获取
-3. 检查风格指南：从对话上下文或 `${PROJECT_DIR}/workspace/style-guide.md` 获取
+1. 检查 S1 交付物：从对话上下文或 `${PROJECT_DIR}/draft/s1-ideation.md` 获取
+2. 检查 S2 交付物：从对话上下文或 `${PROJECT_DIR}/draft/s2-setting.md` 获取
+3. 检查风格指南：从对话上下文或 `${PROJECT_DIR}/draft/style-guide.md` 获取
 4. 如果缺少 S1 交付物，提示：请先完成 S1 创意构思
 5. 如果缺少 S2 交付物，提示：请先完成 S2 基础设定
 6. 如果 S1 + S2 + 风格指南已就绪，执行故事大纲工作流（第一步至第八步）

@@ -38,7 +38,7 @@ class GeminiVideoAdapter:
         expected_duration: float,
         original_prompt: Optional[str] = None,
         actor_references: Optional[List[str]] = None,
-        output_dir: str = "workspace/output",
+        output_dir: str = "draft/output",
         force_reanalyze: bool = False,
         api_key: Optional[str] = None
     ) -> Tuple[Dict, str]:
@@ -89,7 +89,7 @@ def get_video_analysis(
     expected_duration: float,
     original_prompt: Optional[str] = None,
     actor_references: Optional[List[str]] = None,
-    output_dir: str = "workspace/output",
+    output_dir: str = "draft/output",
     force_reanalyze: bool = False,
     gemini_skill_path: Optional[str] = None,
     api_key: Optional[str] = None
@@ -135,7 +135,7 @@ def main():
     parser.add_argument("video_path", help="视频文件路径")
     parser.add_argument("segment_id", help="片段编号 (SC##-L##)")
     parser.add_argument("expected_duration", type=float, help="期望时长（秒）")
-    parser.add_argument("-o", "--output-dir", default="workspace/output", help="输出目录")
+    parser.add_argument("-o", "--output-dir", default="draft/output", help="输出目录")
     parser.add_argument("--force", action="store_true", help="强制重新分析")
 
     args = parser.parse_args()

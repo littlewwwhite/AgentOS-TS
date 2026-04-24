@@ -6,62 +6,63 @@
 
 #### SWS 工作区（原创模式）
 
-创建 `${PROJECT_DIR}/workspace/` 工作区：
+创建 `${PROJECT_DIR}/draft/` 工作区：
 
 ```
-${PROJECT_DIR}/workspace/
-├── pipeline-state.json       ← 全流水线统一状态文件
-├── s1-ideation.md             ← S1 交付物（创意概念）
-├── style-guide.md             ← 风格指南（S1 确认后生成）
-├── s2-setting.md              ← S2 交付物（基础设定）
-├── s3-outline.md              ← S3 交付物（故事大纲）
-├── s4-character.md            ← S4 交付物（角色开发）
-├── anchor.md                  ← 锚点文档（S4 完成后组装）
-├── s5-tracking.md             ← S5 交付物（进度追踪）
-├── s6-episode-outline.md      ← S6 交付物（节拍表+场景清单）
-├── s7-scripts.md              ← S7 交付物（完整剧本）
-├── s8-polished.md             ← S8 交付物（终版剧本）
-├── memory-banks/              ← 记忆库存储目录（每项目一文件）
-│   └── {项目名}_{测试人}.md
-└── checkpoint.md              ← 流水线进度检查点
+${PROJECT_DIR}/
+├── pipeline-state.json       ← 全流水线统一状态文件（正式 SCRIPT 解析交付后更新）
+├── draft/
+│   ├── s1-ideation.md             ← S1 交付物（创意概念）
+│   ├── style-guide.md             ← 风格指南（S1 确认后生成）
+│   ├── s2-setting.md              ← S2 交付物（基础设定）
+│   ├── s3-outline.md              ← S3 交付物（故事大纲）
+│   ├── s4-character.md            ← S4 交付物（角色开发）
+│   ├── anchor.md                  ← 锚点文档（S4 完成后组装）
+│   ├── s5-tracking.md             ← S5 交付物（进度追踪）
+│   ├── s6-episode-outline.md      ← S6 交付物（节拍表+场景清单）
+│   ├── s7-scripts.md              ← S7 交付物（完整剧本）
+│   ├── s8-polished.md             ← S8 交付物（终版剧本）
+│   ├── memory-banks/              ← 记忆库存储目录（每项目一文件）
+│   │   └── {项目名}_{测试人}.md
+│   └── checkpoint.md              ← 流水线进度检查点
 ```
 
 #### NTSV2 工作区（改编扩写模式）
 
-创建 `${PROJECT_DIR}/workspace/` 工作区：
+创建 `${PROJECT_DIR}/draft/` 工作区：
 
 ```
-${PROJECT_DIR}/workspace/
-├── pipeline-state.json       ← 全流水线统一状态文件
-├── novel.txt                  ← 原文小说
-├── draft/                     ← 中间产物
-│   └── source-structure.json  ← 原文结构检测结果（S1 第零步生成）
-├── s1-analysis.md             ← S1 交付物（原文分析与灵感提取）
-├── style-guide.md             ← 风格指南（S1 确认后生成）
-├── s2-setting.md              ← S2 交付物（基础设定）
-├── s3-outline.md              ← S3 交付物（故事大纲）
-├── s4-character.md            ← S4 交付物（角色开发）
-├── anchor.md                  ← 锚点文档（S4 完成后组装）
-├── s5-tracking.md             ← S5 交付物（进度追踪）
-├── s6-episode-outline.md      ← S6 交付物（节拍表+场景清单）
-├── s7-scripts.md              ← S7 交付物（完整剧本）
-├── s8-polished.md             ← S8 交付物（终版剧本）
-├── memory-banks/              ← 记忆库存储目录（每项目一文件）
-│   └── {项目名}_{测试人}.md
-└── checkpoint.md              ← 流水线进度检查点
+${PROJECT_DIR}/
+├── pipeline-state.json       ← 全流水线统一状态文件（正式 SCRIPT 解析交付后更新）
+├── source.txt                ← 原文副本
+├── draft/                    ← 中间产物与工作文件
+│   ├── source-structure.json  ← 原文结构检测结果（S1 第零步生成）
+│   ├── s1-analysis.md         ← S1 交付物（原文分析与灵感提取）
+│   ├── style-guide.md         ← 风格指南（S1 确认后生成）
+│   ├── s2-setting.md          ← S2 交付物（基础设定）
+│   ├── s3-outline.md          ← S3 交付物（故事大纲）
+│   ├── s4-character.md        ← S4 交付物（角色开发）
+│   ├── anchor.md              ← 锚点文档（S4 完成后组装）
+│   ├── s5-tracking.md         ← S5 交付物（进度追踪）
+│   ├── s6-episode-outline.md  ← S6 交付物（节拍表+场景清单）
+│   ├── s7-scripts.md          ← S7 交付物（完整剧本）
+│   ├── s8-polished.md         ← S8 交付物（终版剧本）
+│   ├── memory-banks/
+│   │   └── {项目名}_{测试人}.md
+│   └── checkpoint.md
 ```
 
 ### 工作区操作
 
 - **初始化**：收到创意输入后，自动创建工作区
-- **状态初始化**：若 `${PROJECT_DIR}/workspace/pipeline-state.json` 不存在，则初始化最小结构，并将 `current_stage=SCRIPT`
+- **状态初始化**：创作阶段主要维护 `draft/checkpoint.md` 与工作区文件；不要把 S1-S8 创作过程直接登记为正式 `SCRIPT` 阶段运行中
 - **阶段保存**：每个阶段确认后，自动将交付物写入对应文件
 - **风格指南生成**：S1 确认后，基于 style-guide-template.md 生成 style-guide.md
-- **检查点更新**：每次阶段流转时同时更新 `checkpoint.md` 与 `${PROJECT_DIR}/workspace/pipeline-state.json`
+- **检查点更新**：每次创作层阶段流转只更新 `draft/checkpoint.md`；正式 `pipeline-state.json` 只在 `output/script.json` 解析交付后更新
 - **锚点组装**：S4 确认后，自动从 S1、S2、S4 交付物中提取锚点文档写入 `anchor.md`
 - **进度追踪**：S5 初始化追踪文档，S7 写作期间持续更新
-- **记忆库初始化**：创建工作区时，在 `${PROJECT_DIR}/workspace/memory-banks/` 目录下基于 `memory-bank-template.md` 创建 `{项目名}_{测试人}.md`
-- **记忆库更新**：检测到用户修改请求时，按 `memory-bank-rules.md` 自动追加记录至 `${PROJECT_DIR}/workspace/memory-banks/{项目名}_{测试人}.md` 并更新统计摘要
+- **记忆库初始化**：创建工作区时，在 `${PROJECT_DIR}/draft/memory-banks/` 目录下基于 `memory-bank-template.md` 创建 `{项目名}_{测试人}.md`
+- **记忆库更新**：检测到用户修改请求时，按 `memory-bank-rules.md` 自动追加记录至 `${PROJECT_DIR}/draft/memory-banks/{项目名}_{测试人}.md` 并更新统计摘要
 
 ### 上下文恢复
 
@@ -69,21 +70,21 @@ ${PROJECT_DIR}/workspace/
 
 #### SWS 模式
 
-1. 优先读取 `${PROJECT_DIR}/workspace/pipeline-state.json`
-2. 读取 `checkpoint.md` 恢复流水线状态
+1. 优先读取 `draft/checkpoint.md` 恢复创作流水线状态
+2. 若 `${PROJECT_DIR}/pipeline-state.json` 存在，仅用于确认是否已有正式 `SCRIPT` 交付
 3. 检查各阶段文件是否存在
 4. 读取 `style-guide.md` 恢复风格约束
-5. 读取 `${PROJECT_DIR}/workspace/memory-banks/` 中对应项目的记忆库文件，恢复修改编号计数器和历史记录
+5. 读取 `${PROJECT_DIR}/draft/memory-banks/` 中对应项目的记忆库文件，恢复修改编号计数器和历史记录
 6. 提示用户进入下一阶段
 
 #### NTSV2 模式
 
-1. 优先读取 `${PROJECT_DIR}/workspace/pipeline-state.json`
-2. 读取 `checkpoint.md` 恢复流水线状态
+1. 优先读取 `draft/checkpoint.md` 恢复创作流水线状态
+2. 若 `${PROJECT_DIR}/pipeline-state.json` 存在，仅用于确认是否已有正式 `SCRIPT` 交付
 3. 检查各阶段文件是否存在
-4. 检查 `${PROJECT_DIR}/workspace/draft/source-structure.json` → 存在则原文结构检测已完成，读取分段策略（`source_mode`）供后续阶段使用
+4. 检查 `${PROJECT_DIR}/draft/source-structure.json` → 存在则原文结构检测已完成，读取分段策略（`source_mode`）供后续阶段使用
 5. 读取 `style-guide.md` 恢复风格约束
-6. 读取 `${PROJECT_DIR}/workspace/memory-banks/` 中对应项目的记忆库文件，恢复修改编号计数器和历史记录
+6. 读取 `${PROJECT_DIR}/draft/memory-banks/` 中对应项目的记忆库文件，恢复修改编号计数器和历史记录
 7. 提示用户进入下一阶段
 
 ---
@@ -94,22 +95,20 @@ ${PROJECT_DIR}/workspace/
 
 收到创意输入时：
 
-1. 创建 `${PROJECT_DIR}/workspace/` 工作区，同时在 `${PROJECT_DIR}/workspace/memory-banks/` 目录下基于 `memory-bank-template.md` 初始化记忆库文件（命名：`{项目名}_{测试人}.md`）
-2. 初始化 `${PROJECT_DIR}/workspace/pipeline-state.json`，设置 `current_stage=SCRIPT`、`stages.SCRIPT.status=running`
-3. 展示流水线架构概览
-4. 读取 S1 reference 文件，开始创意构思
-5. 执行六维度扫描 → 缺失维度引导补全 → 核心元素分析 → 第一推动力判定 → 风格匹配
+1. 创建 `${PROJECT_DIR}/draft/` 工作区，同时在 `${PROJECT_DIR}/draft/memory-banks/` 目录下基于 `memory-bank-template.md` 初始化记忆库文件（命名：`{项目名}_{测试人}.md`）
+2. 展示上游创作流水线架构概览
+3. 读取 S1 reference 文件，开始创意构思
+4. 执行六维度扫描 → 缺失维度引导补全 → 核心元素分析 → 第一推动力判定 → 风格匹配
 
 ### NTSV2 模式（改编扩写）
 
 收到小说原文或改编指令时：
 
-1. 创建 `${PROJECT_DIR}/workspace/` 工作区（含 `draft/` 子目录），同时在 `${PROJECT_DIR}/workspace/memory-banks/` 目录下基于 `memory-bank-template.md` 初始化记忆库文件
-2. 将原文保存至 `${PROJECT_DIR}/workspace/novel.txt`
-3. 初始化 `${PROJECT_DIR}/workspace/pipeline-state.json`，设置 `current_stage=SCRIPT`、`stages.SCRIPT.status=running`
-4. 展示流水线架构概览
-5. 调用 `python3 ./.claude/skills/script-writer/scripts/detect_source_structure.py --project-path ${PROJECT_DIR}/workspace` 执行原文结构检测，生成 `${PROJECT_DIR}/workspace/draft/source-structure.json`
-6. 读取 S1 reference 文件（`s1-analysis-extraction.md`），开始原文分析与灵感提取
+1. 创建 `${PROJECT_DIR}/draft/` 工作区，同时在 `${PROJECT_DIR}/draft/memory-banks/` 目录下基于 `memory-bank-template.md` 初始化记忆库文件
+2. 将原文保存至 `${PROJECT_DIR}/source.txt`
+3. 展示上游创作流水线架构概览
+4. 调用 `python3 ./.claude/skills/script-writer/scripts/detect_source_structure.py --project-path ${PROJECT_DIR}` 执行原文结构检测，生成 `${PROJECT_DIR}/draft/source-structure.json`
+5. 读取 S1 reference 文件（`s1-analysis-extraction.md`），开始原文分析与灵感提取
 
 ## 阶段流转
 
@@ -117,11 +116,8 @@ ${PROJECT_DIR}/workspace/
 
 1. 将交付物保存至工作区文件
 2. 更新 `checkpoint.md`
-3. 更新 `${PROJECT_DIR}/workspace/pipeline-state.json`
-   - `current_stage=SCRIPT`
-   - `stages.SCRIPT.status` 根据阶段推进更新为 `running` / `partial` / `completed` / `validated`
-   - `next_action` 指向下一个阶段
-4. 更新 `${PROJECT_DIR}/workspace/memory-banks/` 中对应记忆库文件的统计摘要（按类型/阶段/满意度重新计算，提取高频模式）
+3. 创作层阶段流转不推进 `${PROJECT_DIR}/pipeline-state.json` 的主流程阶段；只有终版剧本文本解析为 `output/script.json` 后，才更新正式 `SCRIPT` 状态
+4. 更新 `${PROJECT_DIR}/draft/memory-banks/` 中对应记忆库文件的统计摘要（按类型/阶段/满意度重新计算，提取高频模式）
 5. 特殊操作：
    - S1 完成 → 额外生成 `style-guide.md`
    - S4 完成 → 额外组装 `anchor.md`（从 S1 创作锚点 + S2 风格DNA卡 + S4 角色卡）
@@ -129,7 +125,7 @@ ${PROJECT_DIR}/workspace/
 6. 提示下一阶段：
 
 ```
-S{N} {阶段名} 已完成！交付物已保存至 ${PROJECT_DIR}/workspace/
+S{N} {阶段名} 已完成！交付物已保存至 ${PROJECT_DIR}/draft/
 
 当前进度：S{N}/S9 ████░░░░░░ {N*100/9:.0f}%
 
@@ -141,8 +137,8 @@ S{N} {阶段名} 已完成！交付物已保存至 ${PROJECT_DIR}/workspace/
 
 收到"状态"指令时：
 
-1. 优先读取 `${PROJECT_DIR}/workspace/pipeline-state.json`
-2. 读取 `${PROJECT_DIR}/workspace/checkpoint.md`
+1. 优先读取 `${PROJECT_DIR}/draft/checkpoint.md`
+2. 若 `${PROJECT_DIR}/pipeline-state.json` 存在，展示正式主流程交付状态
 3. 检查各阶段文件是否存在
 4. 展示流水线进度面板：
 
@@ -163,7 +159,7 @@ S{N} {阶段名} 已完成！交付物已保存至 ${PROJECT_DIR}/workspace/
 ║  S8 润色终审    [状态]                         ║
 ║  S9 格式交付    [状态]                         ║
 ╠══════════════════════════════════════════════╣
-║  工作区：${PROJECT_DIR}/workspace/     ║
+║  工作区：${PROJECT_DIR}/draft/        ║
 ║  风格指南：[状态]                              ║
 ║  锚点文档：[状态]                              ║
 ║  进度追踪：[状态]                              ║
@@ -194,4 +190,4 @@ S{N} {阶段名} 已完成！交付物已保存至 ${PROJECT_DIR}/workspace/
 5. **无输入**：检查工作区是否存在 → 存在则展示状态，不存在则提示提供创意
 6. **阶段指令**（如"开始S3"、"进入写作"、"角色开发"）：路由至对应阶段
 7. **"从第N集开始"**（S7 期间）：传递给 S7 执行分段写作
-8. **修改请求**（含修改/调整/重写/不满意等意图）：执行修改 + 按 `memory-bank-rules.md` 触发条件判断是否记录至 `${PROJECT_DIR}/workspace/memory-banks/` 记忆库文件
+8. **修改请求**（含修改/调整/重写/不满意等意图）：执行修改 + 按 `memory-bank-rules.md` 触发条件判断是否记录至 `${PROJECT_DIR}/draft/memory-banks/` 记忆库文件

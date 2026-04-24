@@ -29,11 +29,27 @@
 
 > 连贯性来源：跨集衔接信息直接从 design.json 提取。写作时读取上一集的 `cliffhanger` 确保开场钩子对应；读取 catalog.json actors[*].states 确认角色状态节点；读取 design.json episodes[*] 中的 main_plot/climax 追踪道具流转和悬念回收。
 
+## 契约边界
+
+Phase B 必须严格遵守：
+
+- `design-contract.md`
+- `outline-contract.md`
+
+这意味着：
+
+1. `design.json` 负责结构，不负责代写正文
+2. `episodes[].scenes[]` 是场次锚点，不是逐镜头表
+3. 写作可以展开，但不能在不改上游结构的前提下偷换本集核心事件、高潮或钩子
+4. 发现结构层问题时，应回到 `design.json` / `catalog.json` 修订，而不是在正文里偷偷补丁
+
 ---
 
 ## 格式规范
 
 剧本格式严格遵循 `script-format.md` 全部规范。每场结构顺序：场次头 → 人物行（含内联状态）→ 道具行（如有）→ 正文。
+
+> 注意：Phase B 的任务是把既有 outline 展开成**可拍、可解析、可下游消费**的文本，不是重新发明上游结构。
 
 ---
 
@@ -231,7 +247,7 @@
 4. 按集逐层展开完整剧本，每集写入 `episodes/ep{NN}.md`
 5. 每集写完后继续下一集
 6. 全部集数写完后执行十项专项检查
-7. 🔴 **台词合规验证**：运行 `python3 ${CLAUDE_SKILL_DIR}/scripts/verify_dialogue.py --project-path workspace --source-path workspace/source.txt`，若有 FAIL 项则修正后重跑，直到全部 PASS
+7. 🔴 **台词合规验证**：运行 `python3 ${CLAUDE_SKILL_DIR}/scripts/verify_dialogue.py --project-path ${PROJECT_DIR} --source-path ${PROJECT_DIR}/source.txt`，若有 FAIL 项则修正后重跑，直到全部 PASS
 8. 输出修订清单（如有）+ 卡点推荐方案
 9. 提示用户进入下一阶段
 

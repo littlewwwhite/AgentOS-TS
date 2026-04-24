@@ -108,28 +108,71 @@ version: 1.3.0
 }
 ```
 
-### 对接 Producer 的提示词约定
+### STORYBOARD 阶段 artifact 约定
 
 - 每个 scene 最终只交付 `shots[]`
 - 每个 `shots[]` 元素只保留两个字段：`source_refs` 和 `prompt`
 - `source_refs` 是当前场里 `actions[]` 的 0-based 下标数组，表示这段视频由哪几段剧本生成
 - `prompt` 必须完整保留本 skill 的输出模板：`PART`、`总体描述`、`剧情摘要`、`动作节拍Beats`、`S1/S2 切镜头...`
-- 不要再拆成 `layout_prompt`、`sfx_prompt`、`complete_prompt_v2` 等并行字段
+- `STORYBOARD` 阶段不得改写 `output/script.json`；剧本是编剧事实源，分镜是导演 artifact
+- 草稿写入 `output/storyboard/draft/ep{NNN}_storyboard.json`
+- 用户批准后写入 `output/storyboard/approved/ep{NNN}_storyboard.json`
+- 不要在这个阶段引入 `layout_prompt`、`sfx_prompt`、`complete_prompt_v2` 等 `VIDEO` 阶段导出字段
+
+### 对接 `video-gen` 的导出说明
+
+- 当前 `video-gen` 的 `generate_episode_json.py` 只消费 `output/storyboard/approved/ep{NNN}_storyboard.json`
+- 如果 approved canonical 缺失，VIDEO 阶段必须失败并回到 STORYBOARD 阶段，不应从 `script.json` 重写导演产物
+- `batch_generate.py` 同时兼容两种输入：
+  - 简化输入：`scenes[].shots[].prompt`
+  - 当前导出：`scenes[].clips[].complete_prompt` / `complete_prompt_v2`
+- 因此：`storyboard` 产出的 `shots[]` 是 **SCRIPT/STORYBOARD 层契约**，`clips[]` 是 **VIDEO 导出层契约**；二者不要混写成同一层语义
 
 ### 状态落盘与恢复
 
-`storyboard` 是 `STORYBOARD` 阶段，必须同步维护 `${PROJECT_DIR}/workspace/pipeline-state.json`。
+`storyboard` 是 `STORYBOARD` 阶段，必须同步维护 `${PROJECT_DIR}/pipeline-state.json`。
+
+推荐写入口：
+
+```bash
+python3 ./scripts/pipeline_state.py ensure --project-dir "${PROJECT_DIR}"
+python3 ./scripts/pipeline_state.py stage --project-dir "${PROJECT_DIR}" --stage STORYBOARD --status running --next-action "review STORYBOARD"
+python3 ./.claude/skills/storyboard/scripts/apply_storyboard_result.py --project-dir "${PROJECT_DIR}" --input-json /tmp/ep001_scn001_storyboard.json
+```
 
 - 进入阶段时：设置 `current_stage=STORYBOARD`、`stages.STORYBOARD.status=running`
-- 单集 shots 生成完成后，先写 `${PROJECT_DIR}/workspace/storyboard/ep{NNN}.shots.json`
-- 主 session 成功把该集结果合并进 `${PROJECT_DIR}/output/script.json` 后，再设置 `episodes.ep{NNN}.storyboard.status=completed`
-- 全部目标集完成且 `script.json` 的 `shots[].prompt` 门控通过后，设置 `stages.STORYBOARD.status=validated`，`next_action=enter VIDEO`
+- 单集 shots 生成完成后，先写 `${PROJECT_DIR}/output/storyboard/draft/ep{NNN}_storyboard.json`
+- 用户批准后复制/写入 `${PROJECT_DIR}/output/storyboard/approved/ep{NNN}_storyboard.json`
+- approved canonical 写出并通过 `shots[].prompt` 门控后，设置 `episodes.ep{NNN}.storyboard.status=completed`
+- 全部目标集完成后，设置 `stages.STORYBOARD.status=validated`，`next_action=enter VIDEO`
+
+建议检查点命令：
+
+```bash
+python3 ./scripts/pipeline_state.py episode --project-dir "${PROJECT_DIR}" --episode "ep${NNN}" --kind storyboard --status completed --artifact "output/storyboard/approved/ep${NNN}_storyboard.json"
+python3 ./scripts/pipeline_state.py stage --project-dir "${PROJECT_DIR}" --stage STORYBOARD --status validated --next-action "enter VIDEO"
+python3 ./.claude/skills/storyboard/scripts/apply_storyboard_result.py --project-dir "${PROJECT_DIR}" --input-json /tmp/ep${NNN}_scene_storyboard.json --finalize-stage
+```
 
 恢复顺序：
 
-1. 先读 `${PROJECT_DIR}/workspace/pipeline-state.json`
-2. 若缺失，再检查 `${PROJECT_DIR}/workspace/storyboard/ep{NNN}.shots.json`
-3. 最后再检查 `${PROJECT_DIR}/output/script.json` 中是否已有 `shots[].prompt`
+1. 先读 `${PROJECT_DIR}/pipeline-state.json`
+2. 若缺失，再检查 `${PROJECT_DIR}/output/storyboard/approved/ep{NNN}_storyboard.json`
+3. 若 approved 缺失，检查 `${PROJECT_DIR}/output/storyboard/draft/ep{NNN}_storyboard.json` 并提示用户审阅/批准
+
+### 离线批量草稿 helper（可选）
+
+当需要不经过交互式 Claude Agent SDK、直接批量生成导演分镜草稿时，使用本 skill 内的 helper：
+
+```bash
+python3 ./.claude/skills/storyboard/scripts/storyboard_batch.py "${PROJECT_DIR}" --concurrency 5
+```
+
+- 该 helper 只写 `output/storyboard/draft/ep{NNN}_storyboard.json`
+- 它不得写回 `output/script.json`
+- 它不得直接进入 VIDEO 阶段
+- 批准 draft 后，才复制/写入 `output/storyboard/approved/ep{NNN}_storyboard.json`
+- 默认使用 Gemini 文本代理：`GEMINI_API_KEY` / `GEMINI_BASE_URL` / `GEMINI_TEXT_MODEL`（默认 `gemini-3.1-flash-lite`，base url 默认指向当前代理）
 
 ### 出镜角色与情绪/状态
 
@@ -153,7 +196,7 @@ version: 1.3.0
 
 ### 景别/机位与运镜
 
-- 每个分镜必须明确写：景别/机位（近景/中景/全景/手部特写/背影中景等）。**禁止过肩镜头。**
+- 每个分镜必须明确写：景别/机位（近景/中景/全景/手部特写/背影中景等）。过肩镜头只可作为**双人对白的辅助 coverage** 使用，必须服务于新的信息点或回应点，禁止机械性来回切过肩。
 - 同一景别或同一机位连续不得超过 2 个分镜；第 3 个必须更换景别或角度。
 - 每次切镜必须服务于新的动作点或信息点，禁止无信息切换。
 - <!-- CHANGED: 增加运镜空间参考约束 --> **运镜空间参考：** 凡使用“跟随/推进/横移”运镜，必须明确起始坐标（如：从左侧门框）与终点参考物（如：至角色面部特写），确保AI生成路径可控。
@@ -228,18 +271,26 @@ PART1
 
 🔴 **处理多集分镜时必须执行以下判断：**
 
-1. 确定待处理集数（从 `script.json` 的 `episodes[]` 中筛选未生成 shots 的集数）
+1. 确定待处理集数（从 `script.json` 的 `episodes[]` 中筛选未生成 approved storyboard 的集数）
 2. **若待处理 ≤ 3 集**：在当前 session 中逐集生成分镜
 3. **若待处理 > 3 集**：**必须**使用 Agent subagents 并行生成
 
 **并行执行流程（> 3 集时强制执行）：**
 
 ```
-读取 script.json → 筛选未生成 shots 的 episodes
+读取 script.json → 筛选未生成 approved storyboard 的 episodes
 按每组 3 集分组，上限 8 个并行 Agent
 每个 Agent 读取 script.json 中本组集的 scenes 数据
 每个 Agent 输出本组集的 shots 数据（JSON 结构，返回给主 session）
-主 session 收到所有 Agent 结果后，先逐集落盘到 `workspace/storyboard/ep{NNN}.shots.json`，再统一写回 `script.json`
+主 session 收到所有 Agent 结果后，先逐集落盘到 `output/storyboard/draft/ep{NNN}_storyboard.json`，等待用户审阅/批准
+```
+
+推荐直接调用：
+
+```bash
+python3 ./.claude/skills/storyboard/scripts/apply_storyboard_result.py \
+  --project-dir "${PROJECT_DIR}" \
+  --input-json /tmp/ep${NNN}_scene_storyboard.json
 ```
 
 每个 Agent subagent 的 prompt **必须包含**：
@@ -249,4 +300,4 @@ PART1
 4. 本 skill 的 CORE 核心提示词 + 硬规则（完整复制到 prompt 中）
 5. **输出约束**：「以 JSON 格式返回本组集所有 scenes 的 `shots[]` 数据。不要写入文件，直接返回结构化结果。」
 
-> 注意：storyboard 的输出最终写入 script.json（共享文件），因此 Agent subagent **不直接修改 script.json**，而是返回 shots 数据给主 session。主 session 必须先落盘临时文件，再统一合并写入。
+> 注意：storyboard 的输出最终写入 draft/approved storyboard artifact，不写回 `script.json`。Agent subagent **不直接修改共享文件**，只返回 shots 数据给主 session，由主 session 落盘为草稿。

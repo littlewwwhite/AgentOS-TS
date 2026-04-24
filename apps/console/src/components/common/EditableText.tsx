@@ -14,6 +14,7 @@ export interface EditableTextProps {
   status?: "idle" | "saving" | "saved" | "error";
   className?: string;
   ariaLabel?: string;
+  readOnly?: boolean;
 }
 
 // Shared editable class list
@@ -44,6 +45,7 @@ export function EditableText({
   status: _status,
   className = "",
   ariaLabel,
+  readOnly = false,
 }: EditableTextProps) {
   const spanRef = useRef<HTMLSpanElement>(null);
   const divRef = useRef<HTMLDivElement>(null);
@@ -143,7 +145,7 @@ export function EditableText({
       : undefined;
 
   const sharedProps = {
-    contentEditable: true as const,
+    contentEditable: !readOnly,
     suppressContentEditableWarning: true,
     role: "textbox" as const,
     "aria-multiline": multiline,
@@ -152,8 +154,8 @@ export function EditableText({
     onBlur: handleBlur,
     onKeyDown: handleKeyDown,
     onPaste: handlePaste,
-    className: editableClass,
-    style: editableStyle,
+    className: `${editableClass}${readOnly ? " cursor-default hover:no-underline focus:no-underline opacity-80" : ""}`,
+    style: readOnly ? { ...editableStyle, textDecoration: "none" } : editableStyle,
   };
 
   return (

@@ -23,6 +23,11 @@ import sys, os, json, time, argparse, subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from pipeline_state import ensure_state, update_artifact, update_stage
+
 # UTF-8 输出
 if sys.platform == 'win32':
     if hasattr(sys.stdout, 'reconfigure'):
@@ -77,6 +82,10 @@ def generate_all_assets(script_json, project_dir, workspace,
     log(f"=== 开始生成项目所有资产 ===")
     log(f"项目目录: {project_dir}")
     log(f"工作区: {workspace}")
+
+    project_root = Path(project_dir).resolve().parent
+    ensure_state(str(project_root))
+    update_stage(str(project_root), "VISUAL", "running", next_action="review VISUAL")
 
     workspace_path = Path(workspace)
     workspace_path.mkdir(parents=True, exist_ok=True)
@@ -230,6 +239,44 @@ def generate_all_assets(script_json, project_dir, workspace,
         log("⚠ 部分资产生成成功,请检查失败项")
     else:
         log("❌ 所有资产生成失败")
+
+    artifact_specs = []
+    if characters or voice:
+        artifact_specs.append(("output/actors/actors.json", Path(project_dir).resolve() / "actors" / "actors.json"))
+    if scenes:
+        artifact_specs.append(("output/locations/locations.json", Path(project_dir).resolve() / "locations" / "locations.json"))
+    if props:
+        artifact_specs.append(("output/props/props.json", Path(project_dir).resolve() / "props" / "props.json"))
+
+    completed_artifacts = []
+    for rel_path, abs_path in artifact_specs:
+        if abs_path.exists():
+            completed_artifacts.append(rel_path)
+            update_artifact(str(project_root), rel_path, "canonical", "visual", "completed")
+
+    if completed_artifacts and success_count == total_count and total_count > 0:
+        update_stage(
+            str(project_root),
+            "VISUAL",
+            "completed",
+            next_action="review VISUAL",
+            artifact=completed_artifacts[0],
+        )
+    elif completed_artifacts:
+        update_stage(
+            str(project_root),
+            "VISUAL",
+            "partial",
+            next_action="review VISUAL",
+            artifact=completed_artifacts[0],
+        )
+    else:
+        update_stage(
+            str(project_root),
+            "VISUAL",
+            "failed",
+            next_action="retry VISUAL",
+        )
 
 
 if __name__ == "__main__":

@@ -2,16 +2,23 @@
 
 ## 概述
 
-Phase 3 是**纯确定性解析**，不需要 LLM。调用 `python3 ${CLAUDE_SKILL_DIR}/scripts/parse_script.py` 脚本，从 `workspace/draft/episodes/*.md` 中提取结构化剧本数据。
+Phase 3 是**纯确定性解析**，不需要 LLM。调用 `python3 ${CLAUDE_SKILL_DIR}/scripts/parse_script.py` 脚本，从 `${PROJECT_DIR}/draft/episodes/*.md` 中提取结构化剧本数据。
+
+它只消费两个上游契约：
+
+1. `draft/catalog.json`（实体权威表）
+2. `draft/design.json`（标题 / 世界观 / 风格）
+
+它**不**负责猜测遗漏结构，也不负责替代上游设计阶段。
 
 ## 输入
 
-- `workspace/draft/episodes/ep*.md`：所有集的场记格式剧本
-- `workspace/draft/catalog.json`：资产清单（用于角色和地点 ID 映射，以及状态验证）
+- `${PROJECT_DIR}/draft/episodes/ep*.md`：所有集的场记格式剧本
+- `${PROJECT_DIR}/draft/catalog.json`：资产清单（用于角色和地点 ID 映射，以及状态验证）
   - catalog 中的 `id` 字段可选——省略时解析器按数组顺序自动分配（`act_001`, `loc_001`, `prp_001`...）
   - 解析器使用 `catalog.actors[*].states` 验证剧本中的状态标注是否合法
   - 如果剧本中出现 catalog 未定义的状态，解析器会输出警告（但不中断解析）
-- `workspace/draft/design.json`：设计文件（用于读取 title / style / worldview）
+- `${PROJECT_DIR}/draft/design.json`：设计文件（用于读取 title / style / worldview）
 
 ## 输出
 
@@ -97,11 +104,11 @@ Phase 3 是**纯确定性解析**，不需要 LLM。调用 `python3 ${CLAUDE_SKI
 Phase 2 完成后，直接调用工具：
 
 ```
-python3 ${CLAUDE_SKILL_DIR}/scripts/parse_script.py --project-path workspace --output-path output
+python3 ${CLAUDE_SKILL_DIR}/scripts/parse_script.py --project-path ${PROJECT_DIR} --output-path ${PROJECT_DIR}/output
 ```
 
-- `workspace`：项目工作区目录（相对路径或绝对路径均可），解析器从 `workspace/draft/` 读取输入
-- `output`：输出目录，解析器将 `script.json` 写入此目录
+- `${PROJECT_DIR}`：项目根目录（相对路径或绝对路径均可），解析器从 `${PROJECT_DIR}/draft/` 读取输入
+- `${PROJECT_DIR}/output`：输出目录，解析器将 `script.json` 写入此目录
 
 工具返回解析统计（场景数、角色数、地点数、集数、解析文件数），确认无误后 NTS 流水线完成。
 
@@ -113,7 +120,7 @@ Phase 3 是**纯工具阶段**，LLM **严禁**手写或手动拼装 script.json
 - 如果工具调用失败，**不得降级为 LLM 读取源码/手写 JSON**，应报告错误并引导用户排查
 
 **失败排查清单**：
-1. 确认 `project_path` 指向正确的工作区目录（即 `workspace`）
-2. 确认 `workspace/draft/episodes/` 下存在至少一个 `ep*.md` 文件
-3. 确认 `workspace/draft/catalog.json` 存在
+1. 确认 `project_path` 指向正确的项目目录（即 `${PROJECT_DIR}`）
+2. 确认 `${PROJECT_DIR}/draft/episodes/` 下存在至少一个 `ep*.md` 文件
+3. 确认 `${PROJECT_DIR}/draft/catalog.json` 存在
 4. 检查工具错误信息中的具体路径是否正确

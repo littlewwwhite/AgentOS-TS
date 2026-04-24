@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# input: runtime storyboard clips, provider submit/poll functions, and review config
+# output: generated clip versions, delivery state, and continuity references
+# pos: stateful VIDEO generation loop for video-gen
 """
 Runtime helpers for batch video generation.
 
@@ -56,6 +59,7 @@ def _save_clip_result(
     actual_path,
     task_id,
     video_url,
+    last_frame_url,
     passed,
     analysis_dict,
     review_dict,
@@ -71,6 +75,7 @@ def _save_clip_result(
             "passed": passed,
             "video_path": actual_path,
             "video_url": video_url,
+            "last_frame_url": last_frame_url,
             "task_id": task_id,
             "total_score": review_dict.get("total_score"),
             "analysis": analysis_dict,
@@ -151,12 +156,12 @@ def _run_generation_rounds(
     prev_video_url: Optional[str] = None,
     on_first_video_ready: Optional[callable] = None,
     skip_review: bool = False,
-) -> Optional[str]:
+) -> Tuple[Optional[str], Optional[str]]:
     """Run the default single-shot path for one logical clip."""
 
     pending = [clip for clip in clip_group if not clip["done"]]
     if not pending:
-        return None
+        return None, None
 
     print(
         f"\n  [GENERATE] {len(pending)} 个 clip 单次提交 "
@@ -234,6 +239,8 @@ def _run_generation_rounds(
                     "task_id": task_id,
                     "output_path": str(video_path),
                     "version": version,
+                    "provider": submit_result.get("provider"),
+                    "model_code": submit_result.get("model_code") or model_code,
                 }
             )
         else:
@@ -251,11 +258,16 @@ def _run_generation_rounds(
             )
 
     if not submitted:
-        return None
+        return None, None
 
     print(f"    [POLL] 等待 {len(submitted)} 个视频...")
     poll_tasks = [
-        {"task_id": item["task_id"], "output_path": item["output_path"]}
+        {
+            "task_id": item["task_id"],
+            "output_path": item["output_path"],
+            "provider": item.get("provider"),
+            "model_code": item.get("model_code"),
+        }
         for item in submitted
     ]
     poll_results = poll_multiple_tasks(
@@ -303,6 +315,7 @@ def _run_generation_rounds(
                 "actual_path": actual_path,
                 "task_id": submitted_item["task_id"],
                 "video_url": poll_result.get("video_url"),
+                "last_frame_url": poll_result.get("last_frame_url"),
             }
         )
 
@@ -330,6 +343,7 @@ def _run_generation_rounds(
                 item["actual_path"],
                 item["task_id"],
                 item.get("video_url"),
+                item.get("last_frame_url"),
                 True,
                 {},
                 {"skipped": True, "reason": "skip-review"},
@@ -375,6 +389,7 @@ def _run_generation_rounds(
                     item["actual_path"],
                     item["task_id"],
                     item.get("video_url"),
+                    item.get("last_frame_url"),
                     passed,
                     analysis_dict,
                     review_dict,
@@ -394,6 +409,7 @@ def _run_generation_rounds(
                 item["actual_path"],
                 item["task_id"],
                 item.get("video_url"),
+                item.get("last_frame_url"),
                 True,
                 {},
                 {"skipped": True, "reason": "default-path"},
@@ -411,14 +427,14 @@ def _run_generation_rounds(
                     version_result.get("version") == best_version
                     and version_result.get("video_path")
                 ):
-                    return version_result["video_path"]
+                    return version_result["video_path"], version_result.get("last_frame_url")
 
     for clip in clip_group:
         for version_result in clip["versions"]:
             if version_result.get("success") and version_result.get("video_path"):
-                return version_result["video_path"]
+                return version_result["video_path"], version_result.get("last_frame_url")
 
-    return None
+    return None, None
 
 
 def _write_lsi_to_json(
@@ -578,7 +594,7 @@ def _process_scene_clips(
         )
         print(f"{'='*60}")
 
-        best_video_path = _run_generation_rounds(
+        best_video_path, provider_last_frame_url = _run_generation_rounds(
             clip_group=clip_group,
             episode=episode,
             paths=paths,
@@ -595,15 +611,23 @@ def _process_scene_clips(
             skip_review=skip_review,
         )
 
-        next_frame_url, _first_frame_text, prev_frame_filename = _extract_and_upload_frame(
-            video_path=best_video_path,
-            scene_id=scene_id,
-            clip_num=clip_num,
-            scn_label=scn_label,
-            clip_group=clip_group,
-            paths=paths,
-            gemini_cfg=None,
-        )
+        if provider_last_frame_url:
+            next_frame_url = provider_last_frame_url
+            _first_frame_text = None
+            prev_frame_filename = f"{scene_id}_clip{clip_num:03d}_provider_last_frame"
+            print(
+                f"  [FRAME] {scn_label}_clip{clip_num:03d} 使用 provider 返回的尾帧 URL 续接"
+            )
+        else:
+            next_frame_url, _first_frame_text, prev_frame_filename = _extract_and_upload_frame(
+                video_path=best_video_path,
+                scene_id=scene_id,
+                clip_num=clip_num,
+                scn_label=scn_label,
+                clip_group=clip_group,
+                paths=paths,
+                gemini_cfg=None,
+            )
         first_frame_url = next_frame_url
 
         if not first_frame_url:

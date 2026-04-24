@@ -50,13 +50,13 @@ X-Y 日/夜 内/外 场景名              ← 场次编号
 
 **工作区过程文件（每批次写作前读取）：**
 
-1. **锚点文档**：从对话上下文或 `${PROJECT_DIR}/workspace/anchor.md`（含创作锚点清单 + 角色设定卡 + 风格DNA卡）
-2. **S6 交付物**：从对话上下文或 `${PROJECT_DIR}/workspace/s6-episode-outline.md`（含节拍表 + 场景清单）
-3. **S3 故事大纲**：从对话上下文或 `${PROJECT_DIR}/workspace/s3-outline.md`（含分集大纲）
-4. **风格指南**：从对话上下文或 `${PROJECT_DIR}/workspace/style-guide.md`
-5. **进度追踪**：从 `${PROJECT_DIR}/workspace/s5-tracking.md`（每批次写作前读取并更新）
-8. **角色档案**（按需）：`${PROJECT_DIR}/workspace/s4-character.md`（当 anchor.md 中角色卡信息不足时读取完整档案）
-9. **原文结构定位**（NTSV2 模式）：`${PROJECT_DIR}/workspace/draft/source-structure.json`（如存在，必须优先据此定位原文片段，不得只凭记忆概括）
+1. **锚点文档**：从对话上下文或 `${PROJECT_DIR}/draft/anchor.md`（含创作锚点清单 + 角色设定卡 + 风格DNA卡）
+2. **S6 交付物**：从对话上下文或 `${PROJECT_DIR}/draft/s6-episode-outline.md`（含节拍表 + 场景清单）
+3. **S3 故事大纲**：从对话上下文或 `${PROJECT_DIR}/draft/s3-outline.md`（含分集大纲）
+4. **风格指南**：从对话上下文或 `${PROJECT_DIR}/draft/style-guide.md`
+5. **进度追踪**：从 `${PROJECT_DIR}/draft/s5-tracking.md`（每批次写作前读取并更新）
+8. **角色档案**（按需）：`${PROJECT_DIR}/draft/s4-character.md`（当 anchor.md 中角色卡信息不足时读取完整档案）
+9. **原文结构定位**（NTSV2 模式）：`${PROJECT_DIR}/draft/source-structure.json`（如存在，必须优先据此定位原文片段，不得只凭记忆概括）
 
 缺少任何材料则提示用户补充。
 
@@ -216,15 +216,15 @@ X-Y 日/夜 内/外 场景名              ← 场次编号
 
 **第一步：读取长期记忆（强制）**
 
-- [ ] 读取 `${PROJECT_DIR}/workspace/anchor.md`（创作锚点 + 角色设定卡 + 风格DNA卡）
-- [ ] 读取 `${PROJECT_DIR}/workspace/style-guide.md`（风格约束 + 第一推动力方向）
-- [ ] 读取 `${PROJECT_DIR}/workspace/s3-outline.md`（当前批次对应的分集大纲）
-- [ ] 读取 `${PROJECT_DIR}/workspace/s6-episode-outline.md`（当前批次对应的节拍表 + 场景清单）
-- [ ] 若为 NTSV2 且存在 `${PROJECT_DIR}/workspace/draft/source-structure.json`，先据此定位当前批次对应的原文片段范围
+- [ ] 读取 `${PROJECT_DIR}/draft/anchor.md`（创作锚点 + 角色设定卡 + 风格DNA卡）
+- [ ] 读取 `${PROJECT_DIR}/draft/style-guide.md`（风格约束 + 第一推动力方向）
+- [ ] 读取 `${PROJECT_DIR}/draft/s3-outline.md`（当前批次对应的分集大纲）
+- [ ] 读取 `${PROJECT_DIR}/draft/s6-episode-outline.md`（当前批次对应的节拍表 + 场景清单）
+- [ ] 若为 NTSV2 且存在 `${PROJECT_DIR}/draft/source-structure.json`，先据此定位当前批次对应的原文片段范围
 
 **第二步：读取中期记忆（强制）**
 
-- [ ] 读取 `${PROJECT_DIR}/workspace/s5-tracking.md`（进度追踪、伏笔清单、角色状态）
+- [ ] 读取 `${PROJECT_DIR}/draft/s5-tracking.md`（进度追踪、伏笔清单、角色状态）
 - [ ] 核对：当前批次是否有需要回收的伏笔？列出清单
 - [ ] 核对：上批次角色的最新情感/认知/关系状态
 
@@ -331,6 +331,6 @@ X-Y 日/夜 内/外 场景名              ← 场次编号
 1. 检查前置材料（锚点文档 + S2 交付物 + 风格指南）是否就绪
 2. 如果就绪，按集逐层展开完整剧本
 3. 如果缺少材料，提示需要先完成对应阶段
-4. 写作完成后，如果存在 `${PROJECT_DIR}/workspace/`，将剧本写入 `s7-scripts.md`
-5. 每批次写作完成后，更新 `${PROJECT_DIR}/workspace/s5-tracking.md` 进度追踪
+4. 写作完成后，如果存在 `${PROJECT_DIR}/draft/`，将剧本写入 `s7-scripts.md`
+5. 每批次写作完成后，更新 `${PROJECT_DIR}/draft/s5-tracking.md` 进度追踪
 6. 提示用户进入下一阶段：进入 S8 润色终审

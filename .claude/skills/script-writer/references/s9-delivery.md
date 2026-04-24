@@ -10,9 +10,9 @@
 
 交付前确认以下材料就绪：
 
-1. **终版剧本**：从对话上下文或 `${PROJECT_DIR}/workspace/s8-polished.md`
-2. **锚点文档**（如需包含）：从 `${PROJECT_DIR}/workspace/anchor.md`
-3. **S6 结构交付物**（如需包含）：从 `${PROJECT_DIR}/workspace/s6-episode-outline.md`
+1. **终版剧本**：从对话上下文或 `${PROJECT_DIR}/draft/s8-polished.md`
+2. **锚点文档**（如需包含）：从 `${PROJECT_DIR}/draft/anchor.md`
+3. **S6 结构交付物**（如需包含）：从 `${PROJECT_DIR}/draft/s6-episode-outline.md`
 
 缺少终版剧本则提示用户先完成 S8。
 

@@ -17,10 +17,10 @@
 
 执行 S4 前，确认以下文件已就绪：
 
-- [ ] `${PROJECT_DIR}/workspace/s1-ideation.md` — S1 创意构思交付物（含创作锚点清单）
-- [ ] `${PROJECT_DIR}/workspace/s2-setting.md` — S2 基础设定交付物（含风格DNA卡）
-- [ ] `${PROJECT_DIR}/workspace/s3-outline.md` — S3 故事大纲交付物（含分集大纲）
-- [ ] `${PROJECT_DIR}/workspace/style-guide.md` — 风格指南
+- [ ] `${PROJECT_DIR}/draft/s1-ideation.md` — S1 创意构思交付物（含创作锚点清单）
+- [ ] `${PROJECT_DIR}/draft/s2-setting.md` — S2 基础设定交付物（含风格DNA卡）
+- [ ] `${PROJECT_DIR}/draft/s3-outline.md` — S3 故事大纲交付物（含分集大纲）
+- [ ] `${PROJECT_DIR}/draft/style-guide.md` — 风格指南
 
 > 若任一文件缺失，提示用户先完成对应阶段。
 
@@ -293,21 +293,21 @@ graph TD
 用户确认全部交付物后，依次执行：
 
 ### 操作①：保存 S4 交付物
-将所有交付物保存至 `${PROJECT_DIR}/workspace/s4-character.md`。
+将所有交付物保存至 `${PROJECT_DIR}/draft/s4-character.md`。
 
 ### 操作②：组装锚点文档 anchor.md
 
-从已有交付物中提取以下内容，组装为 `${PROJECT_DIR}/workspace/anchor.md`：
+从已有交付物中提取以下内容，组装为 `${PROJECT_DIR}/draft/anchor.md`：
 
 ```
 [SWS-ANCHOR]
 
 [SWS-ITEM: 创作锚点清单]
-（从 ${PROJECT_DIR}/workspace/s1-ideation.md 中提取完整的创作锚点清单）
+（从 ${PROJECT_DIR}/draft/s1-ideation.md 中提取完整的创作锚点清单）
 [/SWS-ITEM]
 
 [SWS-ITEM: 风格DNA卡]
-（从 ${PROJECT_DIR}/workspace/s2-setting.md 中提取完整的风格DNA卡）
+（从 ${PROJECT_DIR}/draft/s2-setting.md 中提取完整的风格DNA卡）
 [/SWS-ITEM]
 
 [SWS-ITEM: 角色设定卡]
@@ -324,7 +324,7 @@ graph TD
 > **锚点文档说明：** `anchor.md` 是后续所有阶段（S5-S9）的核心参考文件，汇集了创作方向、风格规范和角色设定，确保全流水线的一致性。
 
 ### 操作③：更新 checkpoint
-在 `${PROJECT_DIR}/workspace/checkpoint.md` 中记录 S4 完成状态。
+在 `${PROJECT_DIR}/draft/checkpoint.md` 中记录 S4 完成状态。
 
 ### 操作④：提示进入 S5
 输出提示：
@@ -366,10 +366,10 @@ graph TD
 
 确认所有输入文件就绪后，按以下步骤执行：
 
-1. 读取 `${PROJECT_DIR}/workspace/s1-ideation.md`，提取 Identity 维度和创作锚点清单
-2. 读取 `${PROJECT_DIR}/workspace/s2-setting.md`，提取世界观设定和风格DNA卡
-3. 读取 `${PROJECT_DIR}/workspace/s3-outline.md`，提取分集大纲和角色需求
-4. 读取 `${PROJECT_DIR}/workspace/style-guide.md`，提取风格约束
+1. 读取 `${PROJECT_DIR}/draft/s1-ideation.md`，提取 Identity 维度和创作锚点清单
+2. 读取 `${PROJECT_DIR}/draft/s2-setting.md`，提取世界观设定和风格DNA卡
+3. 读取 `${PROJECT_DIR}/draft/s3-outline.md`，提取分集大纲和角色需求
+4. 读取 `${PROJECT_DIR}/draft/style-guide.md`，提取风格约束
 5. 执行第一步至第五步的完整工作流
 6. 输出全部交付物，等待用户确认
 7. 确认后执行保存、组装锚点、更新 checkpoint、提示进入 S5

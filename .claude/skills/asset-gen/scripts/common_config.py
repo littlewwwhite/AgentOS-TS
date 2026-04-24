@@ -20,8 +20,8 @@ ASSETS_DIR    = SKILL_DIR / "assets"
 REFERENCES_DIR = SKILL_DIR / "references"
 
 
-def get_shared_auth_path() -> Path:
-    """Return the directory containing auth.py (now co-located in scripts/)."""
+def get_scripts_path() -> Path:
+    """Return the directory containing local helper scripts."""
     return SKILL_DIR / "scripts"
 
 

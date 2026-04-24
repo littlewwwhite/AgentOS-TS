@@ -54,7 +54,7 @@ pip install google-genai python-dotenv "scenedetect[opencv]" av
 - `ffmpeg` + `ffprobe`（视频拼接和分析）
 
 ### 环境变量
-- `GEMINI_API_KEY` — 必须设置。可写在项目根目录 `.env` 文件中。
+- `GEMINI_API_KEY` — 必须设置。用于 ChatFire Gemini 代理，值填写 ChatFire key，可写在项目根目录 `.env` 文件中。
 
 ## Workflow
 
@@ -80,7 +80,7 @@ python3 ./.claude/skills/video-editing/scripts/run_pipeline.py \
 
 ### 统一状态文件
 
-`video-editing` 是 `EDITING` 阶段，必须同步维护 `${PROJECT_DIR}/workspace/pipeline-state.json`。
+`video-editing` 是 `EDITING` 阶段，必须同步维护 `${PROJECT_DIR}/pipeline-state.json`。
 
 - 进入阶段时：设置 `current_stage=EDITING`、`stages.EDITING.status=running`
 - `_tmp/` 下已有 `analysis.json` 或 `edit_decision.json` 时：设置 `episodes.ep{NNN}.editing.status=partial`
@@ -105,9 +105,14 @@ python3 ./.claude/skills/video-editing/scripts/run_pipeline.py \
 #### 步骤 0-A: 环境依赖检查
 
 ```bash
-python3 ./.claude/skills/video-editing/scripts/preflight_awb.py \
-  --check deps \
-  --deps google-genai,python-dotenv,"scenedetect[opencv]" --cmds ffmpeg --env GEMINI_API_KEY
+python3 - <<'PY'
+import os, sys
+if not os.environ.get("GEMINI_API_KEY"):
+    print("missing env: GEMINI_API_KEY", file=sys.stderr)
+    sys.exit(1)
+print("video-editing env ok")
+PY
+command -v ffmpeg >/dev/null
 ```
 
 > `ffmpeg` macOS 安装: `brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-libass`（需含 libass 以支持字幕烧录）。
@@ -226,7 +231,7 @@ python3 ./.claude/skills/video-editing/scripts/phase3_merge.py \
 
 ### Gemini API errors
 - **Rate limit**: Wait 60s and retry. For batch operations, add `--delay 2` between requests.
-- **Invalid API key**: Verify `GEMINI_API_KEY` env var is set. Re-export if expired.
+- **Invalid API key**: Verify `GEMINI_API_KEY` env var is set to the ChatFire key. Re-export if expired.
 - **Timeout**: Increase timeout with `--timeout 120`. Long videos may need 180s+.
 
 ### FFmpeg errors

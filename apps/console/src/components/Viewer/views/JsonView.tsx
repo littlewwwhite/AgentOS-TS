@@ -1,5 +1,8 @@
 import { useMemo } from "react";
 import { useFileText } from "../../../hooks/useFile";
+import { getEditPolicy } from "../../../lib/editPolicy";
+import { useProject } from "../../../contexts/ProjectContext";
+import { RawFileEditor } from "../../common/RawFileEditor";
 
 interface Props { projectName: string; path: string; }
 
@@ -68,6 +71,12 @@ function colorFor(kind: Token["kind"]): string | undefined {
 }
 
 export function JsonView({ projectName, path }: Props) {
+  const { refresh } = useProject();
+  const policy = getEditPolicy(path);
+  if (policy?.contentKind === "json") {
+    return <RawFileEditor projectName={projectName} path={path} contentKind="json" onSaved={refresh} />;
+  }
+
   const { text, error } = useFileText(projectName, path);
   const pretty = useMemo(() => {
     if (!text) return "";

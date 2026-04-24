@@ -10,6 +10,11 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Set, Any
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT / 'scripts'))
+
+from pipeline_state import ensure_state, update_artifact, update_stage
+
 # ---------- Regex patterns ----------
 
 # Scene header: "1-1 日 内 觉醒大厅" or "1-1 日 内 觉醒大厅【废墟】"
@@ -1307,6 +1312,23 @@ def parse_episodes(project_path: Path, output_path: Optional[Path] = None) -> Di
     }
     if merge_count:
         stats['cross_episode_merges'] = merge_count
+
+    artifact_path = script_path.relative_to(project_path).as_posix()
+    ensure_state(str(project_path))
+    update_artifact(
+        str(project_path),
+        artifact_path,
+        'canonical',
+        'writer',
+        'completed',
+    )
+    update_stage(
+        str(project_path),
+        'SCRIPT',
+        'validated' if validation_passed else 'partial',
+        next_action='enter VISUAL' if validation_passed else 'review SCRIPT',
+        artifact=artifact_path,
+    )
 
     return {
         'script_path': str(script_path),

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # input: asset-gen Gemini backend config and environment
-# output: unittest assertions for ChatFire Gemini proxy client creation
+# output: unittest assertions for official and proxy Gemini client creation
 # pos: regression coverage for asset-gen text/review provider boundary
 
 import os
@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 
-class ChatFireGeminiClientTest(unittest.TestCase):
+class GeminiClientTest(unittest.TestCase):
     def setUp(self):
         self._old_env = dict(os.environ)
         os.environ["GEMINI_API_KEY"] = "chatfire-key"
@@ -42,7 +42,7 @@ class ChatFireGeminiClientTest(unittest.TestCase):
         self.assertEqual(captured["api_key"], "chatfire-key")
         self.assertEqual(captured["http_options"]["base_url"], "https://api.chatfire.cn/gemini")
 
-    def test_default_config_uses_chatfire_proxy(self):
+    def test_default_config_uses_official_gemini(self):
         import common_gemini_client
 
         captured = {}
@@ -55,7 +55,7 @@ class ChatFireGeminiClientTest(unittest.TestCase):
             common_gemini_client.create_client()
 
         self.assertEqual(captured["api_key"], "chatfire-key")
-        self.assertEqual(captured["http_options"]["base_url"], "https://api.chatfire.cn/gemini")
+        self.assertNotIn("http_options", captured)
 
 
 if __name__ == "__main__":

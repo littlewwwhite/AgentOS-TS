@@ -10,9 +10,16 @@ describe("resolveView", () => {
   });
   test("storyboard.json → storyboard", () => {
     expect(resolveView("output/ep001/ep001_storyboard.json")).toBe("storyboard");
+    expect(resolveView("output/storyboard/draft/ep001_storyboard.json")).toBe("storyboard");
+    expect(resolveView("output/storyboard/approved/ep001_storyboard.json")).toBe("storyboard");
   });
-  test("inspiration.json → inspiration", () => {
-    expect(resolveView("output/inspiration.json")).toBe("inspiration");
+  test("legacy draft storyboard shots → storyboard rendered editor", () => {
+    expect(resolveView("draft/storyboard/ep001.shots.json")).toBe("storyboard");
+    expect(resolveView("output/storyboard/draft/ep001_storyboard.json")).toBe("storyboard");
+    expect(resolveView("storyboard/ep001.shots.json")).toBe("storyboard");
+  });
+  test("paused inspiration artifact renders as plain json", () => {
+    expect(resolveView("output/inspiration.json")).toBe("json");
   });
   test("actors/ dir → asset-gallery", () => {
     expect(resolveView("output/actors")).toBe("asset-gallery");

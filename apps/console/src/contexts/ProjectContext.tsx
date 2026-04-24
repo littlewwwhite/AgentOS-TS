@@ -21,7 +21,7 @@ const Ctx = createContext<ProjectContextValue | null>(null);
 async function loadFor(name: string, signal: AbortSignal): Promise<{ state: PipelineState; tree: TreeNode[] }> {
   const [sRes, tRes] = await Promise.all([
     fetch(`/api/projects/${encodeURIComponent(name)}`, { signal }),
-    fetch(`/api/projects/${encodeURIComponent(name)}/tree`, { signal }),
+    fetch(`/api/projects/${encodeURIComponent(name)}/tree?include_draft=1`, { signal }),
   ]);
   if (!sRes.ok) throw new Error(`state ${sRes.status}`);
   if (!tRes.ok) throw new Error(`tree ${tRes.status}`);

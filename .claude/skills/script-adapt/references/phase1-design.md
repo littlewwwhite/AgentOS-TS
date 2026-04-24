@@ -32,19 +32,23 @@
 - 聚焦：每集锁定一个核心事件/情绪微循环
 - 总集数由原文体量和节拍密度决定
 
-### 模式 B：结构扩写
+### 模式 B：稀疏原文直转
 
-**适用场景**：原文为梗概/大纲（＜3000字），只有故事骨架，需要展开。
+**适用场景**：原文信息密度偏低，但用户目标仍然是**保留现有骨架做直转/简单改编**，而不是做 NTSV2 长剧扩写。
 
 **核心操作**：
-- 展开：为每个事件节点补充具体场景、对白动机、情绪层次
-- 补充：增加过渡场景、铺垫段落、情绪呼吸空间
-- 丰富：为角色补充行为细节、语言特征、关系动态
-- 总集数可突破原文暗示的规模，需与用户确认
+- 补足：把已有骨架补足成可写作的分集结构
+- 对齐：把原文已有事件链转换成可拍的场次锚点
+- 保守：只补写直转所必需的信息，不主动升级为大规模扩写
+- 总集数仍由原文边界与用户目标共同决定，不自动膨胀成长剧规模
 
 **模式选择逻辑**：
-1. 根据原文字数自动判断（≥3000字→结构设计，＜3000字→结构扩写）
-2. 如果用户指定模式，以用户指定为准
+1. 先看用户目标：若目标是“保留原骨架直转”，继续留在本 skill
+2. 再看原文密度：高密度走结构设计，低密度走稀疏原文直转
+3. 如果用户明确要“扩写 / 拉长为长剧 / NTSV2”，应改由 `script-writer` 处理
+4. 如果用户指定模式，以用户指定为准
+
+> Phase A → Phase B 的稳定交接面见 `design-contract.md`；其中 `design.json.episodes[]` 的大纲约束见 `outline-contract.md`。
 
 ---
 
@@ -80,7 +84,7 @@
 
 ### 结构规格锁定优先级
 
-在锁定 `total_episodes` 和 `episodes[]` 之前，必须先读取 `workspace/draft/source-structure.json`：
+在锁定 `total_episodes` 和 `episodes[]` 之前，必须先读取 `${PROJECT_DIR}/draft/source-structure.json`：
 
 1. 当 `planning.episode_source = detected_boundaries` **且** `planning.boundary_confidence = "high"` 时：
    - 检测到真正的 `第N集` / `Episode N` 标记，是**权威输入**
@@ -127,8 +131,8 @@
 ```
 1. 通读 source.txt（小说全文）
 2. 执行叙事模块盘点 + 锁定结构规格（模式、集数、场次总量）
-3. 撰写 design.json（世界观 + 分集大纲 + 视觉风格） → 写入 workspace/draft/design.json
-4. 盘点资产清单（角色、地点、道具） → 写入 workspace/draft/catalog.json
+3. 撰写 design.json（世界观 + 分集大纲 + 视觉风格） → 写入 `${PROJECT_DIR}/draft/design.json`
+4. 盘点资产清单（角色、地点、道具） → 写入 `${PROJECT_DIR}/draft/catalog.json`
 5. 输出两个文件摘要，提示 CRUD 检查点（用户可编辑 catalog.json / design.json 后进入 Phase B）
 ```
 
@@ -136,7 +140,7 @@
 
 ## 输出规范
 
-Phase A 产出两个文件，均写入工作区 `workspace/draft/` 目录。
+Phase A 产出两个文件，均写入 `${PROJECT_DIR}/draft/` 目录。
 
 ---
 
@@ -175,6 +179,8 @@ Phase A 产出两个文件，均写入工作区 `workspace/draft/` 目录。
   ]
 }
 ```
+
+`design.json` 是 Phase A 输出给 Phase B 的**结构主契约**，不是随意附带说明。Phase B 只能依赖 `design-contract.md` 中列出的稳定字段。
 
 **撰写要求**：
 
@@ -261,13 +267,13 @@ Phase A 产出两个文件，均写入工作区 `workspace/draft/` 目录。
 
 ## 阶段流转
 
-输出两个文件摘要后，暂停并提示用户：「Phase A 完成。您现在可以编辑 workspace/draft/catalog.json（增删角色/地点/道具/状态）或 workspace/draft/design.json（调整分集大纲）。确认后进入 Phase B 生成剧本。」
+输出两个文件摘要后，暂停并提示用户：「Phase A 完成。您现在可以编辑 draft/catalog.json（增删角色/地点/道具/状态）或 draft/design.json（调整分集大纲）。确认后进入 Phase B 生成剧本。」
 
 ---
 
 ## 开始执行
 
 - 如已提供小说文本，直接执行分析流程，依次产出 `design.json` 和 `catalog.json`
-- 如未提供文本，检查 `workspace/source.txt` 是否存在：
+- 如未提供文本，检查 `${PROJECT_DIR}/source.txt` 是否存在：
   - 存在：读取原文并执行分析
   - 不存在：提示"请提供小说原文，我将自动完成分析并推荐改编方案。"

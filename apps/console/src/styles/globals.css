@@ -18,6 +18,11 @@
   --color-accent:      oklch(48% 0.17 32);
   --color-accent-soft: oklch(94% 0.04 32);
 
+  /* Chat surfaces */
+  --color-chat-user:      oklch(93% 0.035 32);
+  --color-chat-assistant: oklch(98% 0.006 85);
+  --color-chat-thinking:  oklch(94% 0.010 85);
+
   /* Functional status */
   --color-run:   oklch(58% 0.14 220);
   --color-ok:    oklch(52% 0.11 145);

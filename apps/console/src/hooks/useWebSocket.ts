@@ -27,10 +27,12 @@ export function useWebSocket(
   sessionId?: string | null,
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [slashCommands, setSlashCommands] = useState<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const streamingIdRef = useRef<string | null>(null);
+  const thinkingIdRef = useRef<string | null>(null);
   const activeProjectRef = useRef<string | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const activeHistoryKeyRef = useRef<string | null>(null);
@@ -90,6 +92,7 @@ export function useWebSocket(
       setIsConnected(false);
       setIsStreaming(false);
       streamingIdRef.current = null;
+      thinkingIdRef.current = null;
       setMessages((prev) => prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)));
     };
 
@@ -105,6 +108,11 @@ export function useWebSocket(
         return;
       }
 
+      if (event.type === "slash_commands") {
+        setSlashCommands(event.commands);
+        return;
+      }
+
       if (event.type === "system") {
         // Lossless passthrough; no UI surface yet. Keep for debugging.
         if (import.meta.env.DEV) console.debug("[ws] system", event.subtype, event.data);
@@ -113,6 +121,13 @@ export function useWebSocket(
 
       if (event.type === "text") {
         setIsStreaming(true);
+        if (thinkingIdRef.current) {
+          const closingId = thinkingIdRef.current;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === closingId ? { ...m, isStreaming: false } : m))
+          );
+          thinkingIdRef.current = null;
+        }
         const targetId = streamingIdRef.current ?? uid();
         if (!streamingIdRef.current) {
           streamingIdRef.current = targetId;
@@ -126,12 +141,39 @@ export function useWebSocket(
           }
           return [
             ...prev,
-            { id: targetId, role: "assistant", content: event.text, isStreaming: true, timestamp: Date.now() },
+            { id: targetId, role: "assistant", kind: "text", content: event.text, isStreaming: true, timestamp: Date.now() },
+          ];
+        });
+      }
+
+      if (event.type === "thinking") {
+        setIsStreaming(true);
+        const targetId = thinkingIdRef.current ?? uid();
+        if (!thinkingIdRef.current) {
+          thinkingIdRef.current = targetId;
+        }
+        setMessages((prev) => {
+          const hasTarget = prev.some((m) => m.id === targetId);
+          if (hasTarget) {
+            return prev.map((m) =>
+              m.id === targetId ? { ...m, content: m.content + event.text } : m
+            );
+          }
+          return [
+            ...prev,
+            { id: targetId, role: "assistant", kind: "thinking", content: event.text, isStreaming: true, timestamp: Date.now() },
           ];
         });
       }
 
       if (event.type === "tool_use") {
+        if (thinkingIdRef.current) {
+          const closingId = thinkingIdRef.current;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === closingId ? { ...m, isStreaming: false } : m))
+          );
+          thinkingIdRef.current = null;
+        }
         if (streamingIdRef.current) {
           const closingId = streamingIdRef.current;
           setMessages((prev) =>
@@ -169,6 +211,7 @@ export function useWebSocket(
       if (event.type === "result") {
         setIsStreaming(false);
         streamingIdRef.current = null;
+        thinkingIdRef.current = null;
         setMessages((prev) =>
           prev
             .filter((m) => !(m.role === "assistant" && !m.toolName && m.content.trim() === ""))
@@ -180,6 +223,7 @@ export function useWebSocket(
       if (event.type === "error") {
         setIsStreaming(false);
         streamingIdRef.current = null;
+        thinkingIdRef.current = null;
         onSessionRef.current?.(null);
         setMessages((prev) => [
           ...prev.filter((m) => !(m.role === "assistant" && !m.toolName && m.content.trim() === "")),
@@ -207,5 +251,14 @@ export function useWebSocket(
     []
   );
 
-  return { messages, isConnected, isStreaming, send };
+  const stop = useCallback(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ action: "interrupt" }));
+    setIsStreaming(false);
+    streamingIdRef.current = null;
+    thinkingIdRef.current = null;
+    setMessages((prev) => prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)));
+  }, []);
+
+  return { messages, isConnected, isStreaming, slashCommands, send, stop };
 }

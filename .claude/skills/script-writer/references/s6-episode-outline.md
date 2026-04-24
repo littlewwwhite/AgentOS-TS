@@ -18,10 +18,10 @@
 
 S7（逐层写作）启动时需要加载以下四份材料：
 
-1. **锚点文档**（`${PROJECT_DIR}/workspace/anchor.md`）— 已在 S4 组装
+1. **锚点文档**（`${PROJECT_DIR}/draft/anchor.md`）— 已在 S4 组装
 2. **全集节拍表** — **S6 产出**，S7 按表逐集执行节奏骨架
 3. **场景清单** — **S6 产出**，S7 按清单逐场展开画面与对白
-4. **风格指南**（`${PROJECT_DIR}/workspace/style-guide.md`）— 已在 S1 生成
+4. **风格指南**（`${PROJECT_DIR}/draft/style-guide.md`）— 已在 S1 生成
 
 S6 的节拍表和场景清单使用 `[SWS-ITEM]` 标记包裹，S7 通过标记名精确提取。因此：
 
@@ -37,11 +37,11 @@ S6 的节拍表和场景清单使用 `[SWS-ITEM]` 标记包裹，S7 通过标记
 
 | 材料 | 来源 | 用途 |
 |------|------|------|
-| S3 分集大纲 | `${PROJECT_DIR}/workspace/s3-outline.md` | 每集的 Logline、核心事件、情绪曲线、钉子 |
-| S4 角色设定 | `${PROJECT_DIR}/workspace/s4-character.md` | 角色设定卡、配角速写卡，用于场景角色标注 |
-| S2 基础设定 | `${PROJECT_DIR}/workspace/s2-setting.md` | 世界观、场景体系，用于场景命名和环境设定 |
-| 锚点文档 | `${PROJECT_DIR}/workspace/anchor.md` | 创作锚点清单 + 角色卡 + 风格DNA卡 |
-| 风格指南 | `${PROJECT_DIR}/workspace/style-guide.md` | 风格方向、语体、情绪基调 |
+| S3 分集大纲 | `${PROJECT_DIR}/draft/s3-outline.md` | 每集的 Logline、核心事件、情绪曲线、钉子 |
+| S4 角色设定 | `${PROJECT_DIR}/draft/s4-character.md` | 角色设定卡、配角速写卡，用于场景角色标注 |
+| S2 基础设定 | `${PROJECT_DIR}/draft/s2-setting.md` | 世界观、场景体系，用于场景命名和环境设定 |
+| 锚点文档 | `${PROJECT_DIR}/draft/anchor.md` | 创作锚点清单 + 角色卡 + 风格DNA卡 |
+| 风格指南 | `${PROJECT_DIR}/draft/style-guide.md` | 风格方向、语体、情绪基调 |
 
 缺少任何材料则提示用户补充，不可跳过。
 
@@ -428,13 +428,13 @@ S6 的节拍表和场景清单使用 `[SWS-ITEM]` 标记包裹，S7 通过标记
 ## 确认后操作
 
 1. 将 `[SWS-META]` 中的 status 更新为 `已确认`
-2. 将所有交付物写入 `${PROJECT_DIR}/workspace/s6-episode-outline.md`
+2. 将所有交付物写入 `${PROJECT_DIR}/draft/s6-episode-outline.md`
 3. 更新 `[SWS-CHECKPOINT]`：
    ```
    [SWS-CHECKPOINT]
    current_stage: S6-单集细纲（已确认）
    completed:
-     - S6-单集细纲 → ${PROJECT_DIR}/workspace/s6-episode-outline.md
+     - S6-单集细纲 → ${PROJECT_DIR}/draft/s6-episode-outline.md
    next_stage: S7-逐层写作
    [/SWS-CHECKPOINT]
    ```
@@ -444,11 +444,11 @@ S6 的节拍表和场景清单使用 `[SWS-ITEM]` 标记包裹，S7 通过标记
 
 ## 开始执行
 
-1. 检查 S3 分集大纲：从对话上下文或 `${PROJECT_DIR}/workspace/s3-outline.md` 获取
-2. 检查 S4 角色设定：从对话上下文或 `${PROJECT_DIR}/workspace/s4-character.md` 获取
-3. 检查 S2 基础设定：从对话上下文或 `${PROJECT_DIR}/workspace/s2-setting.md` 获取
-4. 检查锚点文档：从对话上下文或 `${PROJECT_DIR}/workspace/anchor.md` 获取
-5. 检查风格指南：从对话上下文或 `${PROJECT_DIR}/workspace/style-guide.md` 获取
+1. 检查 S3 分集大纲：从对话上下文或 `${PROJECT_DIR}/draft/s3-outline.md` 获取
+2. 检查 S4 角色设定：从对话上下文或 `${PROJECT_DIR}/draft/s4-character.md` 获取
+3. 检查 S2 基础设定：从对话上下文或 `${PROJECT_DIR}/draft/s2-setting.md` 获取
+4. 检查锚点文档：从对话上下文或 `${PROJECT_DIR}/draft/anchor.md` 获取
+5. 检查风格指南：从对话上下文或 `${PROJECT_DIR}/draft/style-guide.md` 获取
 6. 如果缺少任何前置材料，提示：请先完成对应阶段
 7. 如果所有材料就绪，执行 S6 单集细纲工作流：
    - 第一步：输出结构总量规格

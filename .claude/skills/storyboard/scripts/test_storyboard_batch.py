@@ -70,7 +70,7 @@ class StoryboardBatchTest(unittest.TestCase):
 
         self.assertEqual(storyboard_batch.get_default_text_model(), "gemini-3.1-flash-lite")
 
-        os.environ["CHATFIRE_TEXT_MODEL"] = "gemini-3.1-pro-preview"
+        os.environ["GEMINI_TEXT_MODEL"] = "gemini-3.1-pro-preview"
         self.assertEqual(storyboard_batch.get_default_text_model(), "gemini-3.1-pro-preview")
 
     def test_root_base_url_expands_to_v1_chat_completions(self):

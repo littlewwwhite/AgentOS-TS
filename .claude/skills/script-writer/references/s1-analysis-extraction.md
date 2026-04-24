@@ -467,7 +467,7 @@ ELSE IF 第一推动力 = 剧情推动力:
 
 ### 第零步：原文结构检测（改编模式专用）
 
-开始分析前，先调用 `python3 ./.claude/skills/script-writer/scripts/detect_source_structure.py --project-path {project_path}` 对 novel.txt 进行确定性分段。
+开始分析前，先调用 `python3 ./.claude/skills/script-writer/scripts/detect_source_structure.py --project-path {project_path}` 对 source.txt 进行确定性分段。
 
 读取生成的 `draft/source-structure.json`，确认原文采用的分段策略：
 
@@ -626,7 +626,7 @@ Goldfinger 维度：
 
 1. 将所有交付物的 status 更新为 `已确认`
 2. 生成 `style-guide.md`（基于 `templates/style-guide-template.md` 模板）
-3. 如果存在 `${PROJECT_DIR}/workspace/`，将交付物写入 `s1-analysis.md`，将风格指南写入 `style-guide.md`
+3. 如果存在 `${PROJECT_DIR}/draft/`，将交付物写入 `s1-analysis.md`，将风格指南写入 `style-guide.md`
 4. 更新 `checkpoint.md`
 5. 提示用户进入下一阶段：进入 S2 结构设计/结构扩写
 
@@ -636,9 +636,9 @@ Goldfinger 维度：
 
 - 如已提供小说文本，直接执行完整分析流程，一次性输出六个交付物 + 元素覆盖校验
 - 如未提供文本：
-  - 检查 `${PROJECT_DIR}/workspace/` 是否存在且有检查点
+  - 检查 `${PROJECT_DIR}/draft/` 是否存在且有检查点
   - 存在 --> 读取检查点恢复状态
-  - 检查 `${PROJECT_DIR}/workspace/novel.txt` 是否存在
+  - 检查 `${PROJECT_DIR}/source.txt` 是否存在
   - 存在 --> 读取原文并执行分析
   - 不存在 --> 提示用户：
 

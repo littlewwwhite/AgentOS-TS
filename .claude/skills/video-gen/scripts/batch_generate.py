@@ -3,7 +3,7 @@
 """
 Batch Video Generation from ep_storyboard.json
 
-Reads prompts from ep_storyboard.json (scenes[].shots[] or legacy scenes[].clips[]),
+Reads prompts from ep_storyboard.json (simplified scenes[].shots[] or current scenes[].clips[]),
 extracts subject references ({act_xxx}/{loc_xxx}), queries element_id
 mapping via local assets or API, and generates videos using KeLing 3.0 Omni
 subject reference mode.
@@ -45,12 +45,15 @@ if sys.platform == 'win32':
 # Add script directory to path
 SCRIPT_DIR = Path(__file__).parent
 sys.path.insert(0, str(SCRIPT_DIR))
+REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from batch_generate_runtime import _process_scene_clips
 from production_types import ClipIntent
 from video_api import DEFAULT_MODEL_CODE, get_subject_reference_for_model
-from path_manager import VideoReviewPaths
+from path_manager import VideoReviewPaths, prepare_runtime_storyboard_export
 from config_loader import get_generation_config, get_gemini_config
+from pipeline_state import ensure_state, update_episode, update_stage
 
 # ============================================================
 # Generation-Review Loop Constants (from config.json)
@@ -67,7 +70,7 @@ MAX_GENERATION_ATTEMPTS = _gen_cfg.get("max_attempts", 2)
 def load_storyboard_json(json_path: str) -> dict:
     """Load ep_storyboard.json and return parsed data.
 
-    Expected format: top-level 'scenes' with 'shots' (or legacy 'clips').
+    Expected format: top-level 'scenes' with simplified 'shots' or current runtime 'clips'.
 
     Args:
         json_path: Path to ep_storyboard.json
@@ -85,10 +88,10 @@ def load_storyboard_json(json_path: str) -> dict:
 
 
 def iter_clips(data: dict) -> list:
-    """Iterate all clips from storyboard JSON (scenes[].clips[]).
+    """Iterate all generation units from storyboard JSON.
 
-    Reads canonical prompt from each clip.
-    Legacy complete_prompt / complete_prompt_v2 are still supported as fallback.
+    Reads prompt from either simplified scene-level shots or current runtime clips.
+    `complete_prompt` / `complete_prompt_v2` remain the current exporter fallback.
 
     Returns:
         List of dicts, each containing (normalized):
@@ -141,8 +144,8 @@ def iter_clips(data: dict) -> list:
 def _extract_clip_prompts(clip: dict) -> list[str]:
     """Extract generation prompts from one clip.
 
-    Canonical contract: one clip -> one prompt.
-    Legacy contract: complete_prompt / complete_prompt_v2.
+    Simplified upstream contract: one shot/clip -> one `prompt`.
+    Current exporter contract: `complete_prompt` / `complete_prompt_v2`.
     """
     prompt = clip.get('prompt')
     if prompt:
@@ -562,14 +565,37 @@ def run_batch_generate(
     print(f"{'='*60}")
     print(f"BATCH VIDEO GENERATION")
     print(f"{'='*60}")
+    runtime_json_path, storyboard_source_kind = prepare_runtime_storyboard_export(
+        json_path,
+        output_root,
+        episode,
+    )
+    output_root_path = Path(output_root)
+    project_root = Path(os.environ.get('PROJECT_DIR', output_root_path.parent.parent)).resolve()
+    runtime_relative = runtime_json_path.resolve().relative_to(project_root).as_posix()
+    episode_key = f"ep{episode:03d}"
+
+    if not dry_run:
+        ensure_state(str(project_root))
+        update_stage(str(project_root), "VIDEO", "running", next_action="enter VIDEO")
+        update_episode(
+            str(project_root),
+            episode_key,
+            "video",
+            "partial",
+            artifact=runtime_relative,
+        )
+
     print(f"JSON: {json_path}")
+    print(f"Runtime JSON: {runtime_json_path}")
+    print(f"Storyboard source: {storyboard_source_kind}")
     print(f"Output: {output_root}")
     print(f"Episode: {episode}")
     print(f"Model: {model_code}")
     print(f"Dry run: {'YES' if dry_run else 'NO'}")
 
     # 1. Load shots JSON
-    data = load_storyboard_json(json_path)
+    data = load_storyboard_json(str(runtime_json_path))
     clips = iter_clips(data)
     print(f"Found {len(clips)} clips")
 
@@ -737,7 +763,7 @@ def run_batch_generate(
                     _process_scene_clips,
                     scene_id, clips, episode, paths, model_code,
                     quality, ratio, poll_interval, timeout, gemini_api_key,
-                    get_gemini_config(), data, json_path, json_lock, skip_review,
+                    get_gemini_config(), data, str(runtime_json_path), json_lock, skip_review,
                 ): scene_id
                 for scene_id, clips in scenes_clip_states.items()
             }
@@ -803,8 +829,6 @@ def run_batch_generate(
 
     # Save generation summary to workspace directory (not output)
     # output_root is ${PROJECT_DIR}/output/ep001 → project root is two levels up
-    output_root_path = Path(output_root)
-    project_root = Path(os.environ.get('PROJECT_DIR', output_root_path.parent.parent))
     ep_name = output_root_path.name              # ep001
     workspace_dir = project_root / "workspace" / ep_name
     workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -812,6 +836,8 @@ def run_batch_generate(
     summary = {
         "episode": episode,
         "source_json": str(json_path),
+        "runtime_storyboard_json": str(runtime_json_path),
+        "storyboard_source_kind": storyboard_source_kind,
         "total": total,
         "success": success_count,
         "failed": fail_count,
@@ -870,6 +896,24 @@ def run_batch_generate(
     with open(delivery_path, 'w', encoding='utf-8') as f:
         json.dump(delivery, f, ensure_ascii=False, indent=2)
     print(f"[FILE] Delivery: {delivery_path}")
+
+    if not dry_run:
+        delivery_relative = delivery_path.resolve().relative_to(project_root).as_posix()
+        if fail_count == 0 and success_count > 0:
+            update_episode(
+                str(project_root),
+                episode_key,
+                "video",
+                "completed",
+                artifact=delivery_relative,
+            )
+        update_stage(
+            str(project_root),
+            "VIDEO",
+            "partial",
+            next_action="review VIDEO",
+            artifact=delivery_relative,
+        )
 
     return results
 

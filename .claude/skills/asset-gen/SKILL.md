@@ -1,39 +1,46 @@
 ---
 name: asset-gen
-description: "从剧本批量生成角色、场景、道具视觉资产并上传。涵盖风格选择、提示词生成、并行出图、自动审核、断点续传。当用户要求生成资产、一键出图、批量出图、重新生成指定角色/场景/道具、上传资产到火山引擎时使用。"
+description: "视觉资产生成流水线：从 script.json 生成角色、场景、道具提示词，并通过 ChatFire gpt-image-2 批量出图。"
 allowed-tools:
   - Bash
   - Read
   - Edit
-  - AskUserQuestion
 ---
 
 # 统一资产生成编排器
 
 从 `script.json` 自动批量生成角色、场景、道具三类视觉资产。
 
-> **路径约定**：文档内引用 skill 自带文件时，直接使用 `references/`、`assets/`、`scripts/` 等相对路径；命令示例统一使用仓库根相对路径。`${PROJECT_DIR}` 指项目根目录（剧本、资产、workspace 等）。
+> **路径约定**：文档内引用 skill 自带文件时，直接使用 `references/`、`assets/`、`scripts/` 等相对路径；命令示例统一使用仓库根相对路径。`${PROJECT_DIR}` 指项目根目录（`pipeline-state.json`、`draft/`、`output/` 所在目录）。
 
 ---
 
 ## 前置检查（每次执行前按序完成）
 
-### 步骤 0: AWB 登录 + 环境依赖 + Gemini 配置
+### 步骤 0: 模型环境依赖
 
 ```bash
-python3 ./.claude/skills/asset-gen/scripts/preflight_awb.py \
-  --check login,deps,gemini-config \
-  --deps google-genai,Pillow,demucs,soundfile --cmds curl,ffmpeg \
-  --gemini-config "./.claude/skills/asset-gen/assets/common/gemini_backend.json"
+python3 - <<'PY'
+import os, sys
+missing = [k for k in ("GEMINI_API_KEY", "OPENAI_API_KEY") if not os.environ.get(k)]
+if missing:
+    print("missing env: " + ", ".join(missing), file=sys.stderr)
+    sys.exit(1)
+print("asset-gen env ok")
+PY
+command -v ffmpeg >/dev/null
 ```
 
-- 登录失败 → 使用相关登录 skill（如 `awb-login`）或等价登录流程引导用户登录，成功后重新执行
 - 依赖缺失 → 按输出提示安装（`ffmpeg`: macOS `brew install ffmpeg`，Linux `apt install ffmpeg`）
-- Gemini 配置异常 → 检查 `assets/common/gemini_backend.json`，支持 `official`/`proxy` 两种模式
+- 缺少 `GEMINI_API_KEY` → Gemini 文本/评审代理不可运行
+- 缺少 `OPENAI_API_KEY` → `gpt-image-2` 图片生成不可运行
+- Gemini 配置异常 → 检查 `assets/common/gemini_backend.json`，默认使用官方 Gemini SDK 配置
+
+当前图片生成 provider 为 ChatFire `gpt-image-2`，由 `scripts/common_image_api.py` 调用 `/v1/images/generations`。
 
 ### 步骤 0-C: 项目初始化检查（必须在步骤 0 之后执行）
 
-检查 `${PROJECT_DIR}/workspace/style.json` 是否存在：
+检查 `${PROJECT_DIR}/draft/style.json` 是否存在：
 
 - **存在** → 项目已初始化，继续进入主菜单或快捷入口
 - **不存在** → 项目未初始化，**必须先完成初始化**，按以下顺序执行：
@@ -49,17 +56,23 @@ python3 ./.claude/skills/asset-gen/scripts/preflight_awb.py \
 
 ## 统一状态文件
 
-`asset-gen` 是 `VISUAL` 阶段，必须同步维护 `${PROJECT_DIR}/workspace/pipeline-state.json`。
+`asset-gen` 是 `VISUAL` 阶段，必须同步维护 `${PROJECT_DIR}/pipeline-state.json`。
 
 - 进入本 skill 时：设置 `current_stage=VISUAL`、`stages.VISUAL.status=running`
 - `style.json` 与 `*_gen.json` 已写出但尚未完成全部资产时：设置 `stages.VISUAL.status=partial`
 - `actors.json`、`locations.json`、`props.json` 写出后：设置 `stages.VISUAL.status=completed`
 - 资产与 `script.json` 一致性检查通过后：设置 `stages.VISUAL.status=validated`，`next_action=enter STORYBOARD`
 
+当前仓库中，以下真实入口已经会自动写回状态，无需再手写 JSON：
+
+- `style_generate.py` → 写出 `draft/style.json` 后，将 `VISUAL` 标记为 `partial`
+- `generate_prompts_from_script.py` → 写出 `draft/*_gen.json` 后，将 `VISUAL` 标记为 `partial`
+- `generate_all_assets.py` → 写出 `output/actors/actors.json` / `locations.json` / `props.json` 后，将 `VISUAL` 标记为 `completed`
+
 如果状态文件缺失，可从以下 artifacts 回推：
 
-- `${PROJECT_DIR}/workspace/style.json`
-- `${PROJECT_DIR}/workspace/*_gen.json`
+- `${PROJECT_DIR}/draft/style.json`
+- `${PROJECT_DIR}/draft/*_gen.json`
 - `${PROJECT_DIR}/output/actors/actors.json`
 - `${PROJECT_DIR}/output/locations/locations.json`
 - `${PROJECT_DIR}/output/props/props.json`
@@ -68,9 +81,9 @@ python3 ./.claude/skills/asset-gen/scripts/preflight_awb.py \
 
 前置检查通过后，**先判断用户输入是否匹配以下快捷入口**，匹配则跳过主菜单直接执行：
 
-### 快捷入口 A：一键成片
+### 快捷入口 A：全套资产
 
-**触发条件**：用户输入包含"一键成片"关键词。
+**触发条件**：用户输入包含"全套资产"、"一键出资产"、"一键出图"等关键词。若用户在本 skill 语境下说"一键成片"，按"先准备全套视觉资产"理解，而不是完整成片流程。
 
 #### 风格解析
 
@@ -80,30 +93,30 @@ Parse style from user input per [`references/style-mapping.md`](references/style
 
 #### 断点续传
 
-- `${PROJECT_DIR}/workspace/style.json` 存在且 `visual_mode` 与本次风格一致 → 跳过步骤 1、2
+- `${PROJECT_DIR}/draft/style.json` 存在且 `visual_mode` 与本次风格一致 → 跳过步骤 1、2
 - 否则正常执行步骤 1、2
 
 #### 执行
 
-直接执行步骤 3，参数追加 `--characters --scenes --props --voice`。
+直接执行步骤 3，参数追加 `--characters --scenes --props`。
+
+> 这一步只会一次性生成角色 / 场景 / 道具视觉资产，不包含后续 `STORYBOARD`、`VIDEO`、`EDITING`、`MUSIC`、`SUBTITLE` 阶段。
 
 ### 快捷入口 B：重新生成指定资产
 
-**触发条件**：用户输入匹配以下模式之一（不含"一键成片"）：
+**触发条件**：用户输入匹配以下模式之一（不含"全套资产" / "一键出资产" / "一键出图"别名）：
 
 | 用户说 | 解析结果 |
 |--------|---------|
 | 重新生成角色 XX、重跑角色 XX | 类型=角色，名称=XX |
 | 重新生成场景 XX、重跑场景 XX | 类型=场景，名称=XX |
 | 重新生成道具 XX、重跑道具 XX | 类型=道具，名称=XX |
-| 重新生成音色 XX、重跑音色 XX | 类型=音色，名称=XX |
 
 **执行流程**：直接执行步骤 3，参数按以下映射：
 
 | 类型 | 命令参数 |
 |------|---------|
-| 角色 | `--characters --voice --regenerate-actors "XX"` |
-| 音色 | `--characters --voice --regenerate-actors "XX"` |
+| 角色 | `--characters --regenerate-actors "XX"` |
 | 场景 | `--scenes --regenerate-scenes "XX"` |
 | 道具 | `--props --regenerate-props "XX"` |
 
@@ -125,7 +138,7 @@ Parse style from user input per [`references/style-mapping.md`](references/style
 
 ## 主菜单（不匹配快捷入口时弹出）
 
-向用户展示 5 个选项（例如使用 `AskUserQuestion` 或等价的交互式提问方式）：
+当用户意图已经明确时，直接执行对应操作；仅在用户没说清要做什么时，再向用户展示这 4 个选项：
 
 ```
 问题: "请选择操作："
@@ -134,7 +147,6 @@ Parse style from user input per [`references/style-mapping.md`](references/style
   2. 修改世界观/风格        → 进入选项 2
   3. 生成资产              → 进入选项 3
   4. 重新生成指定资产       → 进入选项 4
-  5. 上传角色资产到火山引擎  → 进入选项 5
 ```
 
 ---
@@ -145,7 +157,7 @@ Parse style from user input per [`references/style-mapping.md`](references/style
 
 ### 1.1 风格信息
 
-使用 `Read` 工具读取 `${PROJECT_DIR}/workspace/style.json`，格式化展示关键字段：
+使用 `Read` 工具读取 `${PROJECT_DIR}/draft/style.json`，格式化展示关键字段：
 - 世界观类型（worldview_type）
 - 视觉模式（visual_mode）
 - 渲染前缀（render_prefix，截取前 80 字符）
@@ -165,23 +177,23 @@ props_json   = "${PROJECT_DIR}/output/props/props.json"     # 道具
 
 ```
 【角色】共 N 个
-  名称         | 三视图 | 正面 | 侧面 | 背面 | 音色 | 主体ID
-  Olivia       |  ✓    |  ✓  |  ✓  |  ✓  |  ✓  | asset-xxx
-  Ethan        |  ✓    |  ✓  |  ✓  |  ✓  |  ✗  | -
+  名称         | 三视图 | 正面 | 侧面 | 背面
+  Olivia       |  ✓    |  ✓  |  ✓  |  ✓
+  Ethan        |  ✓    |  ✓  |  ✓  |  ✓
 
 【场景】共 N 个
-  名称         | 图片 | 主体ID
-  Beach        |  ✓  | asset-xxx
-  Castle Hall  |  ✓  | asset-xxx
+  名称         | 图片
+  Beach        |  ✓
+  Castle Hall  |  ✓
 
 【道具】共 N 个
-  名称         | 图片 | 主体ID
-  Glass Shard  |  ✓  | asset-xxx
+  名称         | 图片
+  Glass Shard  |  ✓
 ```
 
-- 角色检查字段：`three_view`、`face_view`、`side_view`、`back_view`（非空即 ✓）、`voice`（actor 级）、`subject_id`
-- 场景检查字段：`image`（非空即 ✓）、`subject_id`
-- 道具检查字段：`image`（非空即 ✓）、`subject_id`
+- 角色检查字段：`three_view`、`face_view`、`side_view`、`back_view`（非空即 ✓）
+- 场景检查字段：`image`（非空即 ✓）
+- 道具检查字段：`image`（非空即 ✓）
 - 文件不存在时显示"尚未生成"
 
 ### 1.3 剧本一致性检查
@@ -203,7 +215,7 @@ props_json   = "${PROJECT_DIR}/output/props/props.json"     # 道具
 
 1. **展示当前状态**：先执行「查看项目状态」（选项 1）的逻辑展示当前信息。
 
-2. **询问修改方式**：向用户展示选择题（例如使用 `AskUserQuestion` 或等价交互方式）：
+2. **询问修改方式**：若用户尚未明确是"换风格"还是"局部调参"，再展示选择题：
    ```
    问题: "请选择修改方式："
    选项:
@@ -215,13 +227,13 @@ props_json   = "${PROJECT_DIR}/output/props/props.json"     # 道具
 
 4. **自定义修改**时：
    a. 提示用户输入修改意图（如"把整体色调改暖一些"、"增加蒸汽朋克元素"）
-   b. 读取当前 `${PROJECT_DIR}/workspace/style.json`
+   b. 读取当前 `${PROJECT_DIR}/draft/style.json`
    c. 根据用户意图，用 `Edit` 工具修改 style.json 中对应字段（如 `render_prefix`、`anti_contamination`、`character_style` 等）
    d. 展示修改后的 style.json 给用户确认
-   e. 确认后删除 `${PROJECT_DIR}/workspace/*_gen.json`，重新执行步骤 2 生成新提示词
+   e. 确认后删除 `${PROJECT_DIR}/draft/*_gen.json`，重新执行步骤 2 生成新提示词
 
 5. **更换视觉风格**后：
-   a. 删除 `${PROJECT_DIR}/workspace/style.json` 和 `${PROJECT_DIR}/workspace/*_gen.json`
+   a. 删除 `${PROJECT_DIR}/draft/style.json` 和 `${PROJECT_DIR}/draft/*_gen.json`
    b. 重新执行步骤 1（`style_generate.py --style-override {新风格}`）和步骤 2
 
 6. **展示新配置**：展示新的 style.json 内容。
@@ -232,16 +244,16 @@ props_json   = "${PROJECT_DIR}/output/props/props.json"     # 道具
 
 ### 3.1 选择生成模式
 
-向用户展示选择题（例如使用 `AskUserQuestion` 或等价交互方式）：
+若用户尚未明确生成模式，再展示选择题：
 
 ```
 问题: "请选择生成模式："
 选项:
-  - 一键成片（全部生成）  → --characters --scenes --props --voice
+  - 全套资产（全部生成）  → --characters --scenes --props
   - 分步制作（按类型选择）→ 进入多选
 ```
 
-**分步制作**时，向用户展示多选题（例如使用 `AskUserQuestion` 或等价交互方式）：
+**分步制作**时，若用户尚未明确资产类型，再展示多选题：
 
 ```
 问题: "请选择要生成的资产类型（可多选）："
@@ -250,16 +262,15 @@ multiSelect: true
   - 角色（含三视图）  → --characters
   - 场景             → --scenes
   - 道具             → --props
-  - 角色音色         → --voice
 ```
 
 ### 3.2 断点续传检查
 
 1. **style.json 不存在** → 先询问风格（见 3.3），然后执行步骤 1、2
 2. **style.json 存在且 `visual_mode` 与本次风格一致** + `*_gen.json` 存在 → 执行剧本一致性校验（见 3.2.1），通过后跳过步骤 1、2
-3. **style.json 存在但 `visual_mode` 与本次风格不一致** → 删除 `${PROJECT_DIR}/workspace/style.json` 和 `${PROJECT_DIR}/workspace/*_gen.json`，重新执行步骤 1、2
+3. **style.json 存在但 `visual_mode` 与本次风格不一致** → 删除 `${PROJECT_DIR}/draft/style.json` 和 `${PROJECT_DIR}/draft/*_gen.json`，重新执行步骤 1、2
 
-> 判断一致性：读取 `${PROJECT_DIR}/workspace/style.json` 中的 `visual_mode` 字段，与本次 `--style-override` 对应的视觉模式比较。
+> 判断一致性：读取 `${PROJECT_DIR}/draft/style.json` 中的 `visual_mode` 字段，与本次 `--style-override` 对应的视觉模式比较。
 
 #### 3.2.1 剧本一致性校验
 
@@ -292,7 +303,7 @@ removed_actors = gen_actors - script_actors   # 剧本已删除的角色
 
 ### 3.3 风格选择（仅 style.json 不存在时触发）
 
-**第一级**——选择风格大类（必须进行交互式选择，例如 `AskUserQuestion`）：
+**第一级**——选择风格大类（仅当用户未明确指定风格时才需要交互选择）：
 
 ```
 问题: "请选择视觉风格大类："
@@ -341,7 +352,6 @@ removed_actors = gen_actors - script_actors   # 剧本已删除的角色
 
 格式示例：
 - 角色图片：Olivia, Ethan
-- 角色音色：Olivia
 - 场景：Beach, Castle Hall
 - 道具：Glass Shard, Brass Lamp
 ```
@@ -350,7 +360,7 @@ removed_actors = gen_actors - script_actors   # 剧本已删除的角色
 
 ### 4.3 选择操作
 
-向用户展示选择题（例如使用 `AskUserQuestion` 或等价交互方式）：
+若用户尚未明确是直接重新生成还是先看提示词，再展示选择题：
 
 ```
 问题: "请选择操作："
@@ -364,10 +374,10 @@ removed_actors = gen_actors - script_actors   # 剧本已删除的角色
 
 对用户指定的每个资产：
 
-1. **读取提示词**：从 `${PROJECT_DIR}/workspace/*_gen.json` 中查找该资产，读取其 prompt（取第一个 prompt）
-   - 角色 → `${PROJECT_DIR}/workspace/*_actors_gen.json`，匹配 `actors[].actor_name`，读取 `prompts` 字段
-   - 场景 → `${PROJECT_DIR}/workspace/*_scenes_gen.json`，匹配 `scenes[].name`，读取 `prompts` 字段
-   - 道具 → `${PROJECT_DIR}/workspace/*_props_gen.json`，匹配 `props[].name`，读取 `prompts` 字段
+1. **读取提示词**：从 `${PROJECT_DIR}/draft/*_gen.json` 中查找该资产，读取其 prompt（取第一个 prompt）
+   - 角色 → `${PROJECT_DIR}/draft/*_actors_gen.json`，匹配 `actors[].actor_name`，读取 `prompts` 字段
+   - 场景 → `${PROJECT_DIR}/draft/*_scenes_gen.json`，匹配 `scenes[].name`，读取 `prompts` 字段
+   - 道具 → `${PROJECT_DIR}/draft/*_props_gen.json`，匹配 `props[].name`，读取 `prompts` 字段
 
 2. **展示当前提示词**：以代码块形式展示给用户，格式如：
    ```
@@ -394,74 +404,9 @@ removed_actors = gen_actors - script_actors   # 剧本已删除的角色
 
 | 用户输入类别 | 命令参数 |
 |------------|---------|
-| 角色图片 | `--characters --voice --regenerate-actors "名称"`（重新生成角色图片时自动包含音色） |
-| 角色音色 | `--characters --voice --regenerate-actors "名称"`（仅重新生成音色也需带 --characters） |
+| 角色图片 | `--characters --regenerate-actors "名称"` |
 | 场景 | `--scenes --regenerate-scenes "名称"` |
 | 道具 | `--props --regenerate-props "名称"` |
-
----
-
-## 选项 5：上传角色资产到火山引擎
-
-> **Platform support**: Currently only Volcengine (火山引擎) is supported. Scenes and props upload not yet available.
-
-### 快捷入口
-
-| User Input | Action |
-|-----------|--------|
-| Contains "character/actor" + "Volcengine/upload" + **specific names** | Upload specified actors (`--actors "Name"`) |
-| Contains "character/actor" + "Volcengine/upload", **no names** | Upload all un-uploaded actors |
-| Contains "scene" + "upload" | Prompt: scene upload not yet supported |
-| Contains "prop" + "upload" | Prompt: prop upload not yet supported |
-
-**Name parsing**: "upload Driver" -> `--actors "Driver"`, "upload Driver, Boy" -> `--actors "Driver,Boy"`. Names match `${PROJECT_DIR}/output/actors/actors.json` `name` field (case-sensitive).
-
-### 前置检查
-
-#### 步骤 0-A: 登录检查
-
-Same as asset generation preflight — run `python3 ./.claude/skills/asset-gen/scripts/preflight_awb.py --check login`.
-
-#### 步骤 0-B: 资产完整性检查
-
-Read `${PROJECT_DIR}/output/actors/actors.json`, verify per actor:
-
-| Field | Requirement |
-|-------|------------|
-| `voice` | Non-empty |
-| `voice_url` | Non-empty |
-| `default.three_view` | Non-empty |
-| `default.three_view_url` | Non-empty |
-| `default.subject_id` | Non-null = already uploaded, auto-skip |
-
-- `subject_id` non-null -> skip (idempotent)
-- Other required fields missing -> print details, abort, prompt user to regenerate via option 3/4
-- All actors already uploaded -> prompt "no action needed"
-
-### 执行上传
-
-```bash
-python3 -X utf8 "./.claude/skills/asset-gen/scripts/upload_actors.py" --project-dir "${PROJECT_DIR}" [--actors "Driver,Boy"]
-```
-
-| Param | Description | Default |
-|-------|-------------|---------|
-| `--project-dir` | Project root directory | `PROJECT_DIR` env var or CWD |
-| `--actors` | Actor names to upload, comma-separated | Empty = all un-uploaded |
-
-**Script flow**: Read actors.json -> validate fields -> `create_asset_group()` per actor -> upload assets (three-view, front, side, back, voice; empty URLs skipped) -> print summary.
-
-**Request timeout**: 60s per API call (configured in `common_asset_group_api.py` `DEFAULT_TIMEOUT`).
-
-### 展示结果
-
-Upload summary table:
-
-```
-Actor  | Asset Group ID | Uploaded      | Failed
--------|----------------|---------------|-------
-Boy    | xxx            | 3-view,front,side,back,voice | None
-```
 
 ---
 
@@ -473,11 +418,11 @@ Boy    | xxx            | 3-view,front,side,back,voice | None
 python3 -X utf8 \
   "./.claude/skills/asset-gen/scripts/style_generate.py" \
   --script-json "${PROJECT_DIR}/output/script.json" \
-  --output "${PROJECT_DIR}/workspace/style.json" \
+  --output "${PROJECT_DIR}/draft/style.json" \
   [--style-override 真人]
 ```
 
-**输出**: `${PROJECT_DIR}/workspace/style.json`（世界观类型、渲染前缀、防污染规则）
+**输出**: `${PROJECT_DIR}/draft/style.json`（世界观类型、渲染前缀、防污染规则）
 
 ### 步骤 2: 生成资产提示词
 
@@ -485,11 +430,11 @@ python3 -X utf8 \
 python3 -X utf8 \
   "./.claude/skills/asset-gen/scripts/generate_prompts_from_script.py" \
   --script-json "${PROJECT_DIR}/output/script.json" \
-  --workspace "${PROJECT_DIR}/workspace" \
-  --style-json "${PROJECT_DIR}/workspace/style.json"
+  --workspace "${PROJECT_DIR}/draft" \
+  --style-json "${PROJECT_DIR}/draft/style.json"
 ```
 
-**输出**: `${PROJECT_DIR}/workspace/{title}_actors_gen.json`、`_scenes_gen.json`、`_props_gen.json`
+**输出**: `${PROJECT_DIR}/draft/{title}_actors_gen.json`、`_scenes_gen.json`、`_props_gen.json`
 
 ### 步骤 3: 并行生成所有资产
 
@@ -498,11 +443,10 @@ python3 -X utf8 \
   "./.claude/skills/asset-gen/scripts/generate_all_assets.py" \
   --script-json "${PROJECT_DIR}/output/script.json" \
   --project-dir "${PROJECT_DIR}/output" \
-  --workspace "${PROJECT_DIR}/workspace" \
+  --workspace "${PROJECT_DIR}/draft" \
   [--characters] \
   [--scenes] \
   [--props] \
-  [--voice] \
   [--regenerate-actors "李明,王芳"] \
   [--regenerate-scenes "客厅,卧室"] \
   [--regenerate-props "手机,钥匙"] \
@@ -516,7 +460,6 @@ python3 -X utf8 \
 | `--characters` | 生成角色（含三视图） | 否 |
 | `--scenes` | 生成场景 | 否 |
 | `--props` | 生成道具 | 否 |
-| `--voice` | 生成角色音色（仅音色时自动进入 voice-only 模式，跳过图片/场景/道具） | 否 |
 | `--regenerate-actors` | 指定重新生成的角色名，逗号分隔 | 无 |
 | `--regenerate-scenes` | 指定重新生成的场景名，逗号分隔 | 无 |
 | `--regenerate-props` | 指定重新生成的道具名，逗号分隔 | 无 |

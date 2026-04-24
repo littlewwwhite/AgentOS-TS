@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-sensitive_precheck.py — Pre-submission sensitive word checker for AWB video prompts.
+sensitive_precheck.py — Pre-submission sensitive word checker for video prompts.
 
 Parses replacement rules from SENSITIVE_WORDS.md and provides:
   - precheck_prompt(): detect sensitive words in a prompt
@@ -73,7 +73,7 @@ _parse_rules_from_md(_RULES_PATH)
 # ============================================================
 
 def precheck_prompt(prompt: str) -> tuple[bool, list[str]]:
-    """Check prompt for known sensitive words before AWB submission.
+    """Check prompt for known sensitive words before video submission.
 
     Performs simple substring matching for each word in the sensitive word list.
     Xianxia-prefixed fantasy terms may still appear; this check covers the

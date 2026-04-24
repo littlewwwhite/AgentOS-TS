@@ -235,14 +235,14 @@ novel_source: {小说名称}
 expansion_ratio: 中扩写
 first_mover: 情感推动力
 core_style: A.虐心催泪流
-style_guide_path: ${PROJECT_DIR}/workspace/style-guide.md
-anchor_path: ${PROJECT_DIR}/workspace/anchor.md
+style_guide_path: ${PROJECT_DIR}/draft/style-guide.md
+anchor_path: ${PROJECT_DIR}/draft/anchor.md
 five_invariants_locked: true
 novel_highlights_count: 8
 subplot_plan: 3条支线
 completed:
-  - S1-原文分析与灵感提取 → ${PROJECT_DIR}/workspace/s1-analysis.md
-  - S2-基础设定 → ${PROJECT_DIR}/workspace/s2-setting.md
+  - S1-原文分析与灵感提取 → ${PROJECT_DIR}/draft/s1-analysis.md
+  - S2-基础设定 → ${PROJECT_DIR}/draft/s2-setting.md
 next_stage: S3-故事大纲
 expansion_notes: 原文5200字，采用中扩写策略，目标55集
 notes: 基础设定已完成，进入故事大纲阶段
@@ -267,17 +267,18 @@ NTSV2-CHECKPOINT 在 SWS-CHECKPOINT 基础上增加了以下字段：
 
 ## 工作区目录约定
 
-NTSV2 与 SWS 共用 `${PROJECT_DIR}/workspace/` 作为工作区根目录：
+NTSV2 与 SWS 共用 `${PROJECT_DIR}/draft/` 作为工作区根目录：
 
 ```
-workspace/
-├── novel.txt                # 原文（自动保存）
-├── s1-analysis.md           # S1 交付物（原文分析+灵感提取）
-├── style-guide.md           # 风格指南（S1 确认后生成）
-├── s2-setting.md            # S2 交付物
-├── s3-outline.md            # S3 交付物（故事大纲+扩写规划）
-├── s4-character.md          # S4 交付物
-├── anchor.md                # 锚点文档（S4 完成后组装）
+${PROJECT_DIR}/
+├── source.txt               # 原文（自动保存于项目根）
+└── draft/
+    ├── s1-analysis.md           # S1 交付物（原文分析+灵感提取）
+    ├── style-guide.md           # 风格指南（S1 确认后生成）
+    ├── s2-setting.md            # S2 交付物
+    ├── s3-outline.md            # S3 交付物（故事大纲+扩写规划）
+    ├── s4-character.md          # S4 交付物
+    ├── anchor.md                # 锚点文档（S4 完成后组装）
 ├── s5-tracking.md           # S5 进度追踪
 ├── s6-episode-outline.md    # S6 交付物（节拍表+场景清单）
 ├── s7-scripts.md            # S7 交付物（完整剧本）

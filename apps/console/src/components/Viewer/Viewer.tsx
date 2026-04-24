@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTabs } from "../../contexts/TabsContext";
 import { useProject } from "../../contexts/ProjectContext";
 import { TabBar } from "./TabBar";
@@ -11,6 +12,7 @@ import { VideoGridView } from "./views/VideoGridView";
 import { ScriptView } from "./views/ScriptView";
 import { StoryboardView } from "./views/StoryboardView";
 import { OverviewView } from "./views/OverviewView";
+import { ProjectOnboardingView } from "./views/ProjectOnboardingView";
 import type { ViewKind } from "../../types";
 
 function renderView(kind: ViewKind, projectName: string, path: string) {
@@ -23,7 +25,6 @@ function renderView(kind: ViewKind, projectName: string, path: string) {
     case "video-grid": return <VideoGridView projectName={projectName} path={path} />;
     case "script": return <ScriptView projectName={projectName} path={path} />;
     case "storyboard": return <StoryboardView projectName={projectName} path={path} />;
-    case "inspiration": return <JsonView projectName={projectName} path={path} />;
     case "overview": return <OverviewView />;
     default: return <FallbackView projectName={projectName} path={path} />;
   }
@@ -39,21 +40,51 @@ function kindLabel(kind: ViewKind): string {
     case "video-grid": return "VIDEO GRID";
     case "script": return "SCRIPT";
     case "storyboard": return "STORYBOARD";
-    case "inspiration": return "INSPIRATION";
     case "overview": return "OVERVIEW";
     default: return "FILE";
   }
 }
 
 export function Viewer() {
-  const { tabs, activeId } = useTabs();
-  const { name } = useProject();
+  const { tabs, activeId, openPath } = useTabs();
+  const { name, setName, refresh } = useProject();
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const active = tabs.find((t) => t.id === activeId);
   if (!name) {
     return (
-      <div className="h-full flex items-center justify-center p-10 font-serif italic text-[15px] text-[var(--color-ink-faint)]">
-        选择一个项目以开始。
-      </div>
+      <ProjectOnboardingView
+        isSubmitting={isBootstrapping}
+        errorMessage={bootstrapError}
+        onCreate={async ({ projectName, file }) => {
+          if (!projectName.trim() || !file) return;
+          setIsBootstrapping(true);
+          setBootstrapError(null);
+          try {
+            const body = new FormData();
+            body.set("projectName", projectName.trim());
+            body.set("file", file);
+
+            const response = await fetch("/api/projects/bootstrap", {
+              method: "POST",
+              body,
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(typeof payload.error === "string" ? payload.error : `bootstrap failed: ${response.status}`);
+            }
+            if (typeof payload.project === "string") {
+              setName(payload.project);
+              refresh();
+              openPath("", "overview", "总览", { pinned: true });
+            }
+          } catch (err) {
+            setBootstrapError(err instanceof Error ? err.message : String(err));
+          } finally {
+            setIsBootstrapping(false);
+          }
+        }}
+      />
     );
   }
   if (!active) {

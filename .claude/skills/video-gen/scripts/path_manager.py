@@ -11,6 +11,7 @@ Path structure:
 """
 
 import re
+import shutil
 import urllib.request
 import ssl
 from pathlib import Path
@@ -230,7 +231,7 @@ class VideoReviewPaths:
         """构建 workspace review 层级路径。
 
         Args:
-            review_root: review 根目录 (如 workspace/ep001/review)
+            review_root: review 根目录 (如 draft/ep001/review)
             scn: 场景号
             clip: 镜头号
             shot: shot 号（可选，None 表示 clip 级）
@@ -244,6 +245,175 @@ class VideoReviewPaths:
             p = p / f"shot{shot:03d}"
         p.mkdir(parents=True, exist_ok=True)
         return p
+
+
+def resolve_runtime_storyboard_path(
+    output_path: Optional[str],
+    output_root: str,
+    episode: int,
+) -> Path:
+    """Resolve the runtime storyboard path for one episode.
+
+    `output_path` may be either:
+    - None                     -> use <output_root>/epNNN/epNNN_storyboard.json
+    - a directory path         -> use <dir>/epNNN_storyboard.json
+    - a concrete json filepath -> use it directly
+    """
+    if output_path:
+        candidate = Path(output_path)
+        if candidate.suffix.lower() == ".json":
+            return candidate
+        return candidate / f"ep{episode:03d}_storyboard.json"
+
+    return Path(output_root) / f"ep{episode:03d}" / f"ep{episode:03d}_storyboard.json"
+
+
+def prepare_runtime_storyboard_export(
+    requested_storyboard_path: str,
+    output_root: str,
+    episode: int,
+    allow_requested: bool = False,
+) -> tuple[Path, str]:
+    """Resolve the runtime storyboard path consumed by VIDEO stage.
+
+    Priority:
+    1. approved canonical storyboard under output/storyboard/approved/
+    2. caller-provided storyboard path only when explicitly allowed
+
+    The returned path is always the runtime export path inside output/epNNN/,
+    because downstream VIDEO runtime mutates the storyboard JSON in place
+    (for example writing `lsi` continuity data). Canonical storyboard files
+    must therefore never be modified directly by VIDEO phase.
+    """
+    output_root_path = Path(output_root)
+    runtime_path = output_root_path / f"ep{episode:03d}_storyboard.json"
+    approved_path = output_root_path.parent / "storyboard" / "approved" / runtime_path.name
+    requested_path = Path(requested_storyboard_path)
+
+    if approved_path.exists():
+        source_path = approved_path
+        source_kind = "approved"
+    elif allow_requested and requested_path.exists():
+        source_path = requested_path
+        source_kind = "requested"
+    else:
+        raise FileNotFoundError(
+            f"Approved storyboard not found: {approved_path}. "
+            "VIDEO requires output/storyboard/approved/epNNN_storyboard.json."
+        )
+
+    runtime_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if source_path.resolve() != runtime_path.resolve():
+        if (not runtime_path.exists()) or source_path.read_bytes() != runtime_path.read_bytes():
+            shutil.copyfile(source_path, runtime_path)
+    elif not runtime_path.exists():
+        raise FileNotFoundError(f"Runtime storyboard not found: {runtime_path}")
+
+    return runtime_path, source_kind
+
+
+def count_storyboard_generation_units(storyboard_data: dict) -> int:
+    """Count generation units in either runtime clips[] or simplified shots[] format."""
+    total = 0
+    for scene in storyboard_data.get("scenes", []):
+        if scene.get("clips"):
+            total += len(scene["clips"])
+        elif scene.get("shots"):
+            total += len(scene["shots"])
+    return total
+
+
+def build_validation_view_from_runtime_storyboard(
+    storyboard_data: dict,
+    episode: int,
+) -> dict:
+    """Normalize storyboard runtime/canonical data into the legacy validation shape.
+
+    This keeps `generate_episode_json.py` compatible with its existing validator
+    even when Phase 1 short-circuits to an approved director canonical contract.
+    """
+    result = {
+        "drama": storyboard_data.get("drama", ""),
+        "episode": episode,
+        "title": storyboard_data.get("title", ""),
+        "scenes": [],
+    }
+
+    for scene in storyboard_data.get("scenes", []):
+        scene_id = scene.get("scene_id", "")
+        actor_ids = [
+            actor.get("actor_id")
+            for actor in scene.get("actors", [])
+            if isinstance(actor, dict) and actor.get("actor_id")
+        ]
+        location_ids = [
+            location.get("location_id")
+            for location in scene.get("locations", [])
+            if isinstance(location, dict) and location.get("location_id")
+        ]
+        prop_ids = [
+            prop.get("prop_id")
+            for prop in scene.get("props", [])
+            if isinstance(prop, dict) and prop.get("prop_id")
+        ]
+        environment = scene.get("environment") or {}
+        normalized_scene = {
+            "scene_id": scene_id,
+            "clips": [],
+        }
+
+        clips = scene.get("clips")
+        if clips:
+            for index, clip in enumerate(clips, start=1):
+                normalized_scene["clips"].append({
+                    "clip_id": clip.get("clip_id", f"clip_{index:03d}"),
+                    "source": clip.get("script_source", clip.get("source", "")),
+                    "expected_duration": clip.get("expected_duration", 10),
+                    "characters": clip.get("characters", actor_ids),
+                    "location": clip.get("location", location_ids[0] if location_ids else ""),
+                    "layout_prompt": clip.get("layout_prompt", ""),
+                    "time": clip.get("time", environment.get("time", "")),
+                    "weather": clip.get("weather", environment.get("weather", "")),
+                    "props": clip.get("props", prop_ids),
+                    "act_rhythm": clip.get("act_rhythm", ""),
+                    "shots": clip.get("shots", []),
+                    "complete_prompt": clip.get(
+                        "complete_prompt",
+                        clip.get("complete_prompt_v2", clip.get("prompt", "")),
+                    ),
+                    "complete_prompt_v2": clip.get(
+                        "complete_prompt_v2",
+                        clip.get("complete_prompt", clip.get("prompt", "")),
+                    ),
+                })
+        else:
+            for index, shot in enumerate(scene.get("shots", []), start=1):
+                prompt = shot.get("prompt", "")
+                normalized_scene["clips"].append({
+                    "clip_id": f"clip_{index:03d}",
+                    "source": ",".join(str(ref) for ref in shot.get("source_refs", [])),
+                    "expected_duration": shot.get("expected_duration", 10),
+                    "characters": actor_ids,
+                    "location": location_ids[0] if location_ids else "",
+                    "layout_prompt": "",
+                    "time": environment.get("time", ""),
+                    "weather": environment.get("weather", ""),
+                    "props": prop_ids,
+                    "act_rhythm": "",
+                    "shots": [{
+                        "shot_id": shot.get("shot_id", f"shot_{index:03d}"),
+                        "time_range": shot.get("time_range", ""),
+                        "partial_prompt": prompt,
+                        "partial_prompt_v2": prompt,
+                    }],
+                    "complete_prompt": prompt,
+                    "complete_prompt_v2": prompt,
+                })
+
+        result["scenes"].append(normalized_scene)
+
+    return result
 
 
 def download_video(url: str, save_path: str, timeout: int = 120) -> bool:

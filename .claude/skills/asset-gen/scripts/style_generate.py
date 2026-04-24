@@ -29,9 +29,12 @@ if sys.platform == 'win32':
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 SCRIPT_DIR = Path(__file__).parent
+REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from common_gemini_client import create_client
 from common_config import get_style_config
+from pipeline_state import ensure_state, update_artifact, update_stage
 
 
 def log(msg):
@@ -43,7 +46,7 @@ def load_style_config():
 
 
 def load_project_style(workspace):
-    """从 workspace/style.json 加载项目世界观风格配置"""
+    """从 draft/style.json 加载项目世界观风格配置"""
     style_path = Path(workspace) / 'style.json'
     if not style_path.exists():
         raise FileNotFoundError(
@@ -120,6 +123,23 @@ def generate_style(script_json_path, output_path, style_override=None):
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
     log(f'✓ style.json 已保存: {out}')
+
+    project_root = Path(script_json_path).resolve().parent.parent
+    ensure_state(str(project_root))
+    update_artifact(
+        str(project_root),
+        out.resolve().relative_to(project_root).as_posix(),
+        "control",
+        "visual",
+        "completed",
+    )
+    update_stage(
+        str(project_root),
+        "VISUAL",
+        "partial",
+        next_action="review VISUAL",
+        artifact=out.resolve().relative_to(project_root).as_posix(),
+    )
 
     # 输出到 stdout 供调用方捕获
     print(json.dumps(result, ensure_ascii=False))

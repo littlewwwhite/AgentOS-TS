@@ -46,10 +46,6 @@ if sys.platform == 'win32':
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-# awb-login 认证模块
-from common_config import get_shared_auth_path
-sys.path.insert(0, str(get_shared_auth_path()))
-
 from common_image_api import submit_image_task, check_task_once, download_image
 from common_gemini_client import rewrite_prompt
 

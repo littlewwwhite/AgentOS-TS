@@ -238,8 +238,8 @@ def main():
     )
     parser.add_argument(
         "-o", "--output-dir",
-        default="workspace/output",
-        help="输出目录（默认: workspace/output）"
+        default="draft/output",
+        help="输出目录（默认: draft/output）"
     )
 
     args = parser.parse_args()

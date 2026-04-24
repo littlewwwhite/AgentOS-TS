@@ -33,12 +33,12 @@ S1 创意构思 → S2 基础设定 → S3 故事大纲 → S4 角色开发 → 
 
 | 序号 | 输入文件 | 路径 | 需要提取的关键信息 |
 |------|---------|------|-------------------|
-| 1 | S1 创意构思交付物 | `${PROJECT_DIR}/workspace/s1-ideation.md` | 剧名、第一推动力、核心冲突 |
-| 2 | S2 基础设定交付物 | `${PROJECT_DIR}/workspace/s2-setting.md` | 世界观规则、时空设定、视觉风格 |
-| 3 | S3 故事大纲交付物 | `${PROJECT_DIR}/workspace/s3-outline.md` | 分集大纲、伏笔布局表、爽虐点规划 |
-| 4 | S4 角色开发交付物 | `${PROJECT_DIR}/workspace/s4-character.md` | 角色档案、关系网络、成长弧线 |
-| 5 | 创作锚点文档 | `${PROJECT_DIR}/workspace/anchor.md` | 核心锚点、风格锚点、情感锚点 |
-| 6 | 风格指南 | `${PROJECT_DIR}/workspace/style-guide.md` | 叙事风格、台词风格、节奏风格 |
+| 1 | S1 创意构思交付物 | `${PROJECT_DIR}/draft/s1-ideation.md` | 剧名、第一推动力、核心冲突 |
+| 2 | S2 基础设定交付物 | `${PROJECT_DIR}/draft/s2-setting.md` | 世界观规则、时空设定、视觉风格 |
+| 3 | S3 故事大纲交付物 | `${PROJECT_DIR}/draft/s3-outline.md` | 分集大纲、伏笔布局表、爽虐点规划 |
+| 4 | S4 角色开发交付物 | `${PROJECT_DIR}/draft/s4-character.md` | 角色档案、关系网络、成长弧线 |
+| 5 | 创作锚点文档 | `${PROJECT_DIR}/draft/anchor.md` | 核心锚点、风格锚点、情感锚点 |
+| 6 | 风格指南 | `${PROJECT_DIR}/draft/style-guide.md` | 叙事风格、台词风格、节奏风格 |
 
 **检查指令：**
 - 逐一确认上述 6 个文件是否存在
@@ -219,7 +219,7 @@ S1 创意构思 → S2 基础设定 → S3 故事大纲 → S4 角色开发 → 
 
 ## 交付物格式
 
-本阶段共产出 4 项交付物，全部整合写入 `${PROJECT_DIR}/workspace/s5-tracking.md`。
+本阶段共产出 4 项交付物，全部整合写入 `${PROJECT_DIR}/draft/s5-tracking.md`。
 
 ### 交付物①：进度追踪文档（初始化版本）
 
@@ -273,7 +273,7 @@ S1 创意构思 → S2 基础设定 → S3 故事大纲 → S4 角色开发 → 
 
 ## 进度追踪文档模板格式
 
-以下为 `${PROJECT_DIR}/workspace/s5-tracking.md` 中进度追踪文档的标准模板。S5 阶段生成初始化版本，S7 阶段逐步填入实际数据。
+以下为 `${PROJECT_DIR}/draft/s5-tracking.md` 中进度追踪文档的标准模板。S5 阶段生成初始化版本，S7 阶段逐步填入实际数据。
 
 ---
 
@@ -478,7 +478,7 @@ S1 创意构思 → S2 基础设定 → S3 故事大纲 → S4 角色开发 → 
 
 用户确认后，执行以下操作：
 
-1. **生成 `${PROJECT_DIR}/workspace/s5-tracking.md`**
+1. **生成 `${PROJECT_DIR}/draft/s5-tracking.md`**
    - 将以上 4 项交付物整合写入文件
    - 所有模板字段填入从 S1-S4 提取的实际数据
    - 空白待填字段保留占位符
@@ -490,7 +490,7 @@ S1 创意构思 → S2 基础设定 → S3 故事大纲 → S4 角色开发 → 
 3. **提示进入 S6**
    - 输出提示：
    ```
-   S5 创建进度追踪已完成。追踪文档已保存至 ${PROJECT_DIR}/workspace/s5-tracking.md。
+   S5 创建进度追踪已完成。追踪文档已保存至 ${PROJECT_DIR}/draft/s5-tracking.md。
 
    交付物清单：
    - [SWS-ITEM: 进度追踪文档]（初始化版本）
@@ -510,5 +510,5 @@ S1 创意构思 → S2 基础设定 → S3 故事大纲 → S4 角色开发 → 
 1. 执行**输入检查**，确认所有前置文件就绪
 2. 向用户展示**用户确认项**，等待确认
 3. 用户确认后，按**工作流第一步到第五步**依次执行
-4. 生成所有交付物，整合写入 `${PROJECT_DIR}/workspace/s5-tracking.md`
+4. 生成所有交付物，整合写入 `${PROJECT_DIR}/draft/s5-tracking.md`
 5. 执行**确认后操作**（保存文件、更新 checkpoint、提示进入 S6）

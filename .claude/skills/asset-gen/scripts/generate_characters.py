@@ -39,10 +39,6 @@ if sys.platform == 'win32':
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-# awb-login 认证模块
-from common_config import get_shared_auth_path
-sys.path.insert(0, str(get_shared_auth_path()))
-
 from common_image_api import submit_image_task, check_task_once, download_image, InsufficientCreditsError
 from common_gemini_client import rewrite_prompt
 from common_create_subjects import process_actor, upload_to_cos
@@ -654,7 +650,7 @@ def run_voice_generation(actor_data, temp_dir):
 
 # ── 辅助：为角色创建主体 ─────────────────────────────────────────────────────
 def _try_create_subject(ss):
-    """尝试为角色创建主体（上传正面图到AWB），返回 element_id 或 None。
+    """Compatibility shim: no subject provider is active, return None.
 
     Args:
         ss: 角色状态对象
@@ -693,7 +689,7 @@ def _try_create_subject(ss):
     voice_url = ss['url_dict'].get('voice') or None
     log(f"  [DEBUG] voice_url: {voice_url}")
 
-    # 5. 调用 process_actor 创建主体
+    # 5. Compatibility call; active ChatFire image path does not create subject ids.
     description = ss.get('description', ss['actor_name'])[:95]
     log(f"  [DEBUG] 准备调用 process_actor: name={ss['actor_name']}, desc={description[:50]}, frontal_image_url={frontal_image_url}, refer_urls={refer_urls}, voice_url={voice_url}...")
 

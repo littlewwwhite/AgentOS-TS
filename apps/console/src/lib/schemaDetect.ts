@@ -1,4 +1,4 @@
-export type JsonSchemaKind = "script" | "storyboard" | "inspiration" | "pipeline-state" | "generic";
+export type JsonSchemaKind = "script" | "storyboard" | "pipeline-state" | "generic";
 
 export function detectSchema(data: unknown): JsonSchemaKind {
   if (data == null || typeof data !== "object" || Array.isArray(data)) return "generic";
@@ -14,6 +14,5 @@ export function detectSchema(data: unknown): JsonSchemaKind {
     }
   }
   if (Array.isArray(o.episodes) && o.episodes.length > 0) return "script";
-  if ("brief" in o || "inspiration_id" in o) return "inspiration";
   return "generic";
 }

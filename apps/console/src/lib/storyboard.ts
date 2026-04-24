@@ -1,4 +1,9 @@
+// input: storyboard JSON fragments, project paths, and optional reference dictionaries
+// output: editor timelines, prompt summaries, media paths, and selection helpers
+// pos: shared domain helpers behind rendered storyboard editing and playback
+
 import { resolveRefs } from "./fountain";
+import { episodeIdFromStoryboardPath, episodeRuntimeDirForStoryboardPath } from "./storyboardPaths";
 
 export interface StoryboardShotLike {
   shot_id?: string;
@@ -84,6 +89,18 @@ export interface StoryboardEditorModel {
   episodeVideoPath: string | null;
 }
 
+export interface DraftStoryboardShotSummary {
+  shotId: string;
+  timeRange: string | null;
+  cameraType: string | null;
+}
+
+export interface DraftStoryboardPromptSummary {
+  partLabel: string;
+  summary: string | null;
+  shots: DraftStoryboardShotSummary[];
+}
+
 function uniqueNames(names: Array<string | null | undefined>): string[] {
   return Array.from(new Set(names.filter((value): value is string => Boolean(value && value.trim()))));
 }
@@ -140,12 +157,97 @@ function isVideoPath(path: string): boolean {
   return /\.(?:mp4|mov|webm)$/i.test(path);
 }
 
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "number" && Number.isFinite(item));
+}
+
+function coerceString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function extractStoryboardShotsObject(text: string): { shots?: unknown[] } | null {
+  const starts = Array.from(text.matchAll(/\{\s*"shots"\s*:/g), (match) => match.index ?? -1)
+    .filter((index) => index >= 0)
+    .reverse();
+
+  for (const start of starts) {
+    let end = text.lastIndexOf("}");
+    while (end > start) {
+      try {
+        const parsed = JSON.parse(text.slice(start, end + 1));
+        if (parsed && typeof parsed === "object" && Array.isArray((parsed as { shots?: unknown }).shots)) {
+          return parsed as { shots?: unknown[] };
+        }
+      } catch {
+        // Try the previous closing brace; draft prompts often contain prose before JSON.
+      }
+      end = text.lastIndexOf("}", end - 1);
+    }
+  }
+
+  return null;
+}
+
+function extractDraftSummary(text: string): string | null {
+  const lines = text.split(/\r?\n/).map((line) => line.trim());
+  const index = lines.findIndex((line) => line.startsWith("剧情摘要"));
+  if (index < 0) return null;
+  const current = lines[index];
+  if (/^剧情摘要\s*[：:]\s*\S/.test(current)) return current;
+  const next = lines.slice(index + 1).find(Boolean);
+  return next ? `剧情摘要：${next}` : current;
+}
+
+export function summarizeSourceRefs(refs: unknown): string {
+  if (!isNumberArray(refs) || refs.length === 0) return "无";
+  const sorted = [...refs].sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let start = sorted[0];
+  let previous = sorted[0];
+
+  for (const current of sorted.slice(1)) {
+    if (current === previous + 1) {
+      previous = current;
+      continue;
+    }
+    ranges.push(start === previous ? `${start}` : `${start}-${previous}`);
+    start = current;
+    previous = current;
+  }
+
+  ranges.push(start === previous ? `${start}` : `${start}-${previous}`);
+  return ranges.join(", ");
+}
+
+export function parseDraftStoryboardPrompt(prompt: string): DraftStoryboardPromptSummary {
+  const partLabel = prompt.split(/\r?\n/, 1)[0]?.trim() || "PART";
+  const parsed = extractStoryboardShotsObject(prompt);
+  const shots = (parsed?.shots ?? [])
+    .filter((shot): shot is Record<string, unknown> => !!shot && typeof shot === "object" && !Array.isArray(shot))
+    .map((shot, index) => {
+      const cameraSetup = shot.camera_setup;
+      const cameraType =
+        cameraSetup && typeof cameraSetup === "object" && !Array.isArray(cameraSetup)
+          ? coerceString((cameraSetup as Record<string, unknown>).type)
+          : null;
+
+      return {
+        shotId: coerceString(shot.shot_id) ?? `S${index + 1}`,
+        timeRange: coerceString(shot.time_range),
+        cameraType,
+      };
+    });
+
+  return {
+    partLabel,
+    summary: extractDraftSummary(prompt),
+    shots,
+  };
+}
+
 function episodeSlugFromPath(storyboardPath: string): string {
-  const basename = basenameOf(storyboardPath);
-  const match =
-    basename.match(/(ep_?\d+)(?=_storyboard\.json$|\.json$)/i) ??
-    storyboardPath.match(/(?:^|\/)(ep_?\d+)(?=\/)/i);
-  return match ? compactStoryboardId(match[1]) : "ep";
+  const episodeId = episodeIdFromStoryboardPath(storyboardPath);
+  return episodeId ? compactStoryboardId(episodeId) : "ep";
 }
 
 export function clipVideoPath(
@@ -153,7 +255,7 @@ export function clipVideoPath(
   sceneId: string,
   clipId: string,
 ): string {
-  const episodeDir = storyboardPath.replace(/\/[^/]+$/, "");
+  const episodeDir = episodeRuntimeDirForStoryboardPath(storyboardPath);
   const episodeSlug = episodeSlugFromPath(storyboardPath);
   const sceneSlug = compactStoryboardId(sceneId);
   const clipSlug = compactStoryboardId(clipId);
@@ -166,7 +268,7 @@ function resolveEpisodeVideoPath(
 ): string | null {
   if (!availablePaths || availablePaths.length === 0) return null;
 
-  const episodeDir = dirnameOf(storyboardPath);
+  const episodeDir = episodeRuntimeDirForStoryboardPath(storyboardPath);
   const episodeSlug = episodeSlugFromPath(storyboardPath);
   const exactBasename = `${episodeSlug}.mp4`;
   const exactCandidate = episodeDir ? `${episodeDir}/${exactBasename}` : exactBasename;
@@ -185,7 +287,7 @@ function resolveClipVideoPath(
   const fallbackPath = clipVideoPath(storyboardPath, sceneId, clipId);
   if (!availablePaths || availablePaths.length === 0) return fallbackPath;
 
-  const episodeDir = dirnameOf(storyboardPath);
+  const episodeDir = episodeRuntimeDirForStoryboardPath(storyboardPath);
   const episodeSlug = episodeSlugFromPath(storyboardPath);
   const sceneSlug = compactStoryboardId(sceneId);
   const clipSlug = compactStoryboardId(clipId);

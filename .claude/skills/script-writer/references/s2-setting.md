@@ -20,12 +20,12 @@ S2 开始前，必须确认以下输入已就绪：
 
 ### 必需输入
 
-1. **S1 交付物**（来自对话上下文或 `${PROJECT_DIR}/workspace/s1-ideation.md`）：
+1. **S1 交付物**（来自对话上下文或 `${PROJECT_DIR}/draft/s1-ideation.md`）：
    - 创意概念报告（六维度画像、Logline、第一推动力、核心冲突）
    - 创作锚点清单（不可更改的核心设定）
    - 风格方案（主风格 + 副风格）
 
-2. **风格指南**（来自对话上下文或 `${PROJECT_DIR}/workspace/style-guide.md`）：
+2. **风格指南**（来自对话上下文或 `${PROJECT_DIR}/draft/style-guide.md`）：
    - 写作风格核心特征
    - 画面调性
    - 禁止事项
@@ -288,7 +288,7 @@ S1 交付物检查：
 用户确认全部交付物后，依次执行：
 
 1. 将所有交付物的 status 更新为 `已确认`
-2. 如果存在 `${PROJECT_DIR}/workspace/`，将全部交付物写入 `${PROJECT_DIR}/workspace/s2-setting.md`
+2. 如果存在 `${PROJECT_DIR}/draft/`，将全部交付物写入 `${PROJECT_DIR}/draft/s2-setting.md`
 3. 更新检查点：
 
 ```
@@ -297,8 +297,8 @@ current_stage: S2-基础设定（已确认）
 first_mover: [情感推动力/剧情推动力]
 core_style: [风格代号+名称]
 completed:
-  - S1-创意构思 → ${PROJECT_DIR}/workspace/s1-ideation.md
-  - S2-基础设定 → ${PROJECT_DIR}/workspace/s2-setting.md
+  - S1-创意构思 → ${PROJECT_DIR}/draft/s1-ideation.md
+  - S2-基础设定 → ${PROJECT_DIR}/draft/s2-setting.md
 next_stage: S3-故事大纲
 notes: 基础设定已锁定，世界观/势力/金手指/风格DNA就绪
 [/SWS-CHECKPOINT]
@@ -327,8 +327,8 @@ notes: 基础设定已锁定，世界观/势力/金手指/风格DNA就绪
 
 ## 开始执行
 
-1. 检查 S1 交付物：从对话上下文或 `${PROJECT_DIR}/workspace/s1-ideation.md` 获取
-2. 检查风格指南：从对话上下文或 `${PROJECT_DIR}/workspace/style-guide.md` 获取
+1. 检查 S1 交付物：从对话上下文或 `${PROJECT_DIR}/draft/s1-ideation.md` 获取
+2. 检查风格指南：从对话上下文或 `${PROJECT_DIR}/draft/style-guide.md` 获取
 3. 如果缺少 S1 交付物，提示：
 
 ```

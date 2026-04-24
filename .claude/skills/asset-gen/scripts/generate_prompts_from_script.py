@@ -19,6 +19,11 @@
 import sys, os, json, argparse, uuid
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from pipeline_state import ensure_state, update_artifact, update_stage
 from threading import Lock
 
 # UTF-8 输出
@@ -286,7 +291,7 @@ def collect_all_actions_text(script_data):
 def analyze_actor_profiles_with_gemini(script_data, workspace_path):
     """调用 Gemini，基于剧本 actions 内容分析每个角色的性格、外貌、服装、情感弧线。
 
-    输出保存到 workspace/actor_analysis.json，支持断点续传。
+    输出保存到 draft/actor_analysis.json，支持断点续传。
     返回 {actor_id: {actor_name, personality, appearance, clothing, emotional_arc}}。
     """
     actors = script_data.get('actors', [])
@@ -807,14 +812,18 @@ def _save_outputs(workspace_path, project_title, results):
         "props":  f"{project_title}_props_gen.json",
     }
     log("\n=== 保存 JSON 文件 ===")
+    saved_paths = []
     for key, data in results.items():
         filename = key_to_file[key]
         try:
-            with open(workspace_path / filename, 'w', encoding='utf-8') as f:
+            output_path = workspace_path / filename
+            with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             log(f"✓ {filename}")
+            saved_paths.append(output_path)
         except Exception as e:
             log(f"❌ 保存失败 ({filename}): {e}")
+    return saved_paths
 
 
 def main():
@@ -852,7 +861,26 @@ def main():
         # actor_analysis=actor_analysis,
     )
 
-    _save_outputs(Path(args.workspace), project_title, results)
+    workspace_path = Path(args.workspace)
+    saved_paths = _save_outputs(workspace_path, project_title, results)
+    project_root = workspace_path.resolve().parent
+    ensure_state(str(project_root))
+    for saved_path in saved_paths:
+        update_artifact(
+            str(project_root),
+            saved_path.resolve().relative_to(project_root).as_posix(),
+            "derived",
+            "visual",
+            "completed",
+        )
+    if saved_paths:
+        update_stage(
+            str(project_root),
+            "VISUAL",
+            "partial",
+            next_action="review VISUAL",
+            artifact=saved_paths[0].resolve().relative_to(project_root).as_posix(),
+        )
     log(f"\n=== 项目资产提示词生成完成 ===")
     log(f"输出目录: {args.workspace}")
 

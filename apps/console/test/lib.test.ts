@@ -7,7 +7,9 @@ import {
   buildStoryboardEditorModel,
   clipVideoPath,
   durationFromRange,
+  parseDraftStoryboardPrompt,
   resolveStoryboardSelectionAtTime,
+  summarizeSourceRefs,
   splitStoryboardText,
 } from "../src/lib/storyboard";
 
@@ -29,8 +31,8 @@ describe("detectSchema", () => {
   test("storyboard: scenes with shots+prompt", () => {
     expect(detectSchema({ episode_id: "ep001", scenes: [{ shots: [{ prompt: "x" }] }] })).toBe("storyboard");
   });
-  test("inspiration: has inspiration_id or brief", () => {
-    expect(detectSchema({ brief: "x", topics: [] })).toBe("inspiration");
+  test("paused inspiration contract falls back to generic JSON", () => {
+    expect(detectSchema({ brief: "x", topics: [] })).toBe("generic");
   });
   test("fallback: unknown", () => {
     expect(detectSchema({ foo: 1 })).toBe("generic");
@@ -85,6 +87,24 @@ describe("storyboard helpers", () => {
       "A 何深",
       "B",
     ]);
+  });
+
+  test("summarizes storyboard draft source references for rendered editing", () => {
+    expect(summarizeSourceRefs([0, 1, 2, 4, 7])).toBe("0-2, 4, 7");
+    expect(summarizeSourceRefs([])).toBe("无");
+  });
+
+  test("parses nested shot metadata from storyboard draft prompts without mutating JSON structure", () => {
+    const prompt = `PART1\n\n剧情摘要：A\n\n{\n  "shots": [\n    {"shot_id": "S1", "time_range": "00:00-00:02", "camera_setup": {"type": "全景"}},\n    {"shot_id": "S2", "time_range": "00:02-00:04"}\n  ]\n}`;
+
+    expect(parseDraftStoryboardPrompt(prompt)).toEqual({
+      partLabel: "PART1",
+      summary: "剧情摘要：A",
+      shots: [
+        { shotId: "S1", timeRange: "00:00-00:02", cameraType: "全景" },
+        { shotId: "S2", timeRange: "00:02-00:04", cameraType: null },
+      ],
+    });
   });
 
   test("builds resolved clip inspector data for the storyboard info panel", () => {

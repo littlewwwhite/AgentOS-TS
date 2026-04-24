@@ -7,15 +7,15 @@ Respond in Chinese (简体中文). Structural keys and code in English.
 Single-session + global MCP + flat skills. No agent isolation.
 Use Claude Code Agent subagents for parallel work and context isolation.
 
+Repo reality:
+
+- 主体仍然是 flat skills 仓库（`.claude/skills/` 为事实源）
+- `apps/console/` 是当前保留的交互控制台实现，直接依赖 Claude Agent SDK
+- 因此项目不是“不要 Claude runtime”，而是“skills 为主，console 为可选交互层”
+
 ## Skill Path Convention
 
 SKILL.md 内引用 skill 自带文件时，直接使用 `references/`、`assets/`、`scripts/` 等相对路径；命令示例统一使用仓库根相对路径。`${PROJECT_DIR}` 含义保持不变。
-
-## AWB Authentication Strategy
-
-- refreshToken is permanent — never require SMS login again
-- On token expiry or API 701 error: call `awb_get_auth(force_refresh: true)` to refresh
-- NEVER call `awb_login` unless `awb_get_auth` returns "AWB config not found"
 
 ## Pipeline Stages
 
@@ -25,22 +25,24 @@ Novel → SCRIPT → VISUAL → STORYBOARD → VIDEO → EDITING → MUSIC → S
 
 | # | Stage | Skill | Input | Output | Gate |
 |---|-------|-------|-------|--------|------|
-| 0 | INSPIRATION | `wangwen` | user inspiration brief / market-research request | `${OUTPUT}/inspiration.json` | inspiration.json exists and passes self-check in `docs/inspiration-contract.md` |
-| 1 | SCRIPT | `script-adapt` (long novel ≥3000 chars) or `script-writer` (original/short story) | source text or `${OUTPUT}/inspiration.json` | `${OUTPUT}/script.json` | script.json exists with episodes[] |
-| 2 | VISUAL | `asset-gen` | script.json actors/locations/props | `${OUTPUT}/{actors,locations,props}/` images + element_id | actors have visual + element_id |
-| 3 | STORYBOARD | `storyboard` | script.json + real asset images | script.json with scenes[].shots[].prompt | shots contain prompt field |
-| 4 | VIDEO | `video-gen` | script.json with shots + element_id | `${OUTPUT}/ep{NNN}/` videos | video files exist |
+| 1 | SCRIPT | `script-adapt` (long novel ≥3000 chars) or `script-writer` (short source expansion) | complete novel/script/source text | `output/script.json` | script.json exists with episodes[] |
+| 2 | VISUAL | `asset-gen` | script.json actors/locations/props | `output/{actors,locations,props}/` images + metadata JSON | required asset JSON files exist with usable image paths/URLs |
+| 3 | STORYBOARD | `storyboard` | script.json + visual asset references | `output/storyboard/draft/ep{NNN}_storyboard.json` → `output/storyboard/approved/ep{NNN}_storyboard.json` | approved storyboard exists with scenes[].shots[].prompt |
+| 4 | VIDEO | `video-gen` | approved storyboard canonical | `output/ep{NNN}/` runtime storyboard + delivery + videos | delivery JSON and video files exist |
 | 5 | EDITING | `video-editing` | raw videos | trimmed/selected videos | edited files exist |
 | 6 | MUSIC | `music-matcher` | edited videos | scored videos | music tracks applied |
 | 7 | SUBTITLE | `subtitle-maker` | scored videos | final videos with subtitles | final/ directory populated |
 
+`wangwen` / `INSPIRATION` is currently paused and must not be used as the default project entry. The current business entry is a complete script, novel, structured story source, or uploaded source document.
+
 ### Dispatch Rules
 
-- When the user needs data-backed inspiration / market research / benchmark discovery ("什么题材在涨"、"找对标"、"改编漏斗") → invoke `wangwen`
-- When the user provides a novel or says "write a script" → invoke `script-adapt` or `script-writer`
+- When the user provides a novel, existing script, structured story source, or uploaded source document → invoke `script-adapt` or `script-writer`
+- Do not invoke `wangwen` unless the user explicitly asks to reactivate the paused market-research path.
 - When script.json exists and user says "generate assets/visuals" → invoke `asset-gen`
-- When assets exist and user says "storyboard/shots" → invoke `storyboard`
-- When user says "full production" / "全量制作" → run stages 1-7 sequentially, verifying gates between stages and updating `${WORKSPACE}/pipeline-state.json` after every stage boundary
+- When assets exist and user says "storyboard/shots" → invoke `storyboard`; do not modify `output/script.json`
+- When approved storyboard exists and user says "generate videos" → invoke `video-gen`; VIDEO must not create or rewrite storyboard prompts from `script.json`
+- When user says "full production" / "全量制作" → run stages 1-7 sequentially, verifying gates between stages and updating `pipeline-state.json` after every stage boundary
 - For partial tasks ("redo episode 3 video"), invoke the specific skill directly
 
 ### Parallel Strategy
@@ -55,18 +57,21 @@ For long scripts (Phase 2 of script-adapt, multi-episode writing):
 Before advancing to the next stage, check file system:
 ```bash
 # After SCRIPT
-ls ${OUTPUT}/script.json
+ls output/script.json
 
 # After VISUAL
-ls ${OUTPUT}/actors/ ${OUTPUT}/locations/
+ls output/actors/actors.json output/locations/locations.json output/props/props.json
 
 # After STORYBOARD
-python3 -c "import json; d=json.load(open('${OUTPUT}/script.json')); print(any('shots' in s for ep in d.get('episodes',[]) for s in ep.get('scenes',[])))"
+ls output/storyboard/approved/ep*_storyboard.json
+
+# After VIDEO
+ls output/ep*/ep*_delivery.json
 ```
 
 ### Unified State File
 
-Use `${WORKSPACE}/pipeline-state.json` as the single machine-readable pipeline index.
+Use `pipeline-state.json` as the single machine-readable pipeline index.
 
 - Initialize it before the first stage starts
 - Update it at every stage boundary and after every long-running per-episode step
@@ -137,7 +142,7 @@ State transition rules:
 
 | Domain | Skills | Responsibilities |
 |--------|--------|-----------------|
-| Researcher | wangwen | Market-research only (SQL via MCP). Never create script/asset/video content. |
+| Researcher | wangwen (paused) | Optional market-research only. Do not use as the default project entry. |
 | Screenwriter | script-adapt, script-writer | Script creation only. Never generate images or videos. |
 | Director | asset-gen, storyboard | Visual design + asset gen + shot planning. Never modify existing script text. |
 | Producer | video-gen, video-editing, music-matcher, subtitle-maker | Execution only. Zero creative decisions — all text from script.json. |
@@ -154,7 +159,6 @@ State transition rules:
 │   ├── source.txt                 ← source copy
 │   ├── draft/                     ← LLM intermediates (design.json, connectivity.md, episodes/, …)
 │   └── output/                    ← user-facing artifacts
-│       ├── inspiration.json
 │       ├── script.json
 │       ├── actors/  locations/  props/
 │       └── ep{NNN}/               ← per-episode storyboard + scn*/clip*/*.mp4

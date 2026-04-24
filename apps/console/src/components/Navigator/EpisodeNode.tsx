@@ -1,8 +1,9 @@
 import { useState } from "react";
-import type { EpisodeState, StageStatus } from "../../types";
+import type { EpisodeState } from "../../types";
 import { StatusBadge } from "./StatusBadge";
 import { useTabs } from "../../contexts/TabsContext";
 import { resolveView } from "../Viewer/resolveView";
+import { rollupEpisodeStatus } from "../../lib/episodeStatus";
 
 interface Props {
   epId: string;
@@ -11,37 +12,16 @@ interface Props {
   markSeen?: (path: string) => void;
 }
 
-const SUBS: Array<{ label: string; path: (epId: string) => string }> = [
-  { label: "分镜", path: (id) => `output/${id}/${id}_storyboard.json` },
-  { label: "原片", path: (id) => `output/${id}` },
-  { label: "剪辑", path: (id) => `output/${id}/edited` },
-  { label: "配乐", path: (id) => `output/${id}/scored` },
-  { label: "成片", path: (id) => `output/${id}/final` },
+const SUBS: Array<{ label: string; path: (epId: string, ep?: EpisodeState) => string }> = [
+  { label: "分镜", path: (id, ep) => ep?.storyboard?.artifact ?? `output/${id}/${id}_storyboard.json` },
+  { label: "视频", path: (id) => `output/${id}` },
 ];
-
-const STATUS_PRIORITY: StageStatus[] = [
-  "failed",
-  "running",
-  "partial",
-  "not_started",
-  "completed",
-  "validated",
-];
-
-function rollupStatus(ep: EpisodeState | undefined): StageStatus {
-  if (!ep) return "not_started";
-  const present = [ep.storyboard, ep.video, ep.editing, ep.music, ep.subtitle]
-    .map((s) => s?.status)
-    .filter((s): s is StageStatus => !!s);
-  if (present.length === 0) return "not_started";
-  return STATUS_PRIORITY.find((p) => present.includes(p)) ?? "not_started";
-}
 
 export function EpisodeNode({ epId, ep, unread, markSeen }: Props) {
   const [open, setOpen] = useState(false);
   const { openPath } = useTabs();
-  const worstStatus = rollupStatus(ep);
-  const defaultPath = SUBS[0].path(epId);
+  const worstStatus = rollupEpisodeStatus(ep);
+  const defaultPath = SUBS[0].path(epId, ep);
 
   function openDefaultStoryboard() {
     openPath(defaultPath, resolveView(defaultPath), `${epId}/${SUBS[0].label}`, { pinned: true });
@@ -69,7 +49,7 @@ export function EpisodeNode({ epId, ep, unread, markSeen }: Props) {
       {open && (
         <div className="ml-4 border-l border-[var(--color-rule)]">
           {SUBS.map((sub) => {
-            const p = sub.path(epId);
+            const p = sub.path(epId, ep);
             return (
               <div
                 key={sub.label}

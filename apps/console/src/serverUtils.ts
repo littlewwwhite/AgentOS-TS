@@ -1,5 +1,6 @@
 import { readdirSync, statSync } from "fs";
 import { join, relative, resolve } from "path";
+import { episodeIdFromStoryboardPath, episodeRuntimeDirForStoryboardPath } from "./lib/storyboardPaths";
 
 export interface TreeNode {
   path: string;
@@ -76,16 +77,11 @@ export function mimeFor(path: string): string {
 }
 
 function episodeSlugFromStoryboardPath(storyboardPath: string): string {
-  const base = storyboardPath.split("/").pop() ?? storyboardPath;
-  const match =
-    base.match(/(ep_?\d+)(?=_storyboard\.json$|\.json$)/i) ??
-    storyboardPath.match(/(?:^|\/)(ep_?\d+)(?=\/)/i);
-  return (match?.[1] ?? "episode").replace(/_/g, "");
+  return episodeIdFromStoryboardPath(storyboardPath) ?? "episode";
 }
 
 export function episodePreviewPathForStoryboard(storyboardPath: string): string {
-  const slash = storyboardPath.lastIndexOf("/");
-  const dir = slash >= 0 ? storyboardPath.slice(0, slash) : "";
+  const dir = episodeRuntimeDirForStoryboardPath(storyboardPath);
   const slug = episodeSlugFromStoryboardPath(storyboardPath);
   return dir ? `${dir}/${slug}.mp4` : `${slug}.mp4`;
 }

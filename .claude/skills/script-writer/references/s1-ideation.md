@@ -358,7 +358,7 @@ Goldfinger 维度：
 
 1. 将所有交付物的 status 更新为 `已确认`
 2. 生成 `style-guide.md`（基于 `templates/style-guide-template.md` 模板）
-3. 如果存在 `${PROJECT_DIR}/workspace/`，将交付物写入 `s1-ideation.md`，将风格指南写入 `style-guide.md`
+3. 如果存在 `${PROJECT_DIR}/draft/`，将交付物写入 `s1-ideation.md`，将风格指南写入 `style-guide.md`
 4. 提示用户进入下一阶段：进入 S2 基础设定
 
 ---
@@ -367,7 +367,7 @@ Goldfinger 维度：
 
 - 如已提供创意内容，直接执行六维度扫描
 - 如未提供创意：
-  - 检查 `${PROJECT_DIR}/workspace/` 是否存在且有检查点
+  - 检查 `${PROJECT_DIR}/draft/` 是否存在且有检查点
   - 存在 → 读取检查点恢复状态
   - 不存在 → 提示用户描述创意想法：
 

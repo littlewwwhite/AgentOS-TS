@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Script Shadow Route Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "route_id",
+    "status",
+    "source_kind",
+    "source_span",
+    "creation_goal",
+    "preserve_source_skeleton",
+    "selected_skill",
+    "selected_variant",
+    "expected_artifacts",
+    "why"
+  ],
+  "properties": {
+    "route_id": {
+      "type": "string",
+      "enum": [
+        "long_novel_direct_adaptation",
+        "short_source_expansion",
+        "original_from_idea",
+        "inspiration_to_original",
+        "structured_storyboard_transform",
+        "ambiguous_short_novel",
+        "ambiguous_overlap_zone"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "valid",
+        "redirect",
+        "needs_user_confirmation",
+        "paused"
+      ]
+    },
+    "source_kind": {
+      "type": "string",
+      "enum": [
+        "idea",
+        "inspiration_artifact",
+        "novel_text",
+        "structured_storyboard"
+      ]
+    },
+    "source_span": {
+      "type": "string",
+      "enum": [
+        "none",
+        "short",
+        "long",
+        "structured",
+        "unknown"
+      ]
+    },
+    "creation_goal": {
+      "type": "string",
+      "enum": [
+        "original",
+        "expansion",
+        "direct_adaptation",
+        "direct_parse",
+        "unknown"
+      ]
+    },
+    "preserve_source_skeleton": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "selected_skill": {
+      "type": "string",
+      "enum": [
+        "script-adapt",
+        "script-writer"
+      ]
+    },
+    "selected_variant": {
+      "type": "string",
+      "enum": [
+        "novel",
+        "storyboard",
+        "SWS",
+        "NTSV2",
+        "unknown"
+      ]
+    },
+    "expected_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "why": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "redirect_to": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "script-adapt",
+        "script-writer",
+        null
+      ],
+      "default": null
+    },
+    "needs_confirmation_on": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "source_kind",
+          "source_span",
+          "creation_goal",
+          "preserve_source_skeleton"
+        ]
+      },
+      "default": []
+    }
+  }
+}

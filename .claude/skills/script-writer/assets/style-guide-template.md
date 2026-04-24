@@ -7,7 +7,7 @@
 ## style-guide.md 标准格式
 
 ### 文件命名
-`style-guide.md`（保存至 `${PROJECT_DIR}/workspace/style-guide.md`）
+`style-guide.md`（保存至 `${PROJECT_DIR}/draft/style-guide.md`）
 
 ### 生成时机
 - S1 创意构思全部交付物确认后自动生成

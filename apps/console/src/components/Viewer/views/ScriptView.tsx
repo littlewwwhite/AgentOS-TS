@@ -2,7 +2,7 @@
 // output: Fountain-format screenplay renderer with inline editing
 // pos: ScriptView panel inside the Viewer; replaces old collapsible metadata list
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import {
   buildRefDict,
   buildFountainTokens,
@@ -10,8 +10,10 @@ import {
   type FountainToken,
 } from "../../../lib/fountain";
 import { useEditableJson, getAtPath } from "../../../hooks/useEditableJson";
+import { useProject } from "../../../contexts/ProjectContext";
 import { EditableText } from "../../common/EditableText";
 import { SaveStatusDot } from "../../common/SaveStatusDot";
+import { ArtifactLifecycleActions } from "../../common/ArtifactLifecycleActions";
 
 // ---------------------------------------------------------------------------
 // SaveStatusLabel — human-readable Chinese label next to the dot
@@ -127,6 +129,7 @@ function renderToken(
   data: ScriptJson,
   patch: PatchFn,
   status: "idle" | "loading" | "saving" | "saved" | "error",
+  readOnly: boolean,
 ): React.ReactNode {
   const editStatus: "idle" | "saving" | "saved" | "error" =
     status === "loading" ? "idle" : status;
@@ -167,6 +170,7 @@ function renderToken(
             status={editStatus}
             className="w-full block"
             ariaLabel="动作描述"
+            readOnly={readOnly}
           />
         </div>
       );
@@ -196,6 +200,7 @@ function renderToken(
             placeholder="情绪"
             status={editStatus}
             ariaLabel="角色情绪"
+            readOnly={readOnly}
           />
           <span>）</span>
         </div>
@@ -217,6 +222,7 @@ function renderToken(
             status={editStatus}
             className="block w-full"
             ariaLabel="对白"
+            readOnly={readOnly}
           />
         </div>
       );
@@ -237,6 +243,7 @@ function EpisodeBlock({
   episodeId,
   epIndex,
   editablePath,
+  readOnly,
 }: {
   tokens: FountainToken[];
   data: ScriptJson;
@@ -246,6 +253,7 @@ function EpisodeBlock({
   episodeId: string;
   epIndex: number;
   editablePath: string;
+  readOnly: boolean;
 }) {
   const editStatus: "idle" | "saving" | "saved" | "error" =
     status === "loading" ? "idle" : status;
@@ -267,6 +275,7 @@ function EpisodeBlock({
               placeholder="（本集标题）"
               status={editStatus}
               ariaLabel={`第${epIndex + 1}集标题`}
+              readOnly={readOnly}
             />
           </span>
         </div>
@@ -276,7 +285,7 @@ function EpisodeBlock({
       {/* Scene tokens */}
       <div className="space-y-4">
         {tokens.map((token) =>
-          renderToken(token, data, patch, status),
+          renderToken(token, data, patch, status, readOnly),
         )}
       </div>
     </article>
@@ -294,8 +303,14 @@ export function ScriptView({
   projectName: string;
   path: string;
 }) {
+  const { refresh, state } = useProject();
   const { data, error, status, patch, savedAt } =
     useEditableJson<ScriptJson>(projectName, path);
+  const locked = state?.artifacts?.[path]?.status === "locked" || state?.artifacts?.[path]?.editable === false;
+
+  useEffect(() => {
+    if (savedAt !== null) refresh();
+  }, [refresh, savedAt]);
 
   const handleCopyPath = useCallback(() => {
     const displayPath = `workspace/${projectName}/${path}`;
@@ -351,7 +366,10 @@ export function ScriptView({
         >
           {displayPath}
         </button>
-        <SaveStatusLabel status={status} savedAt={savedAt} error={error} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <SaveStatusLabel status={status} savedAt={savedAt} error={error} />
+          <ArtifactLifecycleActions projectName={projectName} path={path} onActionDone={refresh} />
+        </div>
       </div>
 
       {/* Screenplay body */}
@@ -408,6 +426,7 @@ export function ScriptView({
                 episodeId={epToken.episodeId}
                 epIndex={epToken.epIndex}
                 editablePath={epToken.editablePath}
+                readOnly={locked}
               />
             ))}
           </div>

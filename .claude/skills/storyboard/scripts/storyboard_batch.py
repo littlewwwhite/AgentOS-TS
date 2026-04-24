@@ -28,7 +28,7 @@ SCRIPT_DIR = Path(__file__).parent
 PROMPT_FILE = SCRIPT_DIR / "prompts" / "storyboard_system.txt"
 DEFAULT_TEXT_PROVIDER = "chatfire"
 DEFAULT_GEMINI_TEXT_MODEL = "gemini-3.1-flash-lite"
-DEFAULT_CHATFIRE_TEXT_MODEL = DEFAULT_GEMINI_TEXT_MODEL
+DEFAULT_COMPAT_TEXT_MODEL = DEFAULT_GEMINI_TEXT_MODEL
 
 
 def get_text_provider() -> str:
@@ -38,7 +38,7 @@ def get_text_provider() -> str:
 def get_default_text_model() -> str:
     provider = get_text_provider()
     if provider == "chatfire":
-        return os.environ.get("CHATFIRE_TEXT_MODEL", DEFAULT_CHATFIRE_TEXT_MODEL)
+        return os.environ.get("GEMINI_TEXT_MODEL", DEFAULT_COMPAT_TEXT_MODEL)
     return os.environ.get("GEMINI_TEXT_MODEL", DEFAULT_GEMINI_TEXT_MODEL)
 
 
@@ -193,7 +193,7 @@ def load_storyboard_client():
 
     return ChatFireStoryboardClient(
         api_key=chatfire_api_key,
-        base_url=os.environ.get("CHATFIRE_BASE_URL", "https://api.chatfire.cn/v1"),
+        base_url=os.environ.get("GEMINI_BASE_URL", "https://api.chatfire.cn/v1"),
     )
 
 

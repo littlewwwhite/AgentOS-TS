@@ -1,14 +1,31 @@
+import type { StageName } from "./lib/workflowModel";
+
 export type StageStatus =
   | "not_started"
   | "running"
   | "partial"
   | "completed"
   | "validated"
-  | "failed";
+  | "failed"
+  | "in_review"
+  | "approved"
+  | "locked"
+  | "change_requested"
+  | "stale"
+  | "superseded";
+
+export type ArtifactKind = "source" | "canonical" | "derived" | "control";
+
+export type ChangeRequestStatus = "open" | "accepted" | "rejected" | "resolved";
 
 export interface StageState {
   status: StageStatus;
   artifacts: string[];
+  updated_at?: string | null;
+  notes?: string | null;
+  owner_role?: string;
+  revision?: number;
+  locked?: boolean;
 }
 
 export interface EpisodeState {
@@ -19,14 +36,37 @@ export interface EpisodeState {
   subtitle?: { status: StageStatus };
 }
 
+export interface ArtifactState {
+  kind: ArtifactKind;
+  owner_role: string;
+  status: StageStatus;
+  editable: boolean;
+  revision: number;
+  depends_on: string[];
+  invalidates: string[];
+  updated_at?: string | null;
+  notes?: string | null;
+}
+
+export interface ChangeRequest {
+  id: string;
+  target_artifact: string;
+  requested_by_role: string;
+  reason: string;
+  created_at: string;
+  status: ChangeRequestStatus;
+}
+
 export interface PipelineState {
   version: number;
   updated_at: string;
-  current_stage: string;
+  current_stage: StageName | string;
   next_action: string;
   last_error: string | null;
   stages: Record<string, StageState>;
   episodes: Record<string, EpisodeState>;
+  artifacts?: Record<string, ArtifactState>;
+  change_requests?: ChangeRequest[];
 }
 
 export interface Project {
@@ -38,6 +78,8 @@ export interface Project {
 export type WsEvent =
   | { type: "session"; sessionId: string }
   | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
+  | { type: "slash_commands"; commands: string[] }
   | { type: "tool_use"; id: string; tool: string; input: unknown }
   | { type: "tool_result"; id: string; tool: string; output: string; path?: string }
   | { type: "result"; exitCode: number; duration: number }
@@ -51,6 +93,7 @@ export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
+  kind?: "text" | "thinking";
   isStreaming?: boolean;
   toolName?: string;
   toolInput?: unknown;
@@ -72,7 +115,6 @@ export type ViewKind =
   | "overview"
   | "script"
   | "storyboard"
-  | "inspiration"
   | "asset-gallery"
   | "video-grid"
   | "image"

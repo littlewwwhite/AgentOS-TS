@@ -34,10 +34,10 @@ argument-hint: "[视频文件路径或目录]"
 | ffmpeg / ffprobe | `ffmpeg -version` | `brew install ffmpeg` |
 | google-genai | `pip show google-genai` | `pip install google-genai` |
 | python-dotenv | `pip show python-dotenv` | `pip install python-dotenv` |
-| GEMINI_API_KEY | 环境变量 `echo $GEMINI_API_KEY` | 从 Google AI Studio 获取 |
+| GEMINI_API_KEY | 环境变量 `echo $GEMINI_API_KEY` | 填写 ChatFire key |
 | MCP anime-mcp | Claude Code MCP 设置中已配置 | — |
 
-**GEMINI_API_KEY** 是唯一必需的用户配置。脚本会按以下优先级读取配置：
+**GEMINI_API_KEY** 是唯一必需的用户配置，值填写 ChatFire key。脚本会按以下优先级读取配置：
 1. 系统环境变量（最高优先）
 2. 当前目录 `.env` 文件
 3. skill 内置 `assets/default.env`（兜底默认值）
@@ -169,7 +169,7 @@ output/ep00x/
 
 ## 统一状态文件
 
-`music-matcher` 是 `MUSIC` 阶段，必须同步维护 `${PROJECT_DIR}/workspace/pipeline-state.json`。
+`music-matcher` 是 `MUSIC` 阶段，必须同步维护 `${PROJECT_DIR}/pipeline-state.json`。
 
 - 进入阶段时：设置 `current_stage=MUSIC`、`stages.MUSIC.status=running`
 - `segments-*.json` 或 `results-*.json` 已写出但尚未合成完成时：设置 `episodes.ep{NNN}.music.status=partial`
