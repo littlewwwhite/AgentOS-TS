@@ -225,12 +225,16 @@ def describe_frame_with_gemini(
         print(f"[WARN] describe_frame_with_gemini: 图片不存在 {img_path}", file=sys.stderr)
         return None
 
-    api_key = gemini_cfg.get("api_key", "")
-    base_url = gemini_cfg.get("base_url", "")
+    api_key = gemini_cfg.get("api_key", "") or os.getenv("GEMINI_API_KEY", "")
+    base_url = (
+        gemini_cfg.get("base_url", "")
+        or os.getenv("GEMINI_BASE_URL")
+        or "https://api.chatfire.cn/gemini"
+    )
     model_name = gemini_cfg.get("model", "gemini-3.1-pro-preview")
 
     if not api_key:
-        print("[WARN] describe_frame_with_gemini: 未配置 gemini.api_key，跳过", file=sys.stderr)
+        print("[WARN] describe_frame_with_gemini: 未配置 GEMINI_API_KEY，跳过", file=sys.stderr)
         return None
 
     try:

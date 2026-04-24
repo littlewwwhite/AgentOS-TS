@@ -31,6 +31,7 @@ PROMPT_PATH = SKILL_DIR / "assets" / "asr_prompt.txt"
 OUTPUT_DIR = Path.cwd() / "output"
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://api.chatfire.cn/gemini")
 
 # Gemini 参数
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
@@ -199,7 +200,7 @@ def main():
     video_stem = Path(args.video_path).stem
 
     if not GEMINI_API_KEY:
-        print("Error: 请设置 GEMINI_API_KEY 环境变量")
+        print("Error: 请设置 GEMINI_API_KEY 环境变量（值使用 ChatFire key）")
         sys.exit(1)
 
     # 确定输出目录
@@ -228,7 +229,11 @@ def main():
 
     # 1. 初始化 Gemini 客户端
     from google import genai as google_genai
-    client = google_genai.Client(api_key=GEMINI_API_KEY)
+    from google.genai import types as genai_types
+    client = google_genai.Client(
+        api_key=GEMINI_API_KEY,
+        http_options=genai_types.HttpOptions(base_url=GEMINI_BASE_URL),
+    )
 
     # 2. 压缩并上传视频
     compressed = compress_video(args.video_path)

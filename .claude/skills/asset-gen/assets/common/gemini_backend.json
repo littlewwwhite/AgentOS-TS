@@ -1,14 +1,10 @@
 {
-  "mode": "official",
+  "mode": "proxy",
   "model": "gemini-3.1-flash-lite-preview",
-  "official": {
-    "api_key": "",
-    "api_key_env": "GEMINI_API_KEY"
-  },
   "proxy": {
     "api_key": "",
     "api_key_env": "GEMINI_API_KEY",
-    "base_url": "https://aihubmix.com/gemini"
+    "base_url": "https://api.chatfire.cn/gemini"
   },
   "review": {
     "models": ["gemini-3.1-flash-lite-preview"],

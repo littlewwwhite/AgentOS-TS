@@ -29,7 +29,7 @@ from config_loader import get_gemini_review_config, get_gemini_config
 
 _review_cfg = get_gemini_review_config()
 _gemini_cfg = get_gemini_config()
-GEMINI_BASE_URL = _gemini_cfg.get("base_url", "https://aihubmix.com/gemini")
+GEMINI_BASE_URL = _gemini_cfg.get("base_url", "https://api.chatfire.cn/gemini")
 GEMINI_API_KEY = _gemini_cfg.get("api_key", "")
 GEMINI_REVIEW_MODEL = _gemini_cfg.get("review_model", "gemini-3.1-pro-preview")
 
@@ -248,7 +248,7 @@ def analyze_video_parallel(
     if api_key is None:
         api_key = GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("未找到 Gemini API Key（config.json 和环境变量均未配置）")
+            raise ValueError("未找到 Gemini API Key（请设置 GEMINI_API_KEY，值使用 ChatFire key）")
 
     if model is None:
         model = GEMINI_REVIEW_MODEL

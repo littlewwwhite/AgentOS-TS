@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# input: assets/config.json and local environment variables
+# output: normalized skill runtime configuration dictionaries
+# pos: central config boundary for video-gen scripts
 """
 config_loader.py — video-gen 统一配置加载器
 
@@ -9,29 +12,33 @@ config_loader.py — video-gen 统一配置加载器
 
 import json
 import os
+import copy
 from pathlib import Path
 from typing import Any, Dict
 
 SCRIPT_DIR = Path(__file__).parent
 DEFAULT_CONFIG_PATH = SCRIPT_DIR / ".." / "assets" / "config.json"
+DEFAULT_CHATFIRE_GEMINI_BASE_URL = "https://api.chatfire.cn/gemini"
 
 # 内置默认值（与 assets/config.json 保持一致，用于找不到文件时兜底）
 _BUILTIN_DEFAULTS: Dict[str, Any] = {
     "video_model": {
-        "active_model": "kling_omni",
+        "provider": "volcengine_ark",
+        "active_model": "seedance2",
         "models": {
             "seedance2": {
-                "model_code": "JiMeng_Seedance_2_VideoCreate",
+                "provider": "volcengine_ark",
+                "model_code": "ep-20260303234827-tfnzm",
                 "model_group_code": "",
                 "subject_reference": False,
             },
-            "kling_omni": {
-                "model_code": "KeLing3_Omni_VideoCreate_tencent",
-                "model_group_code": "KeLing3_Omni_VideoCreate_Group",
-                "subject_reference": True,
+        },
+        "providers": {
+            "volcengine_ark": {
+                "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+                "api_key_env": "ARK_API_KEY",
             },
         },
-        "api_base_url": "https://animeworkbench.lingjingai.cn",
     },
     "generation": {
         "min_attempts": 1,
@@ -44,8 +51,9 @@ _BUILTIN_DEFAULTS: Dict[str, Any] = {
         "max_consecutive_errors": 10,
     },
     "gemini": {
-        "base_url": "https://aihubmix.com/gemini",
-        "api_key": "sk-v94Ns1dcs7YrhFcJBa67A1A52f584e30A8Ab3dBa6502037a",
+        "base_url": DEFAULT_CHATFIRE_GEMINI_BASE_URL,
+        "api_key": "",
+        "api_key_env": "GEMINI_API_KEY",
         "model": "gemini-3.1-pro-preview",
         "review_model": "gemini-3.1-pro-preview",
         "color_removal_model": "gemini-3.1-pro-preview",
@@ -64,6 +72,20 @@ _BUILTIN_DEFAULTS: Dict[str, Any] = {
 _config_cache: Dict[str, Any] = {}
 
 
+def _apply_env_overrides(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply secret-bearing environment overrides after loading file config."""
+    gemini_cfg = data.setdefault("gemini", {})
+    gemini_api_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_api_key:
+        gemini_cfg["api_key"] = gemini_api_key
+        gemini_cfg["api_key_env"] = "GEMINI_API_KEY"
+
+    base_url = os.environ.get("GEMINI_BASE_URL")
+    if base_url:
+        gemini_cfg["base_url"] = base_url
+    return data
+
+
 def get_config() -> Dict[str, Any]:
     """加载并返回完整配置字典。结果会缓存，只加载一次。"""
     if _config_cache:
@@ -74,11 +96,12 @@ def get_config() -> Dict[str, Any]:
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        _config_cache.update(data)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         import sys
         print(f"[config_loader] 配置文件加载失败 ({e})，使用内置默认值", file=sys.stderr)
-        _config_cache.update(_BUILTIN_DEFAULTS)
+        data = copy.deepcopy(_BUILTIN_DEFAULTS)
+
+    _config_cache.update(_apply_env_overrides(data))
 
     return _config_cache
 

@@ -182,7 +182,7 @@ def main():
     print(f"  [{status}] GEMINI_API_KEY")
     if not ok:
         all_ok = False
-        fixes_needed.append("设置 GEMINI_API_KEY: export GEMINI_API_KEY=xxx")
+        fixes_needed.append("设置 GEMINI_API_KEY 为 ChatFire key: export GEMINI_API_KEY=xxx")
 
     # 8. 中文字体
     ok = check_cjk_font()

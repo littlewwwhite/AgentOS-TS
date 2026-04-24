@@ -79,7 +79,7 @@ from phase1_clip_scoring import build as build_phase1_prompt
 # ── Gemini 参数 ──
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "")
+GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://api.chatfire.cn/gemini")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
 GEMINI_TEMPERATURE = float(os.getenv("GEMINI_TEMPERATURE", "1.0"))
 GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low")
@@ -625,7 +625,7 @@ def process_single_clip(clip_dir: Path, args, clip_index: int = 0, total_clips: 
 
     # ── API Key 检查 ──
     if not GEMINI_API_KEY:
-        print("错误: 请设置 GEMINI_API_KEY（环境变量或 .env 文件）", file=sys.stderr)
+        print("错误: 请设置 GEMINI_API_KEY（值使用 ChatFire key，环境变量或 .env 文件）", file=sys.stderr)
         return None
 
     # ── Step 1: Shot 切点检测（每个变体独立检测，并行）──

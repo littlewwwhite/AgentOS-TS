@@ -3,18 +3,14 @@
 """
 common_gemini_client.py - Gemini 客户端工厂
 
-通过 assets/common/gemini_backend.json 配置决定使用官方 API 还是三方代理：
+通过 assets/common/gemini_backend.json 配置决定使用 ChatFire Gemini 代理：
 
   {
-    "mode": "official",          // "official" | "proxy"
-    "official": {
-      "api_key": "",
-      "api_key_env": "GEMINI_API_KEY"
-    },
+    "mode": "proxy",             // 默认 proxy，即 ChatFire
     "proxy": {
       "api_key":  "",
-      "api_key_env": "GEMINI_PROXY_KEY",
-      "base_url": "https://your-proxy.example.com"
+      "api_key_env": "GEMINI_API_KEY",
+      "base_url": "https://api.chatfire.cn/gemini"
     }
   }
 
@@ -34,6 +30,9 @@ from google import genai
 from google.genai import types
 
 from common_config import get_config
+
+
+DEFAULT_CHATFIRE_GEMINI_BASE_URL = "https://api.chatfire.cn/gemini"
 
 
 def _load_backend_config() -> dict:
@@ -64,32 +63,43 @@ def get_key(backend_config: dict = None) -> Optional[str]:
     """返回当前后端模式对应的 API Key（可用于校验是否已设置）。"""
     if backend_config is None:
         backend_config = _load_backend_config()
-    mode = backend_config.get('mode', 'official')
+    mode = backend_config.get('mode', 'proxy')
     if mode == 'proxy':
-        return _resolve_key(backend_config.get('proxy', {}), 'GEMINI_PROXY_KEY')
+        return _resolve_key(backend_config.get('proxy', {}), 'GEMINI_API_KEY')
     else:
         return _resolve_key(backend_config.get('official', {}), 'GEMINI_API_KEY')
+
+
+def get_base_url(backend_config: dict = None) -> str:
+    """返回当前 Gemini 代理 base_url，默认使用 ChatFire。"""
+    if backend_config is None:
+        backend_config = _load_backend_config()
+    proxy_cfg = backend_config.get('proxy', {})
+    return (
+        os.getenv('GEMINI_BASE_URL')
+        or proxy_cfg.get('base_url')
+        or DEFAULT_CHATFIRE_GEMINI_BASE_URL
+    )
 
 
 def create_client(backend_config: dict = None) -> genai.Client:
     """
     根据配置创建 genai.Client。
 
-    - mode=official: 使用 google-genai SDK 直连官方 API
-    - mode=proxy:    使用自定义 base_url 转发到三方代理（Gemini API 兼容格式）
+    - mode=proxy: 默认使用 ChatFire base_url 转发 Gemini API 兼容格式
     """
     if backend_config is None:
         backend_config = _load_backend_config()
-    mode = backend_config.get('mode', 'official')
+    mode = backend_config.get('mode', 'proxy')
 
     if mode == 'proxy':
         proxy_cfg = backend_config.get('proxy', {})
-        api_key   = _resolve_key(proxy_cfg, 'GEMINI_PROXY_KEY')
-        base_url  = proxy_cfg.get('base_url', '')
+        api_key   = _resolve_key(proxy_cfg, 'GEMINI_API_KEY')
+        base_url  = get_base_url(backend_config)
         if not api_key:
-            raise ValueError('Gemini 代理模式：api_key 未配置（可在 proxy.api_key 或 proxy.api_key_env 中设置）')
+            raise ValueError('ChatFire Gemini 代理模式：api_key 未配置（设置 GEMINI_API_KEY 为 ChatFire key 或 proxy.api_key）')
         if not base_url:
-            raise ValueError('Gemini 代理模式：gemini_backend.proxy.base_url 未配置')
+            raise ValueError('ChatFire Gemini 代理模式：base_url 未配置')
         return genai.Client(api_key=api_key, http_options={'base_url': base_url})
     else:
         official_cfg = backend_config.get('official', {})

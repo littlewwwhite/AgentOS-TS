@@ -17,7 +17,7 @@ SCRIPT_DIR = Path(__file__).parent
 sys.path.insert(0, str(SCRIPT_DIR))
 from analyze_video import (
     compress_video, upload_video, analyze_with_gemini, parse_time,
-    SKILL_DIR, DEFAULT_ENV, GEMINI_API_KEY,
+    SKILL_DIR, DEFAULT_ENV, GEMINI_API_KEY, GEMINI_BASE_URL,
 )
 
 # 配置加载（analyze_video 导入时已加载，这里确保一致）
@@ -68,7 +68,11 @@ def analyze_single(video_path: Path, idx: int, total: int) -> dict:
     print(f"[{idx}/{total}] 正在分析 {video_path.name}...")
     try:
         from google import genai as google_genai
-        client = google_genai.Client(api_key=GEMINI_API_KEY)
+        from google.genai import types as genai_types
+        client = google_genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options=genai_types.HttpOptions(base_url=GEMINI_BASE_URL),
+        )
 
         compressed = compress_video(str(video_path))
         upload_path = compressed or str(video_path)
@@ -107,7 +111,7 @@ def main():
     args = parser.parse_args()
 
     if not GEMINI_API_KEY:
-        print("请设置 GEMINI_API_KEY 环境变量")
+        print("请设置 GEMINI_API_KEY 环境变量（值使用 ChatFire key）")
         sys.exit(1)
 
     videos = scan_videos(args.directory, recursive=args.recursive)

@@ -1,191 +1,170 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-common_image_api.py - 图片生成平台 API 封装
+# input: prompt text, optional reference image URLs, and OpenAI-compatible image env vars
+# output: image URLs downloaded into local asset files
+# pos: provider boundary for asset-gen image generation
 
-封装 animeworkbench 平台的图片生成接口，供 generate_characters / generate_scenes /
-generate_props 等脚本统一调用。
+from __future__ import annotations
 
-提供:
-  submit_image_task(model_code, prompt, params, max_retries=3) -> taskId | None
-  poll_image_task(task_id, timeout=600, label="")             -> {"result": [...], "show": [...]} | None
-  download_image(url, output_path)                            -> path | None
-"""
-
-import json, os, sys, time, subprocess, uuid
+import json
+import os
+import time
+import urllib.error
+import urllib.request
+import uuid
 from pathlib import Path
+from typing import Any
 
-# ── auth 模块（awb-login skill 提供）────────────────────────────────────
-from common_config import get_shared_auth_path
-sys.path.insert(0, str(get_shared_auth_path()))
-import auth
 
-# ── 平台常量 ────────────────────────────────────────────────────────────────
-BASE_URL      = os.environ.get("AWB_BASE_URL", "https://animeworkbench.lingjingai.cn")
-DEFAULT_MODEL = "Nano_Banana_ImageCreate"
+DEFAULT_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-2")
+DEFAULT_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.chatfire.cn").rstrip("/")
+_TASKS: dict[str, dict[str, Any]] = {}
 
 
 class InsufficientCreditsError(Exception):
-    """Raised when AWB returns code 1007 (insufficient credits).
-
-    Callers should treat this as a fatal, non-retryable error and stop all
-    pending submissions immediately.
-    """
+    """Provider quota is exhausted or billing blocks generation."""
 
 
-def submit_image_task(prompt, params, model_code="Nano_Banana_ImageCreate", max_retries=3, model_group_code="Nano_Banana_ImageCreate_Group_Discount"):
-    """提交图片生成任务，返回 taskId，失败返回 None。
+def _endpoint() -> str:
+    base_url = DEFAULT_BASE_URL
+    if base_url.endswith("/v1"):
+        return f"{base_url}/images/generations"
+    return f"{base_url}/v1/images/generations"
 
-    Special error handling:
-      - code 1007: raises InsufficientCreditsError immediately (no retry)
-      - code 6003: duplicate submission detected; returns None without retrying
-      - other non-success codes: normal retry up to max_retries
-    """
-    payload = {
-        "modelCode":    model_code,
-        "modelGroupCode": model_group_code,
-        "taskPrompt":   prompt,
-        "promptParams": params,
+
+def _api_key() -> str:
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is required for asset image generation")
+    return api_key
+
+
+def _size_from_params(params: dict[str, Any]) -> str:
+    raw_size = str(params.get("size") or "").strip()
+    if raw_size in {"1024x1024", "1536x1024", "1024x1536"}:
+        return raw_size
+
+    ratio = str(params.get("ratio") or "1:1").strip()
+    if ratio in {"16:9", "3:2", "landscape"}:
+        return "1536x1024"
+    if ratio in {"9:16", "2:3", "portrait"}:
+        return "1024x1536"
+    return "1024x1024"
+
+
+def _reference_images(params: dict[str, Any]) -> str | list[str] | None:
+    image = params.get("image") or params.get("iref")
+    if not image:
+        return None
+    if isinstance(image, str):
+        return image
+    if isinstance(image, list):
+        return [str(item) for item in image if str(item).startswith(("http://", "https://"))]
+    return None
+
+
+def _post_generation(prompt: str, params: dict[str, Any], model: str) -> list[str]:
+    body: dict[str, Any] = {
+        "model": model,
+        "prompt": prompt,
+        "size": _size_from_params(params),
     }
+    image = _reference_images(params)
+    if image:
+        body["image"] = image
+
+    request = urllib.request.Request(
+        _endpoint(),
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {_api_key()}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=180) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="replace")
+        if exc.code in {402, 429}:
+            raise InsufficientCreditsError(error_text) from exc
+        raise RuntimeError(f"ChatFire image generation failed HTTP {exc.code}: {error_text}") from exc
+
+    urls = [
+        item.get("url")
+        for item in payload.get("data", [])
+        if isinstance(item, dict) and item.get("url")
+    ]
+    if not urls:
+        raise RuntimeError(f"ChatFire image response missing data[].url: {payload}")
+    return urls
+
+
+def submit_image_task(prompt, params, model_code=DEFAULT_MODEL, max_retries=3, model_group_code=None):
+    """Submit an image request and return a local task id.
+
+    ChatFire image generation is synchronous, while existing asset scripts expect a
+    submit/poll interface. This adapter stores the returned URLs in memory and
+    marks the synthetic task as immediately successful.
+    """
+    last_error: Exception | None = None
     for attempt in range(1, max_retries + 1):
         try:
-            result = auth.api_request(
-                f"{BASE_URL}/api/material/creation/imageCreate",
-                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                method="POST",
-            )
-            code = result.get("code")
-            msg  = result.get("msg", "")
-
-            # Fatal: credits exhausted — stop immediately, no retry
-            if code == 1007:
-                raise InsufficientCreditsError(
-                    f"AWB credits exhausted (code 1007): {msg}"
-                )
-
-            # Duplicate submission — task may already be queued server-side
-            if code == 6003:
-                print(f"  ⚠ Duplicate submission detected (code 6003): {msg}", flush=True)
-                return None
-
-            task_id = result.get("data")
-            if task_id:
-                print(f"  ✓ 任务已提交: {task_id}", flush=True)
-                return task_id
-            print(f"  ⚠ 提交返回无 data (第{attempt}/{max_retries}次): {str(result)[:200]}", flush=True)
+            urls = _post_generation(prompt, params or {}, model_code or DEFAULT_MODEL)
+            task_id = f"chatfire-{uuid.uuid4().hex}"
+            _TASKS[task_id] = {
+                "status": "SUCCESS",
+                "result_urls": urls,
+                "display_urls": urls,
+                "created_at": time.time(),
+            }
+            print(f"  ✓ ChatFire image generated: {task_id}", flush=True)
+            return task_id
         except InsufficientCreditsError:
-            raise  # propagate immediately without retry
-        except Exception as e:
-            print(f"  ⚠ 提交异常 (第{attempt}/{max_retries}次): {e}", flush=True)
-        if attempt < max_retries:
-            # Use a fresh prompt suffix to avoid server-side dedup on retry
-            payload["taskPrompt"] = prompt + " " + uuid.uuid4().hex[:6]
-            time.sleep(2)
-    print(f"  ❌ 提交失败，已重试 {max_retries} 次", flush=True)
+            raise
+        except Exception as exc:
+            last_error = exc
+            print(f"  ⚠ ChatFire image generation failed ({attempt}/{max_retries}): {exc}", flush=True)
+            if attempt < max_retries:
+                time.sleep(2)
+
+    print(f"  ❌ ChatFire image generation failed after {max_retries} retries: {last_error}", flush=True)
     return None
 
 
 def poll_image_task(task_id, timeout=600, label=""):
-    """
-    轮询图片任务直到完成。
-
-    Returns:
-        {"result": [url, ...], "show": [url, ...]} 或 None
-    """
-    start_time = time.time()
-    consecutive_errors = 0
-    max_errors = 10
-    lbl = f"[{label}] " if label else ""
-
-    while True:
-        elapsed = time.time() - start_time
-        if elapsed > timeout:
-            print(f"  ❌ {lbl}超时（{timeout}秒）", flush=True)
-            return None
-        try:
-            result = auth.api_request(
-                f"{BASE_URL}/api/material/creation/imageCreateGet?taskId={task_id}",
-                method="GET",
-            )
-            if result.get("code") != 200:
-                consecutive_errors += 1
-                print(f"  ⚠ {lbl}接口错误 ({consecutive_errors}/{max_errors}): {result.get('msg')}", flush=True)
-                if consecutive_errors >= max_errors:
-                    print(f"  ❌ {lbl}连续接口错误，停止轮询", flush=True)
-                    return None
-                time.sleep(3)
-                continue
-
-            consecutive_errors = 0
-            data   = result.get("data", {})
-            status = data.get("taskStatus", "UNKNOWN")
-
-            if status == "SUCCESS":
-                result_urls  = data.get("resultFileList", [])
-                display_urls = data.get("resultFileDisplayList", [])
-                print(f"  ✓ {lbl}生成成功，获取到 {len(result_urls)} 张图片", flush=True)
-                return {"result": result_urls, "show": display_urls}
-            elif status in ("FAIL", "FAILED"):
-                print(f"  ❌ {lbl}生成失败: {data.get('errorMsg', '未知')}", flush=True)
-                return None
-            else:
-                queue_num = data.get("taskQueueNum", "-")
-                print(f"  ⏳ {lbl}状态: {status}, 队列: {queue_num}, 已等待: {elapsed:.0f}s", flush=True)
-            time.sleep(5)
-        except Exception as e:
-            consecutive_errors += 1
-            print(f"  ⚠ {lbl}查询异常 ({consecutive_errors}/{max_errors}): {e}", flush=True)
-            if consecutive_errors >= max_errors:
-                print(f"  ❌ {lbl}连续请求失败，停止轮询", flush=True)
-                return None
-            time.sleep(5)
+    task = _TASKS.get(task_id)
+    if not task:
+        return None
+    if task["status"] == "SUCCESS":
+        return {"result": task["result_urls"], "show": task["display_urls"]}
+    return None
 
 
 def check_task_once(task_id):
-    """单次查询任务状态，立即返回。
-
-    Returns:
-        {
-            "status": "SUCCESS" | "FAIL" | "PROCESSING" | "QUEUE" | ...,
-            "result_urls": [...],
-            "display_urls": [...],
-            "error_msg": "...",
-            "queue_num": ...,
-        }
-        异常时返回 {"status": "ERROR", "error_msg": "..."}
-    """
-    try:
-        result = auth.api_request(
-            f"{BASE_URL}/api/material/creation/imageCreateGet?taskId={task_id}",
-            method="GET",
-        )
-        if result.get("code") != 200:
-            return {"status": "ERROR", "error_msg": result.get("msg", "接口错误")}
-        data = result.get("data", {})
-        status = data.get("taskStatus", "UNKNOWN")
-        return {
-            "status": status,
-            "result_urls": data.get("resultFileList", []),
-            "display_urls": data.get("resultFileDisplayList", []),
-            "error_msg": data.get("errorMsg", ""),
-            "queue_num": data.get("taskQueueNum", -1),
-        }
-    except Exception as e:
-        return {"status": "ERROR", "error_msg": str(e)}
+    task = _TASKS.get(task_id)
+    if not task:
+        return {"status": "ERROR", "error_msg": f"unknown task id: {task_id}"}
+    return {
+        "status": task["status"],
+        "result_urls": task.get("result_urls", []),
+        "display_urls": task.get("display_urls", []),
+        "error_msg": task.get("error_msg", ""),
+        "queue_num": 0,
+    }
 
 
 def download_image(url, output_path):
-    """下载图片到本地，返回路径字符串或 None"""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        subprocess.run(
-            ["curl", "-s", "-L", "-o", str(output_path), url],
-            check=True, timeout=60,
-        )
-        if output_path.exists() and output_path.stat().st_size > 1000:
-            print(f"  ✓ 已下载: {output_path.name} ({output_path.stat().st_size // 1024}KB)", flush=True)
+        request = urllib.request.Request(url, headers={"User-Agent": "AgentOS-TS/asset-gen"})
+        with urllib.request.urlopen(request, timeout=120) as response:
+            output_path.write_bytes(response.read())
+        if output_path.exists() and output_path.stat().st_size > 0:
+            print(f"  ✓ downloaded: {output_path.name} ({output_path.stat().st_size // 1024}KB)", flush=True)
             return str(output_path)
-    except Exception as e:
-        print(f"  ❌ 下载失败: {e}", flush=True)
+    except Exception as exc:
+        print(f"  ❌ image download failed: {exc}", flush=True)
     return None

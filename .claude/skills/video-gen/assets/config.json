@@ -1,19 +1,21 @@
 {
   "video_model": {
+    "provider": "volcengine_ark",
     "active_model": "seedance2",
     "models": {
       "seedance2": {
-        "model_code": "JiMeng_Seedance_2_VideoCreate",
-        "model_group_code": "JiMeng_Seedance_2_VideoCreate_Group",
+        "provider": "volcengine_ark",
+        "model_code": "ep-20260303234827-tfnzm",
+        "model_group_code": "",
         "subject_reference": false
-      },
-      "kling_omni": {
-        "model_code": "KeLing3_Omni_VideoCreate_tencent",
-        "model_group_code": "KeLing3_Omni_VideoCreate_Group",
-        "subject_reference": true
       }
     },
-    "api_base_url": "https://animeworkbench.lingjingai.cn"
+    "providers": {
+      "volcengine_ark": {
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "api_key_env": "ARK_API_KEY"
+      }
+    }
   },
   "generation": {
     "min_attempts": 1,
@@ -26,9 +28,10 @@
     "max_consecutive_errors": 10
   },
   "gemini": {
-    "base_url": "https://aihubmix.com/gemini",
+    "base_url": "https://api.chatfire.cn/gemini",
     "api_key": "",
-    "api_key_note": "Set via GEMINI_API_KEY environment variable",
+    "api_key_env": "GEMINI_API_KEY",
+    "api_key_note": "Set GEMINI_API_KEY to the ChatFire key value",
     "model": "gemini-3.1-pro-preview",
     "review_model": "gemini-3.1-pro-preview",
     "color_removal_model": "gemini-3.1-pro-preview",

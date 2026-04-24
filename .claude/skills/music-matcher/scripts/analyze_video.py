@@ -30,6 +30,7 @@ PROMPT_PATH = SKILL_DIR / "assets" / "video_analysis.txt"
 OUTPUT_DIR = Path.cwd() / "output"
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://api.chatfire.cn/gemini")
 
 # Gemini 参数
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
@@ -171,11 +172,15 @@ def main():
     video_stem = Path(video_path).stem
 
     if not GEMINI_API_KEY:
-        raise EnvironmentError("请在 .env 中设置 GEMINI_API_KEY")
+        raise EnvironmentError("请在 .env 中设置 GEMINI_API_KEY（值使用 ChatFire key）")
 
     # 1. 初始化 Gemini 客户端并上传视频
     from google import genai as google_genai
-    client = google_genai.Client(api_key=GEMINI_API_KEY)
+    from google.genai import types as genai_types
+    client = google_genai.Client(
+        api_key=GEMINI_API_KEY,
+        http_options=genai_types.HttpOptions(base_url=GEMINI_BASE_URL),
+    )
 
     compressed = compress_video(video_path)
     upload_path = compressed or video_path

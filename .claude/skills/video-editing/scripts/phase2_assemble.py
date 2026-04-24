@@ -77,7 +77,7 @@ from phase2_loop_analysis import build as build_phase2_prompt
 # ── Phase 2 参数 ──
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "")
+GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://api.chatfire.cn/gemini")
 LOOP_GEMINI_MODEL = os.getenv("LOOP_GEMINI_MODEL", "gemini-3.1-flash-preview")
 LOOP_GEMINI_TEMPERATURE = float(os.getenv("LOOP_GEMINI_TEMPERATURE", "1.0"))
 LOOP_GEMINI_THINKING_LEVEL = os.getenv("LOOP_GEMINI_THINKING_LEVEL", "low")
@@ -1525,7 +1525,7 @@ def process_episode(
 
     # API Key 检查
     if not GEMINI_API_KEY:
-        print("错误: 请设置 GEMINI_API_KEY（环境变量或 .env 文件）", file=sys.stderr)
+        print("错误: 请设置 GEMINI_API_KEY（值使用 ChatFire key，环境变量或 .env 文件）", file=sys.stderr)
         sys.exit(1)
 
     from google import genai as google_genai
