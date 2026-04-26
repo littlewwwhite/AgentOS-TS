@@ -17,6 +17,11 @@ Repo reality:
 
 SKILL.md 内引用 skill 自带文件时，直接使用 `references/`、`assets/`、`scripts/` 等相对路径；命令示例统一使用仓库根相对路径。`${PROJECT_DIR}` 含义保持不变。
 
+## Model Boundary
+
+- Skills that need model calls should use `aos-cli model` through `.claude/skills/_shared/aos_cli_model.py`; see `.claude/skills/_shared/AOS_CLI_MODEL.md`.
+- Direct Gemini, OpenAI-compatible, ChatFire, and Ark SDK/API calls in skill scripts are legacy migration targets, not the pattern for new code.
+
 ## Pipeline Stages
 
 ```

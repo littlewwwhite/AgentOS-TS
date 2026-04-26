@@ -8,6 +8,8 @@ argument-hint: "[视频文件路径] [--episode ep_001]"
 
 输入配乐后的视频，自动完成：剧本名词提取 → Gemini ASR 转录（字幕指南辅助） → SRT 生成 → 字幕烧录 MP4 → XML 字幕轨道。
 
+> Model boundary note: this skill remains deferred on direct Gemini ASR/transcription calls because the current `aos-cli model` protocol does not yet fully cover this skill's required audio/video transcription input/output shape. Do not add new provider surfaces here; migrate this skill only after the `aos-cli` protocol explicitly supports the needed transcription contract.
+
 ## Resources
 
 - **环境检查脚本**：`scripts/phase0_check.py` — 检查所有依赖，缺失时给出安装指令
