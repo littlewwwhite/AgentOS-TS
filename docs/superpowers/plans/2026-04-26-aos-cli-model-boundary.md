@@ -469,11 +469,11 @@ def test_model_validate_invalid_json_returns_json_failure(tmp_path, capsys):
 
     captured = capsys.readouterr()
     response = json.loads(captured.out)
-    assert exit_code == 1
+    assert exit_code == 2
     assert response["ok"] is False
     assert response["apiVersion"] == "aos-cli.model/v1"
     assert response["task"] == "unknown"
-    assert response["capability"] == "unknown"
+    assert response["capability"] == "validate"
     assert response["error"]["code"] == "INVALID_REQUEST"
     assert response["error"]["retryable"] is False
     assert captured.err == ""
