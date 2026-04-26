@@ -334,7 +334,11 @@ describe("storyboard helpers", () => {
       sceneId: "scn_001",
       partId: "part_001",
       sourceRefsLabel: "0-2",
-      scriptExcerpt: "灵霜把银锭推到桌边。\n灵霜：这些账，今晚要清。\n她抬眼看向门外。",
+      scriptExcerpt: [
+        "灵霜把银锭推到桌边。",
+        "灵霜：这些账，今晚要清。",
+        "她抬眼看向门外。",
+      ],
       promptSummary: "总体描述：压抑内宅。",
       shots: [
         {

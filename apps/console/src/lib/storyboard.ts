@@ -106,11 +106,11 @@ export interface StoryboardGenerationUnitShot {
 
 export interface StoryboardGenerationUnit {
   key: string;
-  episodeId: string | null;
+  episodeId: string;
   sceneId: string;
   partId: string;
   sourceRefsLabel: string;
-  scriptExcerpt: string;
+  scriptExcerpt: string[];
   prompt: string;
   promptSummary: string;
   shots: StoryboardGenerationUnitShot[];
@@ -445,11 +445,12 @@ function sourceRefsFromValue(value: unknown): number[] {
 }
 
 type SceneBeatIndexEntry = {
-  episodeId: string | null;
+  episodeId: string;
   beats: string[];
 };
 
-function buildSceneBeatIndex(script: ScriptJson): Map<string, SceneBeatIndexEntry> {
+function buildSceneBeatIndex(script: ScriptJson | null | undefined): Map<string, SceneBeatIndexEntry> {
+  if (!script) return new Map();
   const dict = buildRefDict(script);
   const tokens = buildFountainTokens(script);
   const episodeIds = new Map<number, string>();
@@ -464,7 +465,7 @@ function buildSceneBeatIndex(script: ScriptJson): Map<string, SceneBeatIndexEntr
 
     if (token.kind === "scene_heading") {
       scenes.set(sceneTokenKey(token.epIndex, token.sceneIndex), {
-        episodeId: episodeIds.get(token.epIndex) ?? null,
+        episodeId: episodeIds.get(token.epIndex) ?? "",
         sceneId: token.sceneId,
         beats: [],
       });
@@ -495,7 +496,7 @@ function buildSceneBeatIndex(script: ScriptJson): Map<string, SceneBeatIndexEntr
 
   return new Map(
     Array.from(scenes.values()).map((scene) => [
-      `${scene.episodeId ?? ""}::${scene.sceneId}`,
+      `${scene.episodeId}::${scene.sceneId}`,
       { episodeId: scene.episodeId, beats: scene.beats },
     ]),
   );
@@ -503,11 +504,11 @@ function buildSceneBeatIndex(script: ScriptJson): Map<string, SceneBeatIndexEntr
 
 function sceneBeatEntry(
   sceneBeats: Map<string, SceneBeatIndexEntry>,
-  episodeId: string | null,
+  episodeId: string,
   sceneId: string,
 ): SceneBeatIndexEntry | null {
   return (
-    sceneBeats.get(`${episodeId ?? ""}::${sceneId}`) ??
+    sceneBeats.get(`${episodeId}::${sceneId}`) ??
     Array.from(sceneBeats.entries())
       .find(([key]) => key.endsWith(`::${sceneId}`))
       ?.[1] ??
@@ -517,16 +518,16 @@ function sceneBeatEntry(
 
 function sceneExcerptFromRefs(
   sceneBeats: Map<string, SceneBeatIndexEntry>,
-  episodeId: string | null,
+  episodeId: string,
   sceneId: string,
   refs: number[],
-): string {
+): string[] {
   const entry = sceneBeatEntry(sceneBeats, episodeId, sceneId);
-  if (!entry) return "";
+  if (!entry) return ["未找到对应剧本段落"];
   const lines = refs.length > 0
     ? refs.map((index) => entry.beats[index]).filter((beat): beat is string => Boolean(beat && beat.trim()))
-    : entry.beats;
-  return lines.join("\n");
+    : entry.beats.filter((beat): beat is string => Boolean(beat && beat.trim()));
+  return lines.length > 0 ? lines : ["未找到对应剧本段落"];
 }
 
 function generationPromptSummary(prompt: string): string {
@@ -539,10 +540,10 @@ export function buildStoryboardGenerationUnits(
     scene_id: string;
     shots?: ReadonlyArray<StoryboardShotLike>;
   }>,
-  script: ScriptJson,
+  script: ScriptJson | null | undefined,
   availablePaths?: Iterable<string>,
 ): StoryboardGenerationUnit[] {
-  const episodeId = episodeIdFromStoryboardPath(storyboardPath);
+  const episodeId = episodeIdFromStoryboardPath(storyboardPath) ?? "";
   const mediaPaths = availablePaths
     ? Array.from(new Set(Array.from(availablePaths).filter(isVideoPath)))
     : undefined;
