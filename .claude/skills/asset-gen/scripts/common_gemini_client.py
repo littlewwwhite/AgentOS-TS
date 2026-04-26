@@ -11,8 +11,8 @@ Despite the legacy module name, this file no longer talks to Gemini directly. It
 `.claude/skills/_shared/aos_cli_model.py`. Provider routing, key resolution, and proxy
 selection are owned by `aos-cli`.
 
-Deferred image+text review paths import the surviving `google.genai` helpers from
-`gemini_multimodal_legacy.py` instead.
+Deferred image+text review paths import the surviving direct-SDK helpers from the
+sibling `gemini_multimodal_legacy` module instead.
 """
 
 from __future__ import annotations
