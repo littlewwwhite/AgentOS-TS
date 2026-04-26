@@ -302,13 +302,15 @@ describe("storyboard helpers", () => {
       ],
     };
 
-    const rawPrompt = `PART1
+    const rawPrompt = `
+PART1
 
 总体描述：压抑内宅。
 
 \`\`\`json
 {"shots":[{"shot_id":"S1","time_range":"00:00-00:06","camera_setup":"近景手部+银锭特写","beats":["灵霜把银锭推到桌边"]},{"shot_id":"S2","time_range":"00:06-00:10","camera_setup":{"type":"中景"},"beats":["灵霜抬眼看向门外"]}]}
-\`\`\``;
+\`\`\`
+`;
 
     const units = buildStoryboardGenerationUnits(
       "output/storyboard/approved/ep001_storyboard.json",

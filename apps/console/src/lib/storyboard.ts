@@ -556,7 +556,8 @@ export function buildStoryboardGenerationUnits(
         const partId = `part_${String(index + 1).padStart(3, "0")}`;
         const videoPath = resolveClipVideoPath(storyboardPath, scene.scene_id, partId, mediaPaths);
         const sourceRefs = sourceRefsFromValue(shot.source_refs);
-        const prompt = shot.prompt?.trim() ?? "";
+        const prompt = shot.prompt ?? "";
+        const trimmedPrompt = prompt.trim();
 
         return {
           key: `${scene.scene_id}::${partId}`,
@@ -566,8 +567,8 @@ export function buildStoryboardGenerationUnits(
           sourceRefsLabel: summarizeSourceRefs(sourceRefs),
           scriptExcerpt: sceneExcerptFromRefs(sceneBeats, episodeId, scene.scene_id, sourceRefs),
           prompt,
-          promptSummary: generationPromptSummary(prompt),
-          shots: storyboardShotsFromPrompt(prompt).map((promptShot) => ({
+          promptSummary: generationPromptSummary(trimmedPrompt),
+          shots: storyboardShotsFromPrompt(trimmedPrompt).map((promptShot) => ({
             shotId: promptShot.shot_id ?? "shot",
             timeRange: promptShot.time_range ?? null,
             duration: shotDuration(promptShot),
