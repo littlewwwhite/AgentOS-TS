@@ -1039,7 +1039,7 @@ printf '{bad json' | uv run --project aos-cli aos-cli model validate --input -
 
 Expected:
 
-- exit code is `1`;
+- exit code is `2`;
 - stdout is valid JSON;
 - `ok` is `false`;
 - `error.code` is `INVALID_REQUEST`.
