@@ -267,10 +267,10 @@ def _poller_thread(pending_q, inbox_q, stop_event, temp_dir):
         resp = check_task_once(ticket['api_task_id'])
         api_status = resp.get('status', 'UNKNOWN')
 
-        if api_status in ('SUCCESS', 'FAIL', 'FAILED', 'ERROR'):
+        if api_status in ('succeeded', 'FAIL', 'FAILED', 'ERROR'):
             log(f"  [轮询] prompt_id={ticket.get('prompt_id', 'N/A')[:8]}..., api_task_id={ticket.get('api_task_id', 'N/A')}, api_status={api_status}")
 
-        if api_status == 'SUCCESS':
+        if api_status == 'succeeded':
             result_urls = resp.get('result_urls', [])
             display_urls = resp.get('display_urls', [])
             img_path = None
@@ -659,7 +659,15 @@ def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, 
         ss = scene_state[scene_id]
         ts = task_state[prompt_id]
         _thread_local.asset_prefix = f"【{ss['name']}】"
-        params = {"quality": "2K", "ratio": "16:9", "generate_num": "1"}
+        safe_scene_name = sanitize_dirname(ss['name'])
+        params = {
+            "quality": "2K",
+            "ratio": "16:9",
+            "generate_num": "1",
+            "local_dir": str(Path(temp_dir) / safe_scene_name),
+            "role": "scene.main",
+            "task": "asset.scene.main",
+        }
         tmp_prompt = ts['prompt']
         if ss.get('iref_url'):
             params["iref"] = [ss['iref_url']]
@@ -667,7 +675,12 @@ def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, 
 
         log(f"  [提交] {ss['name']} / {prompt_id[:8]} tmp_prompt: {tmp_prompt} params: {params}...")
         # submit_image_task 内部已有3次重试机制，此处无需额外重试
-        api_task_id = submit_image_task(tmp_prompt, params)
+        api_task_id = submit_image_task(
+            "",
+            tmp_prompt,
+            params=params,
+            project_dir=project_dir,
+        )
 
         if api_task_id:
             # 提交成功，投入 pending_q 让线程2轮询；同时通知线程1更新状态
@@ -982,14 +995,27 @@ def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, 
                         should_trigger_variants = True
                     else:
                         best_ts = task_state[best_prompt_id] if best_prompt_id else task_state[list(ss['prompts'].keys())[0]]
-                        params = {"quality": "2K", "ratio": "16:9", "generate_num": "1"}
+                        safe_scene_name = sanitize_dirname(ss['name'])
+                        params = {
+                            "quality": "2K",
+                            "ratio": "16:9",
+                            "generate_num": "1",
+                            "local_dir": str(Path(temp_dir) / safe_scene_name),
+                            "role": "scene.reference",
+                            "task": "asset.scene.reference",
+                        }
                         main_show_url = best_ts.get('show_url')
                         if main_show_url:
                             description = ss.get('description') or ss['name']
                             ref_prompt = _GC["generate_scenes"]["ref_prompt_template"].format(description=description)
                             params["iref"] = [main_show_url]
                             log(f"  [参考图] 道具「{ss['name']}」开始生成参考图 tmp_prompt: {ref_prompt} params: {params}...")
-                            ref_task_id = submit_image_task(ref_prompt, params)
+                            ref_task_id = submit_image_task(
+                                "",
+                                ref_prompt,
+                                params=params,
+                                project_dir=project_dir,
+                            )
                             if ref_task_id:
                                 # 将参考图任务投入轮询队列
                                 now = time.time()
@@ -1080,14 +1106,27 @@ def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, 
                                 should_trigger_variants = True
                             else:
                                 best_ts = task_state[best_prompt_id]
-                                params = {"quality": "2K", "ratio": "16:9", "generate_num": "1"}
+                                safe_scene_name = sanitize_dirname(ss['name'])
+                                params = {
+                                    "quality": "2K",
+                                    "ratio": "16:9",
+                                    "generate_num": "1",
+                                    "local_dir": str(Path(temp_dir) / safe_scene_name),
+                                    "role": "scene.reference",
+                                    "task": "asset.scene.reference",
+                                }
                                 main_show_url = best_ts.get('show_url')
                                 if main_show_url:
                                     description = ss.get('description') or ss['name']
                                     ref_prompt = _GC["generate_scenes"]["ref_prompt_template"].format(description=description)
                                     params["iref"] = [main_show_url]
                                     log(f"  [参考图] 场景「{ss['name']}」强制通过后开始生成参考图 tmp_prompt: {ref_prompt} params: {params}...")
-                                    ref_task_id = submit_image_task(ref_prompt, params)
+                                    ref_task_id = submit_image_task(
+                                        "",
+                                        ref_prompt,
+                                        params=params,
+                                        project_dir=project_dir,
+                                    )
                                     if ref_task_id:
                                         now = time.time()
                                         ref_prompt_id = f"{best_prompt_id}_ref"

@@ -282,7 +282,7 @@ def _poller_thread(pending_q, inbox_q, stop_event, temp_dir):
         resp = check_task_once(ticket['api_task_id'])
         api_status = resp.get('status', 'UNKNOWN')
 
-        if api_status == 'SUCCESS':
+        if api_status == 'succeeded':
             result_urls = resp.get('result_urls', [])
             display_urls = resp.get('display_urls', [])
             img_path = None
@@ -678,14 +678,27 @@ def generate_props(props_json, project_dir, workspace=None, scripts_dir=None, de
         ps = prop_state[prop_id]
         ts = task_state[task_id]
         _thread_local.asset_prefix = f"【{ps['name']}】"
-        params = {"quality": "2K", "ratio": "16:9", "generate_num": "1"}
+        safe_prop_name = sanitize_dirname(ps['name'])
+        params = {
+            "quality": "2K",
+            "ratio": "16:9",
+            "generate_num": "1",
+            "local_dir": str(Path(temp_dir) / safe_prop_name),
+            "role": "prop.main",
+            "task": "asset.prop.main",
+        }
         tmp_prompt = ts['prompt']
         if ps.get('iref_url'):
             params["iref"] = [ps['iref_url']]
             tmp_prompt += "只参考图片的风格："+tmp_prompt
 
         log(f"  [提交] {ps['name']} / {task_id[:8]} tmp_prompt: {tmp_prompt} params: {params}...")
-        api_task_id = submit_image_task(tmp_prompt, params)
+        api_task_id = submit_image_task(
+            "",
+            tmp_prompt,
+            params=params,
+            project_dir=project_dir,
+        )
 
         if api_task_id:
             now = time.time()
@@ -933,7 +946,15 @@ def generate_props(props_json, project_dir, workspace=None, scripts_dir=None, de
                     ps['_main_show_url'] = task_state[best_prompt_id].get('show_url', '')
                     # 暂存到 temp 目录
                     _stage_prop_images_single(ps, task_state[best_prompt_id], temp_dir)
-                    params = {"quality": "2K", "ratio": "16:9", "generate_num": "1"}
+                    safe_prop_name = sanitize_dirname(ps['name'])
+                    params = {
+                        "quality": "2K",
+                        "ratio": "16:9",
+                        "generate_num": "1",
+                        "local_dir": str(Path(temp_dir) / safe_prop_name),
+                        "role": "prop.reference",
+                        "task": "asset.prop.reference",
+                    }
                     # 生成参考图（如果未跳过）
                     if skip_ref:
                         log(f"  ⏭ 道具「{ps['name']}」跳过参考图生成（--skip-ref）")
@@ -966,7 +987,12 @@ def generate_props(props_json, project_dir, workspace=None, scripts_dir=None, de
                             ref_prompt = _GC["generate_props"]["ref_prompt_template"].format(description=description)
                             params["iref"] = [main_show_url]
                             log(f"  [参考图] 道具「{ps['name']}」开始生成参考图 tmp_prompt: {ref_prompt} params: {params}...")
-                            ref_task_id = submit_image_task(ref_prompt, params)
+                            ref_task_id = submit_image_task(
+                                "",
+                                ref_prompt,
+                                params=params,
+                                project_dir=project_dir,
+                            )
                             if ref_task_id:
                                 now = time.time()
                                 pending_q.put({
