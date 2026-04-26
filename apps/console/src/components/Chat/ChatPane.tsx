@@ -4,8 +4,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../../types";
+import type { ProductionObject } from "../../lib/productionObject";
 import { MessageBubble } from "./MessageBubble";
 import { nextSlashCommandIndex, visibleSlashCommands } from "../../lib/slashCommands";
+import { ScopeSummary } from "./ScopeSummary";
 
 interface Props {
   messages: ChatMessage[];
@@ -15,9 +17,19 @@ interface Props {
   onStop?: () => void;
   suggestions: string[];
   slashCommands?: string[];
+  productionObject?: ProductionObject;
 }
 
-export function ChatPane({ messages, isStreaming, isConnected, onSend, onStop, suggestions, slashCommands }: Props) {
+export function ChatPane({
+  messages,
+  isStreaming,
+  isConnected,
+  onSend,
+  onStop,
+  suggestions,
+  slashCommands = [],
+  productionObject,
+}: Props) {
   const [input, setInput] = useState("");
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -77,6 +89,7 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend, onStop, s
 
   return (
     <div className="flex flex-col h-full bg-[var(--color-paper)]">
+      {productionObject && <ScopeSummary object={productionObject} />}
       <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-3">
         {messages.length === 0 && (
           <div className="flex flex-col justify-center h-full gap-8">

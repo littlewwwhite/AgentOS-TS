@@ -91,4 +91,27 @@ describe("ChatPane chrome", () => {
     expect(html).toContain("bg-[var(--color-chat-user)]");
     expect(html).toContain("bg-[var(--color-chat-assistant)]");
   });
+
+  test("renders active production scope above the transcript", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ChatPane, {
+        isConnected: true,
+        isStreaming: false,
+        onSend: () => undefined,
+        messages: [],
+        suggestions: [],
+        productionObject: {
+          type: "shot",
+          episodeId: "ep001",
+          sceneId: "scn002",
+          shotId: "clip003",
+          path: "output/ep001/scn002/clip003/v1.mp4",
+        },
+      }),
+    );
+
+    expect(html).toContain("Current scope");
+    expect(html).toContain("ep001 · scn002 · clip003");
+    expect(html).toContain("current shot");
+  });
 });
