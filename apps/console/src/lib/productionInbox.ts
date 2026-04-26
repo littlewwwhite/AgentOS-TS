@@ -4,12 +4,14 @@
 
 import type { PipelineState } from "../types";
 import { buildOverviewWorkbench, type WorkbenchItem } from "./overviewWorkbench";
+import { STAGE_ORDER, isStageName } from "./workflowModel";
 
 export type ProductionInboxPriority = "decision" | "blocked";
+export type ProductionInboxCta = "去拍板" | "去返修" | "重新生成";
 
 export interface ProductionInboxItem extends WorkbenchItem {
   priority: ProductionInboxPriority;
-  cta: string;
+  cta: ProductionInboxCta;
 }
 
 export interface ProductionInbox {
@@ -21,18 +23,40 @@ export interface ProductionInbox {
   };
 }
 
+function assertNever(value: never): never {
+  throw new Error(`Unhandled workbench item kind: ${String(value)}`);
+}
+
 function toInboxItem(item: WorkbenchItem): ProductionInboxItem {
-  if (item.kind === "review") {
-    return { ...item, priority: "decision", cta: "去拍板" };
+  switch (item.kind) {
+    case "review":
+      return { ...item, priority: "decision", cta: "去拍板" };
+    case "change_request":
+      return { ...item, priority: "blocked", cta: "去返修" };
+    case "stale":
+      return { ...item, priority: "blocked", cta: "重新生成" };
+    default:
+      return assertNever(item.kind);
   }
-  if (item.kind === "change_request") {
-    return { ...item, priority: "blocked", cta: "去返修" };
-  }
-  return { ...item, priority: "blocked", cta: "重新生成" };
 }
 
 function priorityRank(priority: ProductionInboxPriority): number {
   return priority === "blocked" ? 0 : 1;
+}
+
+function stageRank(stage: string): number {
+  const index = isStageName(stage) ? STAGE_ORDER.indexOf(stage) : -1;
+  return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function compareInboxItems(left: ProductionInboxItem, right: ProductionInboxItem): number {
+  const priorityDiff = priorityRank(left.priority) - priorityRank(right.priority);
+  if (priorityDiff !== 0) return priorityDiff;
+
+  const stageDiff = stageRank(left.stage) - stageRank(right.stage);
+  if (stageDiff !== 0) return stageDiff;
+
+  return left.key.localeCompare(right.key);
 }
 
 export function buildProductionInbox(state: PipelineState): ProductionInbox {
@@ -43,7 +67,7 @@ export function buildProductionInbox(state: PipelineState): ProductionInbox {
     ...workbench.reviewItems,
   ]
     .map(toInboxItem)
-    .sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority));
+    .sort(compareInboxItems);
 
   const decisions = primaryItems.filter((item) => item.priority === "decision").length;
   const blocked = primaryItems.filter((item) => item.priority === "blocked").length;
