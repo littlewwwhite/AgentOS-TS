@@ -31,11 +31,10 @@ describe("buildAgentMessage", () => {
     expect(message).toContain("[User Request]\n重做一下");
   });
 
-  test("keeps slash commands at the message start for SDK routing", () => {
-    const message = " /storyboard ep001";
-    const agentMessage = buildAgentMessage(message, shotObject);
+  test("normalizes leading whitespace before slash commands for SDK routing", () => {
+    const agentMessage = buildAgentMessage(" /storyboard ep001", shotObject);
 
-    expect(agentMessage).toBe(message);
+    expect(agentMessage).toBe("/storyboard ep001");
     expect(agentMessage).not.toContain("[Production Scope]");
   });
 });

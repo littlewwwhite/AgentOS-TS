@@ -26,6 +26,7 @@ export function buildScopedAgentMessage(message: string, object: ProductionObjec
 }
 
 export function buildAgentMessage(message: string, object: ProductionObject): string {
-  if (message.trimStart().startsWith("/")) return message;
+  const trimmedStart = message.trimStart();
+  if (trimmedStart.startsWith("/")) return trimmedStart;
   return buildScopedAgentMessage(message, object);
 }

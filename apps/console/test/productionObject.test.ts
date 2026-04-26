@@ -46,6 +46,21 @@ describe("productionObject", () => {
     expect(getProductionObjectLabel(object)).toBe("ep001 · Storyboard");
   });
 
+  test("runtime episode artifacts resolve to scoped episode objects", () => {
+    expect(resolveProductionObjectFromPath("output/ep001/ep001_storyboard.json")).toEqual({
+      type: "episode",
+      episodeId: "ep001",
+      artifactRole: "storyboard",
+      path: "output/ep001/ep001_storyboard.json",
+    });
+    expect(resolveProductionObjectFromPath("output/ep001/ep001_delivery.json")).toEqual({
+      type: "episode",
+      episodeId: "ep001",
+      artifactRole: "delivery",
+      path: "output/ep001/ep001_delivery.json",
+    });
+  });
+
   test("shot video path resolves to shot object", () => {
     const object = resolveProductionObjectFromPath("output/ep001/scn002/clip003/v1.mp4");
     expect(object).toEqual({
