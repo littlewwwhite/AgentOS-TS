@@ -15,6 +15,26 @@ const FALLBACK_SLASH_COMMANDS = [
 
 const UNAVAILABLE_SLASH_COMMANDS = new Set(["/rewind", "/wangwen"]);
 
+const SLASH_COMMAND_DESCRIPTIONS: Record<string, string> = {
+  "/script-adapt": "将长篇小说或完整文本改编为正式剧本",
+  "/script-writer": "从故事源扩写正式剧本",
+  "/storyboard": "根据剧本和视觉设定生成视频前故事板",
+  "/asset-gen": "生成角色、场景、道具视觉设定",
+  "/video-gen": "根据定稿故事板生成分集视频",
+  "/video-editing": "筛选并剪辑已生成的视频素材",
+  "/music-matcher": "为成片匹配并合成配乐",
+  "/subtitle-maker": "生成字幕并烧录最终视频",
+};
+
+export interface SlashCommandOption {
+  command: string;
+  description: string;
+}
+
+export function describeSlashCommand(command: string): string {
+  return SLASH_COMMAND_DESCRIPTIONS[command] ?? "Claude Code command";
+}
+
 export function normalizeSlashCommands(commands: string[] | undefined): string[] {
   const source = commands && commands.length > 0 ? commands : FALLBACK_SLASH_COMMANDS;
   const normalized = source
@@ -34,6 +54,13 @@ export function visibleSlashCommands(input: string, commands: string[] | undefin
   return normalizeSlashCommands(commands)
     .filter((command) => command.slice(1).toLowerCase().startsWith(prefix))
     .slice(0, 12);
+}
+
+export function visibleSlashCommandOptions(input: string, commands: string[] | undefined): SlashCommandOption[] {
+  return visibleSlashCommands(input, commands).map((command) => ({
+    command,
+    description: describeSlashCommand(command),
+  }));
 }
 
 export function nextSlashCommandIndex(
