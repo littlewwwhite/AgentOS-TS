@@ -2,46 +2,21 @@
 
 ## AI Configuration
 
-### Video Generation Provider (Volcengine Ark / Seedance 2)
+### Video Generation Boundary (aos-cli model)
 
-当前 `video-gen` 的默认视频生成供应商已切到火山方舟 Ark，不再把任何 API Key 写入仓库配置。
+`video-gen` 的视频生成调用一律走 `aos-cli model` 边界，由 `aos-cli` 负责 provider 选择、鉴权与底层 HTTP 调用：
 
-```json
-{
-  "video_model": {
-    "provider": "volcengine_ark",
-    "active_model": "seedance2",
-    "models": {
-      "seedance2": {
-        "model_code": "ep-20260303234827-tfnzm",
-        "subject_reference": false
-      }
-    },
-    "providers": {
-      "volcengine_ark": {
-        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-        "api_key_env": "ARK_API_KEY"
-      }
-    }
-  }
-}
-```
+- Submit：`apiVersion=aos-cli.model/v1`、`capability=video.generate`、`output.kind=task`，由 `aos-cli model submit` 处理。
+- Poll：把 submit 返回的 task envelope 写入临时文件，由 `aos-cli model poll` 处理，期望返回 `output.kind=task_result` 与 `output.artifacts[*].kind=video`。
+- Preflight：`uv run --project aos-cli aos-cli model preflight --json`。
 
-使用前在本地 shell 注入：
+#### 责任边界
 
-```bash
-export ARK_API_KEY="your-ark-api-key"
-```
+- `aos-cli` 拥有 provider 专属字段（如 Ark 的 `model_code`、`base_url`、`api_key`、`generate_audio`、`watermark`、`return_last_frame` 等），由 aos-cli 配置与 manifest 管理。
+- `video-gen` 只负责：从 storyboard/runtime export 派生 `prompt` / `duration` / `ratio` / `quality` / `referenceImages` / `firstFrameUrl`、组装 aos-cli envelope、解析 `output.artifacts` 中的 `video` artifact，并把结果写入 delivery JSON。
+- 切换底层 provider 不需要修改 `video-gen` 的脚本，只需调整 aos-cli 一侧的 provider 配置。
 
-Ark 视频任务走官方异步接口：
-
-- 创建任务：`POST /contents/generations/tasks`
-- 查询任务：`GET /contents/generations/tasks/{task_id}`
-- 输出视频：查询结果中的 `content.video_url`
-
-`ep-20260303234827-tfnzm` 被视为火山方舟推理接入点/模型标识，直接写入请求体的 `model` 字段。若后续更换接入点，只改 `assets/config.json` 中 `video_model.models.seedance2.model_code`。
-
-当前视频生成只保留 Seedance2 / Volcengine Ark 路径；不保留旧供应商 fallback。
+仓库内 `assets/config.json` 仍保留 `video_model` 段落，但其作用已退化为：标识当前 active model 名称，供 `video-gen` 自身的展示/校验逻辑使用；真正的 provider/endpoint/key 在 aos-cli。
 
 ### Prompt Generation Boundary
 
@@ -109,9 +84,9 @@ pip install pydantic tqdm opencv-python
 # Claude runtime
 # apps/console/ uses Claude Agent SDK; this skill's offline helper currently also requires Claude CLI availability
 
-# Video generation auth (Seedance2 / Ark)
-# Default provider: Volcengine Ark
-export ARK_API_KEY="your-ark-api-key"
+# Video generation auth
+# Provider keys (Ark/etc) are managed by aos-cli; configure them per aos-cli docs.
+# `video-gen` itself no longer reads ARK_API_KEY.
 
 # No legacy video-provider fallback is configured in the current MVP.
 ```
