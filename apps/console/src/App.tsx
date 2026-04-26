@@ -9,7 +9,7 @@ import { Viewer } from "./components/Viewer/Viewer";
 import { Navigator } from "./components/Navigator/Navigator";
 import { buildWorkflowStatus } from "./lib/workflowStatus";
 import { buildChatSuggestions } from "./lib/chatSuggestions";
-import { buildScopedAgentMessage } from "./lib/scopedMessage";
+import { buildAgentMessage } from "./lib/scopedMessage";
 import { resolveProductionObjectFromPath } from "./lib/productionObject";
 import {
   CHAT_PANEL_DEFAULT,
@@ -95,7 +95,7 @@ function Shell() {
 
   function handleSend(message: string) {
     send(message, name ?? undefined, sessionId ?? undefined, {
-      agentMessage: buildScopedAgentMessage(message, activeProductionObject),
+      agentMessage: buildAgentMessage(message, activeProductionObject),
     });
   }
 
