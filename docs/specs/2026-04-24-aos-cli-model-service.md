@@ -1,23 +1,23 @@
-# AgentOS CLI Model Service Spec
+# aos-cli Model Service Spec
 
 > Status: proposed  
-> Scope: new infrastructure project `/Users/dingzhijian/lingjing/agentos-cli`  
+> Scope: new infrastructure project `/Users/dingzhijian/lingjing/aos-cli`  
 > Priority order: correctness -> maintainability -> simplicity -> extensibility -> performance
 
 ## 1. 根本目标
 
-`agentos-cli` 是 AgentOS 后续 pipeline 的基础设施 CLI。第一版只实现模型能力服务，不实现 pipeline runtime。
+`aos-cli` 是 AgentOS 后续 pipeline 的基础设施 CLI。第一版只实现模型能力服务，不实现 pipeline runtime。
 
 核心目标是把 AgentOS 的业务编排层从供应商 API 细节中隔离出来：
 
 - Agent / Claude Agent SDK 只负责推理与工具调用。
 - Harness / skills 只负责阶段状态、artifact 生命周期、人工确认、重试策略。
-- `agentos-cli` 只负责一次原子化模型能力调用，并返回稳定机器契约。
+- `aos-cli` 只负责一次原子化模型能力调用，并返回稳定机器契约。
 - Provider adapter 只负责 Gemini / OpenAI-compatible / Ark / Claude 等供应商协议差异。
 
 一句话边界：
 
-> `agentos-cli` 是模型能力防腐层，不是 workflow engine。
+> `aos-cli` 是模型能力防腐层，不是 workflow engine。
 
 ## 2. 真实问题
 
@@ -52,7 +52,7 @@
 项目名：
 
 ```text
-agentos-cli
+aos-cli
 ```
 
 可执行命令：
@@ -64,23 +64,23 @@ agentos
 第一版命名空间：
 
 ```text
-agentos model ...
+aos-cli model ...
 ```
 
 推荐调用方式：
 
 ```bash
-agentos model run --input request.json --output response.json
-agentos model preflight --json
-agentos model capabilities --json
+aos-cli model run --input request.json --output response.json
+aos-cli model preflight --json
+aos-cli model capabilities --json
 ```
 
 后续可以扩展：
 
 ```bash
-agentos model serve --port 8787
-agentos model video submit --input request.json --output task.json
-agentos model video poll --input task.json --output result.json
+aos-cli model serve --port 8787
+aos-cli model video submit --input request.json --output task.json
+aos-cli model video poll --input task.json --output result.json
 ```
 
 ## 5. 架构边界
@@ -88,7 +88,7 @@ agentos model video poll --input task.json --output result.json
 ```mermaid
 flowchart LR
   A["Agent or Claude SDK"] --> B["Harness and skills"]
-  B --> C["agentos model CLI"]
+  B --> C["aos-cli model CLI"]
   C --> D["Model service core"]
   D --> E["Provider adapters"]
   E --> F["Gemini, OpenAI-compatible, Ark, Claude"]
@@ -157,11 +157,11 @@ Provider adapter 不负责：
 
 ## 7. Request contract
 
-所有 `agentos model run` 输入都使用同一 envelope。
+所有 `aos-cli model run` 输入都使用同一 envelope。
 
 ```json
 {
-  "apiVersion": "agentos.model/v1",
+  "apiVersion": "aos-cli.model/v1",
   "task": "storyboard.scene",
   "capability": "generate",
   "output": {
@@ -192,7 +192,7 @@ Provider adapter 不负责：
 
 | Field | Required | Meaning |
 |---|---:|---|
-| `apiVersion` | yes | Protocol version. First version is `agentos.model/v1`. |
+| `apiVersion` | yes | Protocol version. First version is `aos-cli.model/v1`. |
 | `task` | yes | Stable task label for logs and routing hints. It is not a pipeline stage. |
 | `capability` | yes | Atomic model capability. |
 | `output.kind` | yes | Output contract: `text`, `json`, `artifact`, `task`, `task_result`. |
@@ -228,7 +228,7 @@ Success response:
 ```json
 {
   "ok": true,
-  "apiVersion": "agentos.model/v1",
+  "apiVersion": "aos-cli.model/v1",
   "task": "storyboard.scene",
   "capability": "generate",
   "output": {
@@ -253,7 +253,7 @@ Failure response:
 ```json
 {
   "ok": false,
-  "apiVersion": "agentos.model/v1",
+  "apiVersion": "aos-cli.model/v1",
   "task": "storyboard.scene",
   "capability": "generate",
   "error": {
@@ -318,7 +318,7 @@ Failure response:
 
 Preflight 必须做真实 API 探测，不允许只检查 env 是否存在。
 
-`agentos model preflight --json` 返回：
+`aos-cli model preflight --json` 返回：
 
 ```json
 {
@@ -371,11 +371,11 @@ ARK_API_KEY=...
 
 ## 13. Capabilities endpoint
 
-`agentos model capabilities --json` 返回当前安装和配置能支持什么。
+`aos-cli model capabilities --json` 返回当前安装和配置能支持什么。
 
 ```json
 {
-  "apiVersion": "agentos.model/v1",
+  "apiVersion": "aos-cli.model/v1",
   "capabilities": [
     {
       "name": "generate",
@@ -424,25 +424,25 @@ Harness 应该读取 capabilities，而不是硬编码假设。
 
 ## 15. 和 LiteLLM 的关系
 
-LiteLLM 是供应商网关，可以作为底层 provider gateway 使用。`agentos-cli` 是 AgentOS 的模型能力防腐层。
+LiteLLM 是供应商网关，可以作为底层 provider gateway 使用。`aos-cli` 是 AgentOS 的模型能力防腐层。
 
 推荐层次：
 
 ```text
 AgentOS harness
-agentos-cli model service
+aos-cli model service
 LiteLLM or direct provider adapter
 model providers
 ```
 
-不允许把 LiteLLM / provider 原始 response 直接传给 pipeline。pipeline 只认 AgentOS model protocol。
+不允许把 LiteLLM / provider 原始 response 直接传给 pipeline。pipeline 只认 aos-cli model protocol。
 
 ## 16. 验收标准
 
 第一版通过标准：
 
-- `agentos model run` 可以从 request file 生成 text response。
-- `agentos model run` 可以从 request file 生成 schema-valid JSON response。
+- `aos-cli model run` 可以从 request file 生成 text response。
+- `aos-cli model run` 可以从 request file 生成 schema-valid JSON response。
 - schema 失败时返回 `OUTPUT_SCHEMA_FAILED`，不会假装成功。
 - provider 鉴权失败时返回 `PROVIDER_AUTH_FAILED`。
 - preflight 能识别 HTML response，不把 HTTP 200 当成功。

@@ -1,14 +1,14 @@
-# AgentOS CLI Model Service Implementation Plan
+# aos-cli Model Service Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Create a separate `/Users/dingzhijian/lingjing/agentos-cli` infrastructure project whose first shipped namespace is `agentos model`, providing stable atomic model calls for AgentOS pipelines.
+**Goal:** Create a separate `/Users/dingzhijian/lingjing/aos-cli` infrastructure project whose first shipped namespace is `aos-cli model`, providing stable atomic model calls for AgentOS pipelines.
 
 **Architecture:** Build a Python CLI with a small model service core, stable request/response envelopes, schema validation, provider adapters, real preflight checks, and no pipeline-stage knowledge. AgentOS harnesses call the CLI through files; provider-specific SDK and API details remain behind adapters.
 
 **Tech Stack:** Python 3.11+, `uv`, `argparse`, `urllib.request`, `jsonschema`, `pytest`, `ruff`. No Bun/TypeScript runtime in the new CLI MVP.
 
-**Reference spec:** `docs/specs/2026-04-24-agentos-cli-model-service.md`
+**Reference spec:** `docs/specs/2026-04-24-aos-cli-model-service.md`
 
 ---
 
@@ -16,9 +16,9 @@
 
 Implement only the model namespace:
 
-- `agentos model run --input request.json --output response.json`
-- `agentos model preflight --json`
-- `agentos model capabilities --json`
+- `aos-cli model run --input request.json --output response.json`
+- `aos-cli model preflight --json`
+- `aos-cli model capabilities --json`
 
 Do not implement:
 
@@ -35,21 +35,21 @@ Image and video adapters are planned interfaces but not required for the first p
 ## Task 1: Create Standalone Project Skeleton
 
 **Files:**
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/pyproject.toml`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/README.md`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/__init__.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/cli.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/__init__.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/tests/test_cli_smoke.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/pyproject.toml`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/README.md`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/__init__.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/cli.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/__init__.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/tests/test_cli_smoke.py`
 
 **Step 1: Create the project directory**
 
 Run:
 
 ```bash
-mkdir -p /Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model
-mkdir -p /Users/dingzhijian/lingjing/agentos-cli/tests
-cd /Users/dingzhijian/lingjing/agentos-cli
+mkdir -p /Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model
+mkdir -p /Users/dingzhijian/lingjing/aos-cli/tests
+cd /Users/dingzhijian/lingjing/aos-cli
 ```
 
 Expected: directory exists and is separate from `AgentOS-TS`.
@@ -58,7 +58,7 @@ Expected: directory exists and is separate from `AgentOS-TS`.
 
 ```toml
 [project]
-name = "agentos-cli"
+name = "aos-cli"
 version = "0.1.0"
 description = "AgentOS infrastructure CLI"
 requires-python = ">=3.11"
@@ -67,7 +67,7 @@ dependencies = [
 ]
 
 [project.scripts]
-agentos = "agentos_cli.cli:main"
+aos-cli = "aos_cli.cli:main"
 
 [dependency-groups]
 dev = [
@@ -91,13 +91,13 @@ __all__ = []
 
 Write the same minimal marker into:
 
-- `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/__init__.py`
-- `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/__init__.py`
+- `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/__init__.py`
+- `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/__init__.py`
 
 **Step 4: Write the first failing smoke test**
 
 ```python
-from agentos_cli.cli import main
+from aos_cli.cli import main
 
 
 def test_main_help_returns_zero(capsys):
@@ -137,7 +137,7 @@ if __name__ == "__main__":
 Run:
 
 ```bash
-cd /Users/dingzhijian/lingjing/agentos-cli
+cd /Users/dingzhijian/lingjing/aos-cli
 uv run pytest -q
 ```
 
@@ -147,7 +147,7 @@ Expected: `1 passed`.
 
 ```bash
 git add pyproject.toml README.md src tests
-git commit -m "Create standalone AgentOS CLI skeleton"
+git commit -m "Create standalone aos-cli skeleton"
 ```
 
 ---
@@ -155,17 +155,17 @@ git commit -m "Create standalone AgentOS CLI skeleton"
 ## Task 2: Define Protocol Models and Error Envelope
 
 **Files:**
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/protocol.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/errors.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/tests/test_model_protocol.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/protocol.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/errors.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/tests/test_model_protocol.py`
 
 **Step 1: Write failing tests for request validation**
 
 ```python
 import pytest
 
-from agentos_cli.model.errors import ModelServiceError
-from agentos_cli.model.protocol import parse_request, success_response, failure_response
+from aos_cli.model.errors import ModelServiceError
+from aos_cli.model.protocol import parse_request, success_response, failure_response
 
 
 def test_parse_request_requires_api_version():
@@ -187,7 +187,7 @@ def test_success_response_has_stable_shape():
     )
 
     assert response["ok"] is True
-    assert response["apiVersion"] == "agentos.model/v1"
+    assert response["apiVersion"] == "aos-cli.model/v1"
     assert response["output"]["text"] == "ok"
 
 
@@ -230,7 +230,7 @@ class ModelServiceError(Exception):
 **Step 3: Implement protocol helpers**
 
 ```python
-API_VERSION = "agentos.model/v1"
+API_VERSION = "aos-cli.model/v1"
 
 
 def parse_request(payload: dict) -> dict:
@@ -260,7 +260,7 @@ Expected: all tests pass.
 **Step 5: Commit**
 
 ```bash
-git add src/agentos_cli/model/protocol.py src/agentos_cli/model/errors.py tests/test_model_protocol.py
+git add src/aos_cli/model/protocol.py src/aos_cli/model/errors.py tests/test_model_protocol.py
 git commit -m "Define model protocol envelope"
 ```
 
@@ -269,17 +269,17 @@ git commit -m "Define model protocol envelope"
 ## Task 3: Add JSON Output Validation
 
 **Files:**
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/validators.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/schemas.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/tests/test_json_output_validation.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/validators.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/schemas.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/tests/test_json_output_validation.py`
 
 **Step 1: Write failing tests**
 
 ```python
 import pytest
 
-from agentos_cli.model.errors import ModelServiceError
-from agentos_cli.model.validators import validate_json_output
+from aos_cli.model.errors import ModelServiceError
+from aos_cli.model.validators import validate_json_output
 
 
 def test_validate_json_output_accepts_schema_valid_data():
@@ -311,7 +311,7 @@ def test_validate_json_output_rejects_missing_field():
 ```python
 from jsonschema import ValidationError, validate
 
-from agentos_cli.model.errors import ModelServiceError
+from aos_cli.model.errors import ModelServiceError
 
 
 def validate_json_output(data: object, schema: dict) -> object:
@@ -356,7 +356,7 @@ Expected: all tests pass.
 **Step 5: Commit**
 
 ```bash
-git add src/agentos_cli/model/validators.py src/agentos_cli/model/schemas.py tests/test_json_output_validation.py
+git add src/aos_cli/model/validators.py src/aos_cli/model/schemas.py tests/test_json_output_validation.py
 git commit -m "Validate structured model output"
 ```
 
@@ -365,16 +365,16 @@ git commit -m "Validate structured model output"
 ## Task 4: Implement Gemini Provider for Text and JSON
 
 **Files:**
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/providers/__init__.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/providers/gemini.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/tests/test_gemini_provider.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/providers/__init__.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/providers/gemini.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/tests/test_gemini_provider.py`
 
 **Step 1: Write tests with fake HTTP transport**
 
 ```python
 import json
 
-from agentos_cli.model.providers.gemini import GeminiProvider
+from aos_cli.model.providers.gemini import GeminiProvider
 
 
 class FakeTransport:
@@ -440,7 +440,7 @@ import json
 import urllib.error
 import urllib.request
 
-from agentos_cli.model.errors import ModelServiceError
+from aos_cli.model.errors import ModelServiceError
 
 
 def map_http_error(status_code: int, raw: str) -> ModelServiceError:
@@ -554,7 +554,7 @@ Expected: all tests pass without network.
 **Step 5: Commit**
 
 ```bash
-git add src/agentos_cli/model/providers tests/test_gemini_provider.py
+git add src/aos_cli/model/providers tests/test_gemini_provider.py
 git commit -m "Add Gemini model provider adapter"
 ```
 
@@ -563,14 +563,14 @@ git commit -m "Add Gemini model provider adapter"
 ## Task 5: Implement Model Service Routing
 
 **Files:**
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/service.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/config.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/tests/test_model_service.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/service.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/config.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/tests/test_model_service.py`
 
 **Step 1: Write failing tests**
 
 ```python
-from agentos_cli.model.service import ModelService
+from aos_cli.model.service import ModelService
 
 
 class FakeProvider:
@@ -582,7 +582,7 @@ def test_service_returns_text_output():
     service = ModelService(provider_factory=lambda request: FakeProvider())
     response = service.run(
         {
-            "apiVersion": "agentos.model/v1",
+            "apiVersion": "aos-cli.model/v1",
             "task": "test.text",
             "capability": "generate",
             "output": {"kind": "text"},
@@ -598,7 +598,7 @@ def test_service_returns_validated_json_output():
     service = ModelService(provider_factory=lambda request: FakeProvider())
     response = service.run(
         {
-            "apiVersion": "agentos.model/v1",
+            "apiVersion": "aos-cli.model/v1",
             "task": "test.json",
             "capability": "generate",
             "output": {"kind": "json", "schema": "generic.object.v1"},
@@ -631,10 +631,10 @@ def resolve_gemini_config(request: dict) -> dict:
 import json
 import time
 
-from agentos_cli.model.errors import ModelServiceError
-from agentos_cli.model.protocol import failure_response, parse_request, success_response
-from agentos_cli.model.schemas import get_schema
-from agentos_cli.model.validators import validate_json_output
+from aos_cli.model.errors import ModelServiceError
+from aos_cli.model.protocol import failure_response, parse_request, success_response
+from aos_cli.model.schemas import get_schema
+from aos_cli.model.validators import validate_json_output
 
 
 class ModelService:
@@ -713,24 +713,24 @@ Expected: all tests pass.
 **Step 5: Commit**
 
 ```bash
-git add src/agentos_cli/model/service.py src/agentos_cli/model/config.py tests/test_model_service.py
+git add src/aos_cli/model/service.py src/aos_cli/model/config.py tests/test_model_service.py
 git commit -m "Route model requests through service core"
 ```
 
 ---
 
-## Task 6: Wire `agentos model run`
+## Task 6: Wire `aos-cli model run`
 
 **Files:**
-- Modify: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/cli.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/tests/test_model_run_cli.py`
+- Modify: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/cli.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/tests/test_model_run_cli.py`
 
 **Step 1: Write failing CLI tests**
 
 ```python
 import json
 
-from agentos_cli.cli import main
+from aos_cli.cli import main
 
 
 def test_model_run_writes_response_file(tmp_path, monkeypatch):
@@ -739,7 +739,7 @@ def test_model_run_writes_response_file(tmp_path, monkeypatch):
     request_path.write_text(
         json.dumps(
             {
-                "apiVersion": "agentos.model/v1",
+                "apiVersion": "aos-cli.model/v1",
                 "task": "test.text",
                 "capability": "generate",
                 "output": {"kind": "text"},
@@ -749,7 +749,7 @@ def test_model_run_writes_response_file(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("AGENTOS_MODEL_FAKE", "1")
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
     code = main(["model", "run", "--input", str(request_path), "--output", str(response_path)])
 
     assert code == 0
@@ -807,7 +807,7 @@ Expected: all tests pass.
 **Step 5: Commit**
 
 ```bash
-git add src/agentos_cli/cli.py tests/test_model_run_cli.py
+git add src/aos_cli/cli.py tests/test_model_run_cli.py
 git commit -m "Expose model run CLI"
 ```
 
@@ -816,14 +816,14 @@ git commit -m "Expose model run CLI"
 ## Task 7: Implement Real Preflight
 
 **Files:**
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/preflight.py`
-- Modify: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/cli.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/tests/test_preflight.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/preflight.py`
+- Modify: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/cli.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/tests/test_preflight.py`
 
 **Step 1: Write failing tests for bad provider responses**
 
 ```python
-from agentos_cli.model.preflight import classify_probe_response
+from aos_cli.model.preflight import classify_probe_response
 
 
 def test_preflight_rejects_html_response():
@@ -887,7 +887,7 @@ Expected: all tests pass.
 **Step 5: Commit**
 
 ```bash
-git add src/agentos_cli/model/preflight.py src/agentos_cli/cli.py tests/test_preflight.py
+git add src/aos_cli/model/preflight.py src/aos_cli/cli.py tests/test_preflight.py
 git commit -m "Add real model preflight checks"
 ```
 
@@ -896,14 +896,14 @@ git commit -m "Add real model preflight checks"
 ## Task 8: Implement Capabilities Command
 
 **Files:**
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/model/capabilities.py`
-- Modify: `/Users/dingzhijian/lingjing/agentos-cli/src/agentos_cli/cli.py`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/tests/test_capabilities.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/model/capabilities.py`
+- Modify: `/Users/dingzhijian/lingjing/aos-cli/src/aos_cli/cli.py`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/tests/test_capabilities.py`
 
 **Step 1: Write failing test**
 
 ```python
-from agentos_cli.model.capabilities import capabilities_payload
+from aos_cli.model.capabilities import capabilities_payload
 
 
 def test_capabilities_declares_generate_text_and_json():
@@ -919,7 +919,7 @@ def test_capabilities_declares_generate_text_and_json():
 **Step 2: Implement payload**
 
 ```python
-from agentos_cli.model.protocol import API_VERSION
+from aos_cli.model.protocol import API_VERSION
 
 
 def capabilities_payload() -> dict:
@@ -941,7 +941,7 @@ def capabilities_payload() -> dict:
 Run:
 
 ```bash
-agentos model capabilities --json
+aos-cli model capabilities --json
 ```
 
 Expected: JSON printed to stdout and no human prose.
@@ -949,7 +949,7 @@ Expected: JSON printed to stdout and no human prose.
 **Step 4: Commit**
 
 ```bash
-git add src/agentos_cli/model/capabilities.py src/agentos_cli/cli.py tests/test_capabilities.py
+git add src/aos_cli/model/capabilities.py src/aos_cli/cli.py tests/test_capabilities.py
 git commit -m "Expose model capabilities"
 ```
 
@@ -958,15 +958,15 @@ git commit -m "Expose model capabilities"
 ## Task 9: Add Contract Examples
 
 **Files:**
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/examples/text.request.json`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/examples/json.request.json`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/docs/MODEL_PROTOCOL.md`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/examples/text.request.json`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/examples/json.request.json`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/docs/MODEL_PROTOCOL.md`
 
 **Step 1: Create text example**
 
 ```json
 {
-  "apiVersion": "agentos.model/v1",
+  "apiVersion": "aos-cli.model/v1",
   "task": "example.text",
   "capability": "generate",
   "output": {
@@ -987,7 +987,7 @@ git commit -m "Expose model capabilities"
 
 ```json
 {
-  "apiVersion": "agentos.model/v1",
+  "apiVersion": "aos-cli.model/v1",
   "task": "example.json",
   "capability": "generate",
   "output": {
@@ -1009,7 +1009,7 @@ git commit -m "Expose model capabilities"
 
 **Step 3: Document protocol**
 
-Copy the stable protocol sections from the AgentOS-TS spec into the new project doc. Keep it concise and make `/Users/dingzhijian/lingjing/agentos-cli/docs/MODEL_PROTOCOL.md` the local source of truth once implementation starts.
+Copy the stable protocol sections from the AgentOS-TS spec into the new project doc. Keep it concise and make `/Users/dingzhijian/lingjing/aos-cli/docs/MODEL_PROTOCOL.md` the local source of truth once implementation starts.
 
 **Step 4: Commit**
 
@@ -1023,14 +1023,14 @@ git commit -m "Document model protocol examples"
 ## Task 10: Add AgentOS-TS Integration Spike
 
 **Files:**
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/examples/agentos_ts_storyboard_request.json`
-- Create: `/Users/dingzhijian/lingjing/agentos-cli/examples/call_from_skill.sh`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/examples/aos_cli_storyboard_request.json`
+- Create: `/Users/dingzhijian/lingjing/aos-cli/examples/call_from_skill.sh`
 
 **Step 1: Create integration request**
 
 ```json
 {
-  "apiVersion": "agentos.model/v1",
+  "apiVersion": "aos-cli.model/v1",
   "task": "storyboard.scene",
   "capability": "generate",
   "output": {
@@ -1061,7 +1061,7 @@ set -euo pipefail
 REQUEST_PATH="${1:?request path is required}"
 RESPONSE_PATH="${2:?response path is required}"
 
-agentos model run --input "$REQUEST_PATH" --output "$RESPONSE_PATH"
+aos-cli model run --input "$REQUEST_PATH" --output "$RESPONSE_PATH"
 ```
 
 **Step 3: Run local dry call with fake provider**
@@ -1069,9 +1069,9 @@ agentos model run --input "$REQUEST_PATH" --output "$RESPONSE_PATH"
 Run:
 
 ```bash
-AGENTOS_MODEL_FAKE=1 agentos model run \
-  --input examples/agentos_ts_storyboard_request.json \
-  --output /tmp/agentos-model-response.json
+AOS_CLI_MODEL_FAKE=1 aos-cli model run \
+  --input examples/aos_cli_storyboard_request.json \
+  --output /tmp/aos-cli-model-response.json
 ```
 
 Expected: response file exists and contains `"ok": true`.
@@ -1079,7 +1079,7 @@ Expected: response file exists and contains `"ok": true`.
 **Step 4: Commit**
 
 ```bash
-git add examples/agentos_ts_storyboard_request.json examples/call_from_skill.sh
+git add examples/aos_cli_storyboard_request.json examples/call_from_skill.sh
 git commit -m "Add AgentOS skill integration example"
 ```
 
@@ -1093,7 +1093,7 @@ git commit -m "Add AgentOS skill integration example"
 **Step 1: Run unit tests**
 
 ```bash
-cd /Users/dingzhijian/lingjing/agentos-cli
+cd /Users/dingzhijian/lingjing/aos-cli
 uv run pytest -q
 ```
 
@@ -1110,8 +1110,8 @@ Expected: no lint failures.
 **Step 3: Test installed console script**
 
 ```bash
-uv run agentos --help
-uv run agentos model capabilities --json
+uv run aos-cli --help
+uv run aos-cli model capabilities --json
 ```
 
 Expected: commands print valid help or JSON.
@@ -1119,18 +1119,18 @@ Expected: commands print valid help or JSON.
 **Step 4: Run fake-provider file round trip**
 
 ```bash
-AGENTOS_MODEL_FAKE=1 uv run agentos model run \
+AOS_CLI_MODEL_FAKE=1 uv run aos-cli model run \
   --input examples/text.request.json \
-  --output /tmp/agentos-text-response.json
+  --output /tmp/aos-cli-text-response.json
 ```
 
-Expected: `/tmp/agentos-text-response.json` contains `"ok": true`.
+Expected: `/tmp/aos-cli-text-response.json` contains `"ok": true`.
 
 **Step 5: Commit verification fixes if needed**
 
 ```bash
 git add .
-git commit -m "Stabilize AgentOS model CLI verification"
+git commit -m "Stabilize aos-cli model verification"
 ```
 
 Skip this commit if no files changed.
@@ -1141,12 +1141,12 @@ Skip this commit if no files changed.
 
 The MVP is complete only when:
 
-- `agentos model run` handles `output.kind=text`.
-- `agentos model run` handles `output.kind=json`.
+- `aos-cli model run` handles `output.kind=text`.
+- `aos-cli model run` handles `output.kind=json`.
 - JSON output is schema validated.
 - Provider auth/quota/bad-response errors map to stable error codes.
-- `agentos model preflight --json` rejects HTML and non-JSON responses.
-- `agentos model capabilities --json` returns a stable machine payload.
+- `aos-cli model preflight --json` rejects HTML and non-JSON responses.
+- `aos-cli model capabilities --json` returns a stable machine payload.
 - Logs do not pollute stdout.
 - AgentOS-TS can call the CLI through a shell command without importing provider code.
 
