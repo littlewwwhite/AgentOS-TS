@@ -2,12 +2,45 @@ import { describe, expect, test } from "bun:test";
 import { buildNavigatorSections } from "../src/lib/navigatorSections";
 
 describe("buildNavigatorSections", () => {
-  test("orders navigation as overview, inputs, script, assets, episodes for current MVP", () => {
+  test("keeps a stable production navigation skeleton", () => {
+    const sections = buildNavigatorSections({
+      hasSource: false,
+      hasCatalog: false,
+      hasScript: false,
+      hasAssets: false,
+      hasStoryboard: false,
+      episodeIds: [],
+    });
+
+    expect(sections.map((section) => section.key)).toEqual([
+      "overview",
+      "inputs",
+      "catalog",
+      "script",
+      "assets",
+      "storyboard",
+      "episodes",
+    ]);
+    expect(sections.map((section) => section.available)).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(sections.map((section) => section.label)).toContain("视觉设定");
+    expect(sections.map((section) => section.label)).not.toContain("设定目录");
+  });
+
+  test("marks completed top-level areas as available without changing order", () => {
     const sections = buildNavigatorSections({
       hasSource: true,
       hasCatalog: true,
       hasScript: true,
       hasAssets: true,
+      hasStoryboard: true,
       episodeIds: ["ep001"],
     });
 
@@ -17,8 +50,10 @@ describe("buildNavigatorSections", () => {
       "catalog",
       "script",
       "assets",
+      "storyboard",
       "episodes",
     ]);
+    expect(sections.every((section) => section.available)).toBe(true);
   });
 
   test("hides editing, music, subtitle nodes in current MVP", () => {
@@ -27,6 +62,7 @@ describe("buildNavigatorSections", () => {
       hasCatalog: false,
       hasScript: true,
       hasAssets: false,
+      hasStoryboard: false,
       episodeIds: ["ep001"],
     });
 
