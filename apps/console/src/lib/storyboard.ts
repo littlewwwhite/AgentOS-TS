@@ -299,12 +299,20 @@ function resolveEpisodeVideoPath(
 
   const episodeDir = episodeRuntimeDirForStoryboardPath(storyboardPath);
   const episodeSlug = episodeSlugFromPath(storyboardPath);
-  const exactBasename = `${episodeSlug}.mp4`;
-  const exactCandidate = episodeDir ? `${episodeDir}/${exactBasename}` : exactBasename;
 
-  if (availablePaths.includes(exactCandidate)) return exactCandidate;
+  for (const extension of ["mp4", "mov", "webm"]) {
+    const exactBasename = `${episodeSlug}.${extension}`;
+    const exactCandidate = episodeDir ? `${episodeDir}/${exactBasename}` : exactBasename;
 
-  return availablePaths.find((path) => dirnameOf(path) === episodeDir && basenameOf(path) === exactBasename) ?? null;
+    if (availablePaths.includes(exactCandidate)) return exactCandidate;
+
+    const siblingMatch = availablePaths.find(
+      (path) => dirnameOf(path) === episodeDir && basenameOf(path) === exactBasename,
+    );
+    if (siblingMatch) return siblingMatch;
+  }
+
+  return null;
 }
 
 function resolveClipVideoPath(

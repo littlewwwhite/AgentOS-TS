@@ -381,6 +381,25 @@ PART1
     expect(model.episodeVideoPath).toBe("output/ep001/ep001.mp4");
   });
 
+  test("resolves merged episode video when the available file uses webm", () => {
+    const model = buildStoryboardEditorModel(
+      "output/ep001/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          clips: [{ clip_id: "clip_001", shots: [{ shot_id: "shot_001", time_range: "0-4s", partial_prompt: "A" }] }],
+        },
+      ],
+      {},
+      new Set([
+        "output/ep001/ep001.webm",
+        "output/ep001/scn001/clip001/ep001_scn001_clip001.mp4",
+      ]),
+    );
+
+    expect(model.episodeVideoPath).toBe("output/ep001/ep001.webm");
+  });
+
   test("resolves real clip media paths from the tree instead of assuming one folder layout", () => {
     const model = buildStoryboardEditorModel(
       "output/ep001/ep001_storyboard.json",
