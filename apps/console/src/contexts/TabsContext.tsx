@@ -16,37 +16,24 @@ interface TabsContextValue {
 
 const Ctx = createContext<TabsContextValue | null>(null);
 
+export function reduceSingleWorkbenchTabs(_prev: Tab[], next: Tab): Tab[] {
+  return [next];
+}
+
 export function TabsProvider({ children }: { children: ReactNode }) {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const openPath = useCallback((path: string, view: ViewKind, title: string, opts: OpenOpts = {}) => {
-    const pinned = opts.pinned ?? false;
-    // Generate id and resolve target id BEFORE calling setters so strict-mode
-    // double-invocation of the setTabs updater can't produce divergent ids.
-    const newId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    let targetId = newId;
-    setTabs((prev) => {
-      const existing = prev.find((t) => t.path === path);
-      if (existing) {
-        targetId = existing.id;
-        if (pinned && !existing.pinned) {
-          return prev.map((t) => (t.id === existing.id ? { ...t, pinned: true } : t));
-        }
-        return prev;
-      }
-      const next: Tab = { id: newId, path, title, view, pinned };
-      if (!pinned) {
-        const previewIdx = prev.findIndex((t) => !t.pinned);
-        if (previewIdx >= 0) {
-          const copy = [...prev];
-          copy[previewIdx] = next;
-          return copy;
-        }
-      }
-      return [...prev, next];
-    });
-    setActiveId(targetId);
+    const next: Tab = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      path,
+      title,
+      view,
+      pinned: opts.pinned ?? false,
+    };
+    setTabs((prev) => reduceSingleWorkbenchTabs(prev, next));
+    setActiveId(next.id);
   }, []);
 
   const pinActive = useCallback(() => {

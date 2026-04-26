@@ -1,44 +1,55 @@
+// input: open workbench tabs and tab actions
+// output: optional reference-object switcher for multi-object work
+// pos: secondary chrome that stays hidden for the default single-object workbench
+
 import { useTabs } from "../../contexts/TabsContext";
+import type { Tab } from "../../types";
+
+interface Props {
+  tabs: Tab[];
+  activeId: string | null;
+  activate: (id: string) => void;
+  closeTab: (id: string) => void;
+}
 
 export function TabBar() {
   const { tabs, activeId, activate, closeTab } = useTabs();
-  if (tabs.length === 0) return null;
+  return <TabBarView tabs={tabs} activeId={activeId} activate={activate} closeTab={closeTab} />;
+}
+
+export function TabBarView({ tabs, activeId, activate, closeTab }: Props) {
+  if (tabs.length <= 1) return null;
   return (
-    <div className="flex items-stretch border-b border-[var(--color-rule)] overflow-x-auto shrink-0 bg-[var(--color-paper)]">
-      {tabs.map((t) => {
-        const active = t.id === activeId;
-        return (
-          <div
-            key={t.id}
-            onClick={() => activate(t.id)}
-            className="group flex items-center gap-2 px-4 h-9 cursor-pointer whitespace-nowrap relative"
-          >
-            <span
+    <div className="flex items-center gap-3 border-b border-[var(--color-rule)] overflow-x-auto shrink-0 bg-[var(--color-paper)] px-4 py-2">
+      <div className="shrink-0 font-sans text-[10px] font-semibold tracking-[0.08em] text-[var(--color-ink-subtle)]">
+        参考对象
+      </div>
+      <div className="flex items-stretch gap-2">
+        {tabs.map((t) => {
+          const active = t.id === activeId;
+          return (
+            <div
+              key={t.id}
+              onClick={() => activate(t.id)}
               className={
-                "text-[12px] " +
+                "group flex h-7 cursor-pointer items-center gap-2 whitespace-nowrap border px-3 " +
                 (active
-                  ? "font-serif italic text-[13px] text-[var(--color-ink)]"
-                  : "text-[var(--color-ink-muted)] group-hover:text-[var(--color-ink)] " +
-                    (t.pinned ? "" : "italic"))
+                  ? "border-[var(--color-ink)] bg-[var(--color-paper-soft)]"
+                  : "border-[var(--color-rule)] text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]")
               }
             >
-              {t.title}
-            </span>
-            <button
-              onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}
-              className="font-mono text-[10px] text-[var(--color-ink-faint)] opacity-0 group-hover:opacity-100 hover:text-[var(--color-ink)] transition-opacity"
-              aria-label="关闭"
-            >×</button>
-            {active && (
-              <span
-                className="absolute left-4 right-4 bottom-0 h-[2px]"
-                style={{ backgroundColor: "var(--color-accent)" }}
-                aria-hidden
-              />
-            )}
-          </div>
-        );
-      })}
+              <span className="font-[Geist,sans-serif] text-[11px]">
+                {t.title}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}
+                className="font-mono text-[10px] text-[var(--color-ink-faint)] opacity-0 transition-opacity hover:text-[var(--color-ink)] group-hover:opacity-100"
+                aria-label="关闭参考对象"
+              >×</button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

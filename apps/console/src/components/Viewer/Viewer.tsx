@@ -15,7 +15,16 @@ import { OverviewView } from "./views/OverviewView";
 import { ProjectOnboardingView } from "./views/ProjectOnboardingView";
 import { ObjectHeader } from "./ObjectHeader";
 import type { ViewKind } from "../../types";
+import { getEditPolicy } from "../../lib/editPolicy";
 import { resolveProductionObjectFromPath } from "../../lib/productionObject";
+
+export function shouldShowObjectHeader(kind: ViewKind, path: string): boolean {
+  const policy = getEditPolicy(path);
+  if (kind === "text" && policy?.contentKind === "text") return false;
+  if (kind === "json" && policy?.contentKind === "json") return false;
+  if (kind === "storyboard") return false;
+  return true;
+}
 
 function renderView(kind: ViewKind, projectName: string, path: string) {
   switch (kind) {
@@ -90,10 +99,12 @@ export function Viewer() {
   return (
     <div className="h-full min-h-0 flex flex-col">
       <TabBar />
-      <ObjectHeader
-        object={resolveProductionObjectFromPath(active.path, { projectId: name })}
-        viewKind={active.view}
-      />
+      {shouldShowObjectHeader(active.view, active.path) && (
+        <ObjectHeader
+          object={resolveProductionObjectFromPath(active.path, { projectId: name })}
+          viewKind={active.view}
+        />
+      )}
       <div className={contentClass}>
         {renderView(active.view, name, active.path)}
       </div>
