@@ -18,6 +18,24 @@ const storyboardData = {
   ],
 };
 
+// Storyboard where source_refs point to a scene that does not exist in scriptData
+// — used to verify the empty scriptExcerpt UI path.
+const storyboardDataNoScriptMatch = {
+  episode_id: "ep_999",
+  status: "approved",
+  scenes: [
+    {
+      scene_id: "scn_999",
+      shots: [
+        {
+          source_refs: [0],
+          prompt: `PART1\n\n总体描述：无匹配剧本。\n\n\`\`\`json\n{"shots":[{"shot_id":"S1","time_range":"00:00-00:04","camera_setup":"中景","beats":["远景镜头"]}]}\n\`\`\``,
+        },
+      ],
+    },
+  ],
+};
+
 const scriptData = {
   episodes: [
     {
@@ -37,9 +55,14 @@ const scriptData = {
   actors: [{ actor_id: "act_001", actor_name: "灵霜" }],
 };
 
+// Mutable storyboard data reference — each test can swap before rendering.
+let currentStoryboardData: unknown = storyboardData;
+// Mutable script data reference — each test can swap before rendering.
+let currentScriptData: unknown = scriptData;
+
 mock.module("../src/hooks/useEditableJson", () => ({
   useEditableJson: () => ({
-    data: storyboardData,
+    get data() { return currentStoryboardData; },
     error: null,
     status: "idle",
     patch: () => undefined,
@@ -57,7 +80,7 @@ mock.module("../src/hooks/useEditableJson", () => ({
 
 mock.module("../src/hooks/useFile", () => ({
   useFileJson: (_projectName: string, path: string) => ({
-    data: path === "output/script.json" ? scriptData : {},
+    get data() { return path === "output/script.json" ? currentScriptData : {}; },
   }),
 }));
 
@@ -106,6 +129,8 @@ describe("StoryboardView rendering", () => {
     //   sceneSlug = compactStoryboardId("scn_001") = "scn001"
     //   clipSlug  = compactStoryboardId("part_001") = "part001"
     //   clipVideoPath = "output/ep001/scn001/ep001_scn001_part001.mp4"
+    currentStoryboardData = storyboardData;
+    currentScriptData = scriptData;
     currentTree = [
       {
         path: "output/ep001",
@@ -127,5 +152,46 @@ describe("StoryboardView rendering", () => {
 
     expect(html).toContain("视频已生成");
     expect(html).not.toContain("视频待生成");
+  });
+
+  // I-1: when scriptData has no matching scene, scriptExcerpt is [] and UI must
+  // render （无剧本摘录） instead of the old sentinel string.
+  test("renders （无剧本摘录） when scriptData has no matching scene, never renders sentinel string", () => {
+    currentStoryboardData = storyboardDataNoScriptMatch;
+    currentScriptData = scriptData; // scriptData has scn_001, storyboard uses scn_999 — no match
+    currentTree = [{ path: "output/storyboard/approved/ep001_storyboard.json" }];
+
+    const html = renderToStaticMarkup(
+      React.createElement(StoryboardView, {
+        projectName: "demo-project",
+        path: "output/storyboard/approved/ep001_storyboard.json",
+      }),
+    );
+
+    expect(html).not.toContain("未找到对应剧本段落");
+    expect(html).toContain("（无剧本摘录）");
+    expect(html).toContain("剧本到故事板");
+  });
+
+  // I-2: when storyboard has scenes[].shots[].prompt but editorModel clips are empty
+  // (no legacy clips[] array), the main surface must still render — not fall back to
+  // the "no clips" empty state.
+  test("renders main surface with generationUnits even when editorModel clips are empty", () => {
+    // storyboardDataNoScriptMatch uses shots-based storyboard (no clips[] array).
+    // buildStoryboardEditorModel will derive synthetic clips from prompts — so clips
+    // won't be empty here; the test validates the fast path via generationUnits.
+    currentStoryboardData = storyboardDataNoScriptMatch;
+    currentScriptData = {}; // no script at all — ensures scriptExcerpt = []
+    currentTree = [{ path: "output/storyboard/approved/ep001_storyboard.json" }];
+
+    const html = renderToStaticMarkup(
+      React.createElement(StoryboardView, {
+        projectName: "demo-project",
+        path: "output/storyboard/approved/ep001_storyboard.json",
+      }),
+    );
+
+    expect(html).toContain("剧本到故事板");
+    expect(html).not.toContain("当前故事板里还没有可浏览的镜头");
   });
 });

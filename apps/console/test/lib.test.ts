@@ -385,7 +385,7 @@ PART1
       videoStatus: "not_generated",
       videoPath: "output/ep001/scn001/ep001_scn001_part001.mp4",
       sourceRefsLabel: "0",
-      scriptExcerpt: ["未找到对应剧本段落"],
+      scriptExcerpt: [],
     });
   });
 
@@ -424,7 +424,7 @@ PART1
     expect(Array.isArray(units[0]?.scriptExcerpt)).toBe(true);
     expect(units[0]).toMatchObject({
       sourceRefsLabel: "9-10",
-      scriptExcerpt: ["未找到对应剧本段落"],
+      scriptExcerpt: [],
       videoStatus: "not_generated",
       videoPath: "output/ep001/scn001/ep001_scn001_part001.mp4",
     });

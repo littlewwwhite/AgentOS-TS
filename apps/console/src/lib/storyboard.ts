@@ -531,11 +531,11 @@ function sceneExcerptFromRefs(
   refs: number[],
 ): string[] {
   const entry = sceneBeatEntry(sceneBeats, episodeId, sceneId);
-  if (!entry) return ["未找到对应剧本段落"];
+  if (!entry) return [];
   const lines = refs.length > 0
     ? refs.map((index) => entry.beats[index]).filter((beat): beat is string => Boolean(beat && beat.trim()))
     : entry.beats.filter((beat): beat is string => Boolean(beat && beat.trim()));
-  return lines.length > 0 ? lines : ["未找到对应剧本段落"];
+  return lines;
 }
 
 function generationPromptSummary(prompt: string): string {
