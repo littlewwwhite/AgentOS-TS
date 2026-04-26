@@ -362,6 +362,74 @@ PART1
     expect(units[0]?.prompt).toBe(rawPrompt);
   });
 
+  test("marks storyboard generation units as not generated when video is missing", () => {
+    const units = buildStoryboardGenerationUnits(
+      "output/storyboard/approved/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              source_refs: [0],
+              prompt: `PART1\n\n总体描述：压抑内宅。\n\n{"shots":[{"shot_id":"S1","time_range":"00:00-00:06","camera_setup":"近景","beats":["账房摊开银锭"]}]}`,
+            },
+          ],
+        },
+      ],
+      undefined,
+      new Set(),
+    );
+
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({
+      videoStatus: "not_generated",
+      videoPath: "output/ep001/scn001/ep001_scn001_part001.mp4",
+      sourceRefsLabel: "0",
+      scriptExcerpt: ["未找到对应剧本段落"],
+    });
+  });
+
+  test("keeps storyboard generation units stable without matching script refs", () => {
+    const script = {
+      episodes: [
+        {
+          episode_id: "ep001",
+          scenes: [
+            {
+              scene_id: "scn_001",
+              actions: [{ type: "action", content: "账房摊开银锭。" }],
+            },
+          ],
+        },
+      ],
+    } satisfies ScriptJson;
+
+    const units = buildStoryboardGenerationUnits(
+      "output/storyboard/approved/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              source_refs: [9, 10],
+              prompt: `PART1\n\n总体描述：压抑内宅。\n\n{"shots":[{"shot_id":"S1","time_range":"00:00-00:06","camera_setup":"近景"}]}`,
+            },
+          ],
+        },
+      ],
+      script,
+    );
+
+    expect(units).toHaveLength(1);
+    expect(Array.isArray(units[0]?.scriptExcerpt)).toBe(true);
+    expect(units[0]).toMatchObject({
+      sourceRefsLabel: "9-10",
+      scriptExcerpt: ["未找到对应剧本段落"],
+      videoStatus: "not_generated",
+      videoPath: "output/ep001/scn001/ep001_scn001_part001.mp4",
+    });
+  });
+
   test("prefers merged episode video when it exists beside the storyboard", () => {
     const model = buildStoryboardEditorModel(
       "output/ep001/ep001_storyboard.json",
