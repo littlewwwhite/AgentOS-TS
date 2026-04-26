@@ -10,6 +10,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -92,6 +93,32 @@ class AosCliModelAdapterTest(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["task"], "adapter-validate")
         self.assertEqual(payload["capability"], "generate")
+
+    def test_command_prefers_repo_local_cli_even_when_global_binary_exists(self):
+        with mock.patch.object(aos_cli_model, "find_repo_root", return_value=REPO_ROOT), mock.patch.object(
+            aos_cli_model.shutil, "which", return_value="/usr/local/bin/aos-cli"
+        ):
+            command = aos_cli_model._aos_cli_command(REPO_ROOT / ".claude")
+
+        self.assertEqual(
+            command,
+            ["uv", "run", "--project", str(REPO_ROOT / "aos-cli"), "aos-cli"],
+        )
+
+    def test_command_falls_back_to_global_cli_when_repo_root_missing(self):
+        with mock.patch.object(aos_cli_model, "find_repo_root", side_effect=RuntimeError("missing repo root")), mock.patch.object(
+            aos_cli_model.shutil, "which", return_value="/usr/local/bin/aos-cli"
+        ):
+            command = aos_cli_model._aos_cli_command(Path("/tmp"))
+
+        self.assertEqual(command, ["aos-cli"])
+
+    def test_command_raises_when_repo_root_missing_and_global_cli_absent(self):
+        with mock.patch.object(aos_cli_model, "find_repo_root", side_effect=RuntimeError("missing repo root")), mock.patch.object(
+            aos_cli_model.shutil, "which", return_value=None
+        ):
+            with self.assertRaisesRegex(RuntimeError, "missing repo root"):
+                aos_cli_model._aos_cli_command(Path("/tmp"))
 
     def test_adapter_source_does_not_import_json_or_model_modules(self):
         source = ADAPTER_PATH.read_text(encoding="utf-8")

@@ -75,10 +75,13 @@ def run_aos_cli(
 
 
 def _aos_cli_command(start: Path) -> list[str]:
-    if shutil.which("aos-cli"):
-        return ["aos-cli"]
+    try:
+        repo_root = find_repo_root(start)
+    except RuntimeError:
+        if shutil.which("aos-cli"):
+            return ["aos-cli"]
+        raise
 
-    repo_root = find_repo_root(start)
     return ["uv", "run", "--project", str(repo_root / "aos-cli"), "aos-cli"]
 
 
