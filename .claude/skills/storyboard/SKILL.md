@@ -172,7 +172,9 @@ python3 ./.claude/skills/storyboard/scripts/storyboard_batch.py "${PROJECT_DIR}"
 - 它不得写回 `output/script.json`
 - 它不得直接进入 VIDEO 阶段
 - 批准 draft 后，才复制/写入 `output/storyboard/approved/ep{NNN}_storyboard.json`
-- 默认使用 Gemini 文本代理：`GEMINI_API_KEY` / `GEMINI_BASE_URL` / `GEMINI_TEXT_MODEL`（默认 `gemini-3.1-flash-lite`，base url 默认指向当前代理）
+- 默认通过 `.claude/skills/_shared/aos_cli_model.py` 调用 `aos-cli model run`，使用 `capability=generate` 与 `output.kind=json`
+- 执行前可运行 `uv run --project aos-cli aos-cli model preflight --json` 检查模型边界运行时配置
+- 模型可通过 `STORYBOARD_TEXT_MODEL` 或通用 `GEMINI_TEXT_MODEL` 指定，最终作为 `modelPolicy.model` 传入 `aos-cli model`
 
 ### 出镜角色与情绪/状态
 

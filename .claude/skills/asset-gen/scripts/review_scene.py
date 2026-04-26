@@ -3,6 +3,8 @@
 """
 review_scene.py - 场景统一审图脚本（主图 + 参考表）
 
+Model boundary note: this image+text review path remains deferred until `aos-cli model` defines an explicit multimodal review contract for the required media upload/processing lifecycle and review I/O shape.
+
 支持两种审核模式：
   1. main  - 场景主图审核（世界观合规性 + 提示词匹配度 + 技术质量）
   2. ref   - 场景参考表审核（风格继承一致性 + 多视角布局 + 污染元素）
@@ -32,7 +34,7 @@ import sys, os, json, time, argparse
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
-from common_gemini_client import create_client, load_image_part, extract_response_text
+from gemini_multimodal_legacy import create_client, load_image_part, extract_response_text
 
 # ── 加载统一审核配置 ──────────────────────────────────────────────────────────
 from common_config import get_review_config

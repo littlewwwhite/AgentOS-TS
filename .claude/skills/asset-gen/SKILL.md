@@ -1,6 +1,6 @@
 ---
 name: asset-gen
-description: "视觉资产生成流水线：从 script.json 生成角色、场景、道具提示词，并通过 ChatFire gpt-image-2 批量出图。"
+description: "视觉资产生成流水线：从 script.json 生成角色、场景、道具提示词，并通过 aos-cli model 批量出图。"
 allowed-tools:
   - Bash
   - Read
@@ -20,23 +20,15 @@ allowed-tools:
 ### 步骤 0: 模型环境依赖
 
 ```bash
-python3 - <<'PY'
-import os, sys
-missing = [k for k in ("GEMINI_API_KEY", "OPENAI_API_KEY") if not os.environ.get(k)]
-if missing:
-    print("missing env: " + ", ".join(missing), file=sys.stderr)
-    sys.exit(1)
-print("asset-gen env ok")
-PY
+uv run --project aos-cli aos-cli model preflight --json
 command -v ffmpeg >/dev/null
 ```
 
 - 依赖缺失 → 按输出提示安装（`ffmpeg`: macOS `brew install ffmpeg`，Linux `apt install ffmpeg`）
-- 缺少 `GEMINI_API_KEY` → Gemini 文本/评审代理不可运行
-- 缺少 `OPENAI_API_KEY` → `gpt-image-2` 图片生成不可运行
-- Gemini 配置异常 → 检查 `assets/common/gemini_backend.json`，默认使用官方 Gemini SDK 配置
-
-当前图片生成 provider 为 ChatFire `gpt-image-2`，由 `scripts/common_image_api.py` 调用 `/v1/images/generations`。
+- `aos-cli model preflight` 失败 → 检查模型 provider 配置、密钥环境变量和 `aos-cli` 安装状态
+- 文本/JSON 生成通过 `scripts/common_gemini_client.py` 调用 `aos-cli model run`，使用 `capability=generate`
+- 图片生成通过 `scripts/common_image_api.py` 调用 `aos-cli model run`，使用 `capability=image.generate` 与 `output.kind=artifact`
+- 图片模型可通过 `ASSET_IMAGE_MODEL` 指定；未设置时兼容读取 `OPENAI_IMAGE_MODEL`，最终作为 `modelPolicy.model` 传入 `aos-cli model`
 
 ### 步骤 0-C: 项目初始化检查（必须在步骤 0 之后执行）
 

@@ -15,7 +15,7 @@ style.json 被 generate_scenes.py 和 generate_props.py 加载，确保：
     --output     "path/to/{project}_style.json"
 """
 
-import sys, os, json, time, argparse
+import sys, os, json, argparse
 from string import Template
 from pathlib import Path
 
@@ -32,7 +32,7 @@ SCRIPT_DIR = Path(__file__).parent
 REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from common_gemini_client import create_client
+from common_gemini_client import generate_json_with_retry
 from common_config import get_style_config
 from pipeline_state import ensure_state, update_artifact, update_stage
 
@@ -69,12 +69,6 @@ def build_analysis_prompt(script_data, config, style_override=None):
 
 
 def generate_style(script_json_path, output_path, style_override=None):
-    try:
-        client = create_client()
-    except ValueError as e:
-        log(f'ERROR: {e}')
-        sys.exit(1)
-
     config = load_style_config()
 
     log(f'读取剧本信息: {script_json_path}')
@@ -85,36 +79,23 @@ def generate_style(script_json_path, output_path, style_override=None):
         log(f'风格已覆写为: 【{style_override}】（原值: {script_data.get("style", "真人")}）')
 
     prompt = build_analysis_prompt(script_data, config, style_override)
-    models_to_try = [config.get('model', 'gemini-3.1-flash-lite-preview')]
-    result = None
-
+    model = config.get('model', 'gemini-3.1-flash-lite-preview')
     retry_attempts = config.get('retry_attempts', 2)
     retry_sleep    = config.get('retry_sleep_seconds', 3)
 
-    for model in models_to_try:
-        for attempt in range(retry_attempts):
-            try:
-                log(f'尝试 {model} 分析世界观 (第{attempt+1}次)...')
-                response = client.models.generate_content(model=model, contents=[prompt])
-                if response.text is None:
-                    raise ValueError("Gemini 返回空文本（可能仅含 thought_signature）")
-                raw = response.text.strip()
-                if '```json' in raw:
-                    raw = raw.split('```json')[1].split('```')[0].strip()
-                elif '```' in raw:
-                    raw = raw.split('```')[1].split('```')[0].strip()
-                result = json.loads(raw)
-                wt = result.get('worldview_type', '未知')
-                log(f'✓ 世界观分析完成: 【{wt}】')
-                break
-            except Exception as e:
-                log(f'{model} 第{attempt+1}次失败: {e}')
-                if attempt < retry_attempts - 1:
-                    time.sleep(retry_sleep)
-        if result:
-            break
-
-    if not result:
+    try:
+        log(f'尝试 {model} 分析世界观...')
+        result = generate_json_with_retry(
+            prompt,
+            label='世界观分析',
+            max_retries=retry_attempts,
+            base_delay=retry_sleep,
+            model=model,
+        )
+        wt = result.get('worldview_type', '未知') if isinstance(result, dict) else '未知'
+        log(f'✓ 世界观分析完成: 【{wt}】')
+    except Exception as e:
+        log(f'❌ 世界观分析失败: {e}')
         log('❌ Gemini 分析失败，请手动创建 style.json')
         sys.exit(1)
 

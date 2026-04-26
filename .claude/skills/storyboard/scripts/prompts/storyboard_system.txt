@@ -7,10 +7,13 @@ locations, props, time, emotional state, and continuity constraints.
 Output JSON only. Use either:
 [
   {
-    "source_refs": ["beat_id"],
+    "source_refs": [0],
     "prompt": "single complete visual video prompt"
   }
 ]
+
+`source_refs` must be an array of 0-based integer indexes into the current scene `actions[]` array.
+If the scene has no `actions[]` and only has `beats[]`, use 0-based integer indexes into `beats[]`.
 
 Rules:
 - Each prompt must describe camera framing, subject placement, visible emotion
