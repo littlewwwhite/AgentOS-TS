@@ -62,13 +62,19 @@ export function ProductionInboxPanel({
                     </div>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onOpen(item)}
-                  className="border border-[var(--color-rule)] px-3 py-1 font-[Geist,sans-serif] text-[11px] font-semibold text-[var(--color-ink)]"
-                >
-                  {item.cta}
-                </button>
+                {item.path ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(item)}
+                    className="border border-[var(--color-rule)] px-3 py-1 font-[Geist,sans-serif] text-[11px] font-semibold text-[var(--color-ink)]"
+                  >
+                    {item.cta}
+                  </button>
+                ) : (
+                  <span className="font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-subtle)]">
+                    等待产物入口
+                  </span>
+                )}
               </div>
             </article>
           ))}
