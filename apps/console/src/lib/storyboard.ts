@@ -108,16 +108,14 @@ export interface StoryboardGenerationUnit {
   key: string;
   episodeId: string | null;
   sceneId: string;
-  clipId: string;
-  sourceRefs: number[];
+  partId: string;
   sourceRefsLabel: string;
   scriptExcerpt: string;
   prompt: string;
+  promptSummary: string;
   shots: StoryboardGenerationUnitShot[];
-  generated: {
-    status: "generated" | "missing";
-    path: string;
-  };
+  videoPath: string;
+  videoStatus: "generated" | "not_generated";
 }
 
 export interface DraftStoryboardShotSummary {
@@ -554,29 +552,28 @@ export function buildStoryboardGenerationUnits(
     (scene.shots ?? [])
       .filter((shot) => typeof shot.prompt === "string" && shot.prompt.trim())
       .map((shot, index) => {
-        const clipId = `part_${String(index + 1).padStart(3, "0")}`;
-        const generatedPath = resolveClipVideoPath(storyboardPath, scene.scene_id, clipId, mediaPaths);
+        const partId = `part_${String(index + 1).padStart(3, "0")}`;
+        const videoPath = resolveClipVideoPath(storyboardPath, scene.scene_id, partId, mediaPaths);
         const sourceRefs = sourceRefsFromValue(shot.source_refs);
+        const prompt = shot.prompt?.trim() ?? "";
 
         return {
-          key: `${scene.scene_id}::${clipId}`,
+          key: `${scene.scene_id}::${partId}`,
           episodeId,
           sceneId: scene.scene_id,
-          clipId,
-          sourceRefs,
+          partId,
           sourceRefsLabel: summarizeSourceRefs(sourceRefs),
           scriptExcerpt: sceneExcerptFromRefs(sceneBeats, episodeId, scene.scene_id, sourceRefs),
-          prompt: generationPromptSummary(shot.prompt ?? ""),
-          shots: storyboardShotsFromPrompt(shot.prompt ?? "").map((promptShot) => ({
+          prompt,
+          promptSummary: generationPromptSummary(prompt),
+          shots: storyboardShotsFromPrompt(prompt).map((promptShot) => ({
             shotId: promptShot.shot_id ?? "shot",
             timeRange: promptShot.time_range ?? null,
             duration: shotDuration(promptShot),
             prompt: promptShot.partial_prompt ?? "",
           })),
-          generated: {
-            status: mediaPaths?.includes(generatedPath) ? "generated" : "missing",
-            path: generatedPath,
-          },
+          videoPath,
+          videoStatus: mediaPaths?.includes(videoPath) ? "generated" : "not_generated",
         } satisfies StoryboardGenerationUnit;
       }),
   );
