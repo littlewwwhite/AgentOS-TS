@@ -61,9 +61,14 @@ mock.module("../src/hooks/useFile", () => ({
   }),
 }));
 
+// Mutable tree reference — each test can swap it before rendering.
+let currentTree: unknown[] = [{ path: "output/storyboard/approved/ep001_storyboard.json" }];
+
 mock.module("../src/contexts/ProjectContext", () => ({
   useProject: () => ({
-    tree: [{ path: "output/storyboard/approved/ep001_storyboard.json" }],
+    get tree() {
+      return currentTree;
+    },
     refresh: () => undefined,
     state: { artifacts: {} },
   }),
@@ -73,6 +78,8 @@ const { StoryboardView } = await import("../src/components/Viewer/views/Storyboa
 
 describe("StoryboardView rendering", () => {
   test("renders storyboard generation units instead of the empty storyboard state", () => {
+    currentTree = [{ path: "output/storyboard/approved/ep001_storyboard.json" }];
+
     const html = renderToStaticMarkup(
       React.createElement(StoryboardView, {
         projectName: "demo-project",
@@ -90,5 +97,35 @@ describe("StoryboardView rendering", () => {
     expect(html).toContain("S1");
     expect(html).toContain("近景手部+银锭特写");
     expect(html).toContain("视频待生成");
+  });
+
+  test("videoStatus is 'generated' when the video path lives in a nested tree node", () => {
+    // The storyboard path is "output/storyboard/approved/ep001_storyboard.json".
+    // episodeId = "ep001", episodeRuntimeDir = "output/ep001"
+    // For scene scn_001 + part_001:
+    //   sceneSlug = compactStoryboardId("scn_001") = "scn001"
+    //   clipSlug  = compactStoryboardId("part_001") = "part001"
+    //   clipVideoPath = "output/ep001/scn001/ep001_scn001_part001.mp4"
+    currentTree = [
+      {
+        path: "output/ep001",
+        children: [
+          {
+            path: "output/ep001/scn001",
+            children: [{ path: "output/ep001/scn001/ep001_scn001_part001.mp4" }],
+          },
+        ],
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      React.createElement(StoryboardView, {
+        projectName: "demo-project",
+        path: "output/storyboard/approved/ep001_storyboard.json",
+      }),
+    );
+
+    expect(html).toContain("视频已生成");
+    expect(html).not.toContain("视频待生成");
   });
 });

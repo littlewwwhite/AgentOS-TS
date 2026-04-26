@@ -804,13 +804,18 @@ function generationVideoStatusLabel(status: StoryboardGenerationUnit["videoStatu
 
 function projectTreePaths(tree: unknown): string[] {
   if (!Array.isArray(tree)) return [];
-  return tree
-    .map((node) => {
-      if (!node || typeof node !== "object") return null;
-      const path = (node as { path?: unknown }).path;
-      return typeof path === "string" && path.trim() ? path : null;
-    })
-    .filter((path): path is string => Boolean(path));
+  const results: string[] = [];
+  for (const node of tree) {
+    if (!node || typeof node !== "object") continue;
+    const { path, children } = node as { path?: unknown; children?: unknown };
+    if (typeof path === "string" && path.trim()) {
+      results.push(path);
+    }
+    if (Array.isArray(children)) {
+      results.push(...projectTreePaths(children));
+    }
+  }
+  return results;
 }
 
 function StoryboardGenerationUnitCard({ unit }: { unit: StoryboardGenerationUnit }) {
