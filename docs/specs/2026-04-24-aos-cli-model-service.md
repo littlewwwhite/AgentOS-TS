@@ -6,7 +6,9 @@
 
 ## 1. 根本目标
 
-`aos-cli` 是 AgentOS 后续 pipeline 的基础设施 CLI。第一版只实现模型能力服务，不实现 pipeline runtime。
+In this document, “model service” means the local `aos-cli model` boundary and its internal service object. It does not mean a daemon, web server, remote service, workflow engine, or deployment unit.
+
+`aos-cli` is the infrastructure CLI for future AgentOS pipelines. The first version implements only the model boundary CLI, not pipeline orchestration.
 
 核心目标是把 AgentOS 的业务编排层从供应商 API 细节中隔离出来：
 
@@ -17,7 +19,7 @@
 
 一句话边界：
 
-> `aos-cli` 是模型能力防腐层，不是 workflow engine。
+> `aos-cli model` is the model capability boundary CLI, not a workflow orchestration layer.
 
 ## 2. 真实问题
 
@@ -55,11 +57,13 @@
 aos-cli
 ```
 
-可执行命令：
+Public executable name:
 
 ```text
-agentos
+aos-cli
 ```
+
+No separate AgentOS business CLI is part of this boundary.
 
 第一版命名空间：
 
@@ -75,13 +79,14 @@ aos-cli model preflight --json
 aos-cli model capabilities --json
 ```
 
-后续可以扩展：
+Future namespace extensions may add async video task commands inside the same CLI boundary:
 
 ```bash
-aos-cli model serve --port 8787
-aos-cli model video submit --input request.json --output task.json
-aos-cli model video poll --input task.json --output result.json
+aos-cli model submit --input request.json --output task.json
+aos-cli model poll --input task.json --output result.json
 ```
+
+`serve` is intentionally deferred. The current boundary is the CLI process contract.
 
 ## 5. 架构边界
 

@@ -2,9 +2,16 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+In this document, “model service” means the local `aos-cli model` boundary and its internal service object. It does not mean a daemon, web server, remote service, workflow engine, or deployment unit.
+
 **Goal:** Create a separate `/Users/dingzhijian/lingjing/aos-cli` infrastructure project whose first shipped namespace is `aos-cli model`, providing stable atomic model calls for AgentOS pipelines.
 
-**Architecture:** Build a Python CLI with a small model service core, stable request/response envelopes, schema validation, provider adapters, real preflight checks, and no pipeline-stage knowledge. AgentOS harnesses call the CLI through files; provider-specific SDK and API details remain behind adapters.
+**Architecture:** Build a Python CLI with a small internal service object behind the `aos-cli model` boundary, stable request/response envelopes, schema validation, provider adapters, real preflight checks, and no pipeline-stage knowledge. AgentOS harnesses call the CLI through files; provider-specific SDK and API details remain behind adapters.
+
+`serve` is intentionally deferred. The current boundary is the CLI process contract.
+
+Do not add raw provider commands, pipeline orchestration commands, workspace management commands, or AgentOS business commands in this plan.
+
 
 **Tech Stack:** Python 3.11+, `uv`, `argparse`, `urllib.request`, `jsonschema`, `pytest`, `ruff`. No Bun/TypeScript runtime in the new CLI MVP.
 
