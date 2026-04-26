@@ -311,7 +311,7 @@ def test_validate_json_output_rejects_missing_field():
     with pytest.raises(ModelServiceError) as exc:
         validate_json_output({}, schema)
 
-    assert exc.value.code == "OUTPUT_SCHEMA_FAILED"
+    assert exc.value.code == "OUTPUT_PARSE_FAILED"
 ```
 
 **Step 2: Implement validation**
@@ -327,7 +327,7 @@ def validate_json_output(data: object, schema: dict) -> object:
         validate(instance=data, schema=schema)
     except ValidationError as exc:
         raise ModelServiceError(
-            "OUTPUT_SCHEMA_FAILED",
+            "OUTPUT_PARSE_FAILED",
             exc.message,
             retryable=True,
         ) from exc
@@ -878,7 +878,7 @@ Preflight should:
 
 - Check `GEMINI_API_KEY`.
 - Check `GEMINI_BASE_URL`.
-- Send a minimal generateContent request.
+- Perform a safe provider auth/connectivity probe consistent with `MODEL_PROTOCOL`; it must not generate business content.
 - Require JSON response.
 - Return a structured checks array.
 

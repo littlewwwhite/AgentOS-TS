@@ -493,7 +493,7 @@ model providers
 
 - `aos-cli model run` 可以从 request file 生成 text response。
 - `aos-cli model run` 可以从 request file 生成 schema-valid JSON response。
-- schema 失败时返回 `OUTPUT_SCHEMA_FAILED`，不会假装成功。
+- schema 失败时返回 `OUTPUT_PARSE_FAILED`，不会假装成功。
 - provider 鉴权失败时返回 `PROVIDER_AUTH_FAILED`。
 - preflight 能识别 HTML response，不把 HTTP 200 当成功。
 - stdout 不输出人类日志。
