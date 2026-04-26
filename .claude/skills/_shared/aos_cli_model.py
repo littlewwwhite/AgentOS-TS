@@ -50,6 +50,14 @@ def aos_cli_model_poll(
     )
 
 
+def aos_cli_model_validate(
+    request_path: PathLike,
+    *,
+    cwd: Optional[PathLike] = None,
+) -> subprocess.CompletedProcess:
+    return run_aos_cli(["model", "validate", "--input", str(request_path)], cwd=cwd)
+
+
 def run_aos_cli(
     args: Iterable[str],
     *,

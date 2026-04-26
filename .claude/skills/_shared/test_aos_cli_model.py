@@ -68,6 +68,37 @@ class AosCliModelAdapterTest(unittest.TestCase):
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["output"]["kind"], "task_result")
 
+    def test_validate_command_returns_stdout_json_without_adapter_parsing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            request_path = Path(tmp) / "request.json"
+            request_path.write_text(
+                json.dumps(
+                    {
+                        "apiVersion": "aos-cli.model/v1",
+                        "task": "adapter-validate",
+                        "capability": "generate",
+                        "output": {"kind": "text"},
+                        "input": {"content": "hello"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = aos_cli_model.aos_cli_model_validate(request_path, cwd=REPO_ROOT)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["task"], "adapter-validate")
+        self.assertEqual(payload["capability"], "generate")
+
+    def test_adapter_source_does_not_import_json_or_model_modules(self):
+        source = ADAPTER_PATH.read_text(encoding="utf-8")
+
+        self.assertNotIn("import json", source)
+        self.assertNotIn("from aos_cli.model", source)
+        self.assertNotIn("import aos_cli.model", source)
+
 
 if __name__ == "__main__":
     unittest.main()
