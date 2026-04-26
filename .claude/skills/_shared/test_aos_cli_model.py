@@ -3,6 +3,7 @@
 # output: regression checks for CLI adapter command resolution
 # pos: smoke coverage for skill-side model CLI adapter
 
+import ast
 import importlib.util
 import json
 import os
@@ -94,10 +95,24 @@ class AosCliModelAdapterTest(unittest.TestCase):
 
     def test_adapter_source_does_not_import_json_or_model_modules(self):
         source = ADAPTER_PATH.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(ADAPTER_PATH))
 
-        self.assertNotIn("import json", source)
-        self.assertNotIn("from aos_cli.model", source)
-        self.assertNotIn("import aos_cli.model", source)
+        forbidden_imports: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "json" or alias.name == "aos_cli.model" or alias.name.startswith("aos_cli.model."):
+                        forbidden_imports.append(alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module == "json" or module == "aos_cli.model" or module.startswith("aos_cli.model."):
+                    forbidden_imports.append(module)
+
+        self.assertEqual(
+            forbidden_imports,
+            [],
+            f"Adapter must not import json or aos_cli.model modules: {forbidden_imports}",
+        )
 
 
 if __name__ == "__main__":
