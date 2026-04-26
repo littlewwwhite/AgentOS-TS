@@ -35,6 +35,17 @@ describe("productionObject", () => {
     expect(getProductionObjectScope(object).affects).toEqual(["storyboard", "downstream video"]);
   });
 
+  test("storyboard path supports underscored and case variant episode ids", () => {
+    const object = resolveProductionObjectFromPath("output/storyboard/approved/EP_001_storyboard.json");
+    expect(object).toEqual({
+      type: "episode",
+      episodeId: "ep001",
+      artifactRole: "storyboard",
+      path: "output/storyboard/approved/EP_001_storyboard.json",
+    });
+    expect(getProductionObjectLabel(object)).toBe("ep001 · Storyboard");
+  });
+
   test("shot video path resolves to shot object", () => {
     const object = resolveProductionObjectFromPath("output/ep001/scn002/clip003/v1.mp4");
     expect(object).toEqual({
@@ -51,6 +62,18 @@ describe("productionObject", () => {
     });
   });
 
+  test("filename-style shot video path resolves to shot object", () => {
+    const object = resolveProductionObjectFromPath("output/ep001/scn002/ep001_scn002_clip001_003.mp4");
+    expect(object).toEqual({
+      type: "shot",
+      episodeId: "ep001",
+      sceneId: "scn002",
+      shotId: "clip001",
+      path: "output/ep001/scn002/ep001_scn002_clip001_003.mp4",
+    });
+    expect(getProductionObjectLabel(object)).toBe("ep001 · scn002 · clip001");
+  });
+
   test("asset library and asset item paths resolve to asset objects", () => {
     const library = resolveProductionObjectFromPath("output/actors");
     expect(library).toEqual({ type: "asset", assetType: "actor", path: "output/actors" });
@@ -60,6 +83,24 @@ describe("productionObject", () => {
     expect(item).toEqual({ type: "asset", assetType: "actor", assetId: "hero", path: "output/actors/hero/ref.png" });
     expect(getProductionObjectLabel(item)).toBe("Actor · hero");
     expect(getProductionObjectScope(item).affects).toEqual(["visual identity", "downstream storyboard/video consistency"]);
+  });
+
+  test("asset manifest paths resolve to library-level asset objects", () => {
+    const actors = resolveProductionObjectFromPath("output/actors/actors.json");
+    expect(actors).toEqual({ type: "asset", assetType: "actor", path: "output/actors/actors.json" });
+    expect(getProductionObjectLabel(actors)).toBe("Actors");
+    expect(getProductionObjectScope(actors).defaultScope).toBe("actor library");
+
+    expect(resolveProductionObjectFromPath("output/locations/locations.json")).toEqual({
+      type: "asset",
+      assetType: "location",
+      path: "output/locations/locations.json",
+    });
+    expect(resolveProductionObjectFromPath("output/props/props.json")).toEqual({
+      type: "asset",
+      assetType: "prop",
+      path: "output/props/props.json",
+    });
   });
 
   test("unknown path falls back to artifact object", () => {

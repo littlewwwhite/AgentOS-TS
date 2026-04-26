@@ -30,6 +30,12 @@ const ASSET_SEGMENT_TO_TYPE: Record<string, AssetType> = {
   props: "prop",
 };
 
+const ASSET_TYPE_TO_SEGMENT: Record<AssetType, string> = {
+  actor: "actors",
+  location: "locations",
+  prop: "props",
+};
+
 const ASSET_TYPE_LABEL: Record<AssetType, string> = {
   actor: "Actor",
   location: "Location",
@@ -53,9 +59,14 @@ function titleCase(value: string): string {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
 }
 
+function normalizeEpisodeId(value: string): string {
+  const digits = value.match(/\d+/)?.[0] ?? value;
+  return `ep${digits.padStart(3, "0")}`;
+}
+
 function episodeIdFromStoryboard(path: string): string | null {
-  const match = path.match(/(?:^|\/)(ep\d+)_storyboard\.json$/);
-  return match?.[1] ?? null;
+  const match = path.match(/(?:^|\/)(ep_?\d+)_storyboard\.json$/i);
+  return match ? normalizeEpisodeId(match[1]) : null;
 }
 
 function episodeRoleFromPath(path: string): EpisodeArtifactRole | undefined {
@@ -75,14 +86,27 @@ export function resolveProductionObjectFromPath(path: string, options: ResolveOp
   const segments = path.split("/").filter(Boolean);
   const assetIndex = segments.findIndex((segment) => segment in ASSET_SEGMENT_TO_TYPE);
   if (assetIndex >= 0) {
-    const assetType = ASSET_SEGMENT_TO_TYPE[segments[assetIndex]];
+    const assetSegment = segments[assetIndex];
+    const assetType = ASSET_SEGMENT_TO_TYPE[assetSegment];
     const assetId = segments[assetIndex + 1];
-    return assetId ? { type: "asset", assetType, assetId, path } : { type: "asset", assetType, path };
+    const isManifest = assetId === `${ASSET_TYPE_TO_SEGMENT[assetType]}.json`;
+    return assetId && !isManifest ? { type: "asset", assetType, assetId, path } : { type: "asset", assetType, path };
   }
 
-  const shotMatch = path.match(/(?:^|\/)(ep\d+)\/(scn\d+)\/(clip\d+)\//);
+  const shotMatch = path.match(/(?:^|\/)(ep\d+)\/(scn\d+)\/(clip\d+)(?:\/|$)/);
   if (shotMatch) {
     return { type: "shot", episodeId: shotMatch[1], sceneId: shotMatch[2], shotId: shotMatch[3], path };
+  }
+
+  const filenameShotMatch = path.match(/(?:^|\/)(ep\d+)\/(scn\d+)\/[^/]*?(clip\d+)[^/]*\.(?:mp4|webm|mov)$/i);
+  if (filenameShotMatch) {
+    return {
+      type: "shot",
+      episodeId: filenameShotMatch[1],
+      sceneId: filenameShotMatch[2],
+      shotId: filenameShotMatch[3],
+      path,
+    };
   }
 
   const sceneMatch = path.match(/(?:^|\/)(ep\d+)\/(scn\d+)(?:\/|$)/);
