@@ -1333,7 +1333,7 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
                   时间轴与预览辅助区
                 </div>
                 <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
-                  用于校对镜头切换、预览素材与编辑当前片段字段。
+                  用于校对镜头切换、预览素材与编辑当前镜头单元字段。
                 </div>
               </div>
             </div>
