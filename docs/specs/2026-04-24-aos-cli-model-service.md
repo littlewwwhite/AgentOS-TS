@@ -21,6 +21,8 @@ In this document, “model service” means the local `aos-cli model` boundary a
 
 > `aos-cli model` is the model capability boundary CLI, not a workflow orchestration layer.
 
+Boundary contract note: this spec preserves the stable `aos-cli model` surface, while implementation availability may arrive milestone by milestone. Runtime availability must be discovered from `aos-cli model capabilities --json` and current milestone notes, not inferred from namespace shape alone.
+
 ## 2. 真实问题
 
 当前项目里的模型调用散落在多个 skill 脚本里，导致三个系统性风险：
@@ -75,18 +77,19 @@ aos-cli model ...
 
 ```bash
 aos-cli model run --input request.json --output response.json
+aos-cli model submit --input request.json --output task.json
+aos-cli model poll --input task.json --output result.json
+aos-cli model batch --manifest manifest.json --report report.json
+aos-cli model validate --input request.json
 aos-cli model preflight --json
 aos-cli model capabilities --json
 ```
 
-Future namespace extensions may add async video task commands inside the same CLI boundary:
-
-```bash
-aos-cli model submit --input request.json --output task.json
-aos-cli model poll --input task.json --output result.json
-```
+The full command shape is stable at the boundary level. Individual commands may remain deferred or milestone-gated until explicitly implemented.
 
 `serve` is intentionally deferred. The current boundary is the CLI process contract.
+
+Do not add daemon mode, raw provider commands, or AgentOS business commands under this namespace.
 
 ## 5. 架构边界
 
@@ -146,10 +149,11 @@ Provider adapter 不负责：
 |---|---|---|---|
 | `generate` | `text` | 灵感扩写、说明、摘要、人类可读草稿 | sync |
 | `generate` | `json` | 分镜、资产分析、剧情拆解、结构映射 | sync |
-| `image.generate` | `artifact` | 角色、场景、道具图片 | sync for v1 |
-| `vision.analyze` | `json` | 图片/视频审核、提示词符合度分析 | sync |
-| `video.submit` | `task` | Ark / video provider 长任务提交 | async |
-| `video.poll` | `task_result` | 查询视频任务状态 | async |
+| `image.generate` | `artifact` | 角色、场景、道具图片 | future adapter |
+| `vision.analyze` | `json` | 图片/视频审核、提示词符合度分析 | future adapter |
+| `video.generate` | `task` / `task_result` | Ark / video provider 长任务生命周期 | async |
+
+`video.generate` is the canonical async capability. `submit` and `poll` are lifecycle commands over the same capability, not separate capability names.
 
 第一版推荐先实现：
 
@@ -158,7 +162,33 @@ Provider adapter 不负责：
 - `preflight`
 - `capabilities`
 
-`image.generate` 第二批接入。`video.submit/poll` 不要塞进同步 `run`，因为视频生命周期天然是长任务。
+`image.generate`、`vision.analyze`、`video.generate` 作为 boundary-preserved or future adapter paths 存在，但除非后续任务明确要求，否则不应因为本 spec 提前扩大 provider scope。视频生命周期也不要塞进同步 `run`。
+
+Harness must read `aos-cli model capabilities --json` instead of assuming every listed capability is available in the current milestone.
+
+```bash
+aos-cli model capabilities --json
+```
+
+The command output is the runtime source of truth.
+
+Batch and async commands stay in the namespace shape, but implementation can remain deferred until a later milestone explicitly ships them.
+
+```bash
+aos-cli model batch --manifest manifest.json --report report.json
+aos-cli model submit --input request.json --output task.json
+aos-cli model poll --input task.json --output result.json
+```
+
+`validate` remains part of the stable boundary shape and should validate one request envelope without provider execution.
+
+```bash
+aos-cli model validate --input request.json
+```
+
+`serve` remains deferred and out of scope.
+
+Do not implement or expose `serve` in this milestone.
 
 ## 7. Request contract
 
@@ -228,6 +258,8 @@ Harness may set `provider` or `model` for experiments, but production logic must
 
 ## 8. Response contract
 
+The normalized success/failure envelope must stay aligned with `aos-cli/docs/MODEL_PROTOCOL.md`. Examples here are illustrative and must not define a second competing canonical shape.
+
 Success response:
 
 ```json
@@ -238,9 +270,7 @@ Success response:
   "capability": "generate",
   "output": {
     "kind": "json",
-    "data": {},
-    "validated": true,
-    "schema": "storyboard.scene.v1"
+    "data": {}
   },
   "provider": "gemini",
   "model": "gemini-3.1-flash-lite",
@@ -303,21 +333,31 @@ Failure response:
 
 ## 10. Error taxonomy
 
-错误码必须稳定，provider 原始错误只能作为 metadata。
+错误码必须稳定，provider 原始错误只能作为 metadata。Canonical normalized envelope semantics live in `aos-cli/docs/MODEL_PROTOCOL.md`.
+
+Current stable minimum set aligned with the protocol document:
 
 | Code | Retryable | Meaning |
 |---|---:|---|
 | `INVALID_REQUEST` | false | Request envelope 不合法。 |
 | `UNSUPPORTED_CAPABILITY` | false | 当前服务不支持该 capability。 |
-| `SCHEMA_NOT_FOUND` | false | 请求的 schema 不存在。 |
 | `OUTPUT_PARSE_FAILED` | true | 模型返回无法解析为目标输出。 |
-| `OUTPUT_SCHEMA_FAILED` | true | JSON 可解析但 schema 不通过。 |
 | `PROVIDER_AUTH_FAILED` | false | API key / base URL 不匹配或无权限。 |
 | `PROVIDER_QUOTA_EXHAUSTED` | true | 额度耗尽或限流。 |
 | `PROVIDER_TIMEOUT` | true | 请求超时。 |
 | `PROVIDER_BAD_RESPONSE` | true | 返回 HTML、空响应、缺字段等。 |
-| `PROVIDER_UNSUPPORTED_MODEL` | false | 模型名不可用。 |
-| `ARTIFACT_WRITE_FAILED` | false | 输出 artifact 写盘失败。 |
+
+Additional normalized codes such as schema-specific or artifact-write failures may be introduced in later milestones, but this spec should not require callers to depend on fields or codes beyond the documented protocol envelope.
+
+When in doubt, callers should branch on the normalized envelope and use `aos-cli model capabilities --json` for runtime availability, not on provider-native details.
+
+```bash
+aos-cli model capabilities --json
+```
+
+Use the command output as the runtime source of truth.
+
+Schema-specific failures, if introduced later, should still remain inside the same normalized error envelope rather than creating a parallel contract.
 
 ## 11. Preflight contract
 
@@ -404,6 +444,8 @@ Harness 应该读取 capabilities，而不是硬编码假设。
 
 当输出是 artifact 时，response 必须包含可机器消费的 artifact 描述。
 
+Illustrative artifact envelope, aligned to the protocol document:
+
 ```json
 {
   "ok": true,
@@ -411,21 +453,24 @@ Harness 应该读取 capabilities，而不是硬编码假设。
     "kind": "artifact",
     "artifacts": [
       {
-        "type": "image",
-        "path": "/absolute/path/to/image.png",
-        "mimeType": "image/png",
-        "sourceUrl": "https://example.com/image.png"
+        "kind": "image",
+        "uri": "file:///absolute/path/to/image.png",
+        "remoteUrl": "https://example.com/image.png",
+        "mimeType": "image/png"
       }
     ]
   }
 }
 ```
 
+Canonical field meaning follows `aos-cli/docs/MODEL_PROTOCOL.md`. This spec must not introduce a second artifact descriptor shape.
+
 规则：
 
 - 如果 request 指定 `outputDir`，CLI 可以写文件。
 - 如果 request 未指定 `outputDir`，CLI 不应在项目目录产生隐式副作用。
-- 所有本地 artifact path 必须是 absolute path。
+- 所有本地 artifact references must be absolute when materialized to files.
+- Future adapters may add checksum or size metadata, but only through the normalized protocol envelope.
 
 ## 15. 和 LiteLLM 的关系
 

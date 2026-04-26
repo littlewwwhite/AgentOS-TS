@@ -12,6 +12,7 @@ In this document, “model service” means the local `aos-cli model` boundary a
 
 Do not add raw provider commands, pipeline orchestration commands, workspace management commands, or AgentOS business commands in this plan.
 
+README and `docs/MODEL_PROTOCOL.md` must distinguish the stable boundary contract from current milestone implementation availability. Deferred scope, including `serve` and other later command paths, must not be implemented unless a later task explicitly requires it.
 
 **Tech Stack:** Python 3.11+, `uv`, `argparse`, `urllib.request`, `jsonschema`, `pytest`, `ruff`. No Bun/TypeScript runtime in the new CLI MVP.
 
@@ -112,7 +113,7 @@ def test_main_help_returns_zero(capsys):
 
     assert code == 0
     captured = capsys.readouterr()
-    assert "agentos" in captured.out
+    assert "aos-cli" in captured.out
 ```
 
 **Step 5: Implement minimal CLI**
@@ -123,7 +124,7 @@ from collections.abc import Sequence
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="agentos")
+    parser = argparse.ArgumentParser(prog="aos-cli")
     subparsers = parser.add_subparsers(dest="namespace")
     subparsers.add_parser("model")
     return parser
@@ -768,7 +769,7 @@ def test_model_run_writes_response_file(tmp_path, monkeypatch):
 
 ```python
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="agentos")
+    parser = argparse.ArgumentParser(prog="aos-cli")
     namespaces = parser.add_subparsers(dest="namespace", required=True)
 
     model = namespaces.add_parser("model")
