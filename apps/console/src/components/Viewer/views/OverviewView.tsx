@@ -1,14 +1,82 @@
+// input: project pipeline state, workspace tree, and tab actions
+// output: overview homepage with decision-first production inbox and supporting workflow/workspace panels
+// pos: top-level console overview that prioritizes actionable production objects before passive status
+
 import { useState, type ChangeEvent } from "react";
 import { useProject } from "../../../contexts/ProjectContext";
 import { useTabs } from "../../../contexts/TabsContext";
 import { StatusBadge } from "../../Navigator/StatusBadge";
 import type { StageStatus } from "../../../types";
+import { buildProductionInbox, type ProductionInboxItem } from "../../../lib/productionInbox";
 import { getResumeDecision, type ResumeDecision } from "../../../lib/resumePolicy";
 import { buildOverviewWorkbench, type WorkbenchItem } from "../../../lib/overviewWorkbench";
 import { buildWorkspaceSummary, type WorkspaceSummary } from "../../../lib/workspaceSummary";
 import { buildWorkflowProgress, type WorkflowProgressItem } from "../../../lib/workflowProgress";
 import { buildWorkflowStatus, type WorkflowStatus } from "../../../lib/workflowStatus";
 import { resolveView } from "../resolveView";
+
+export function ProductionInboxPanel({
+  items,
+  onOpen,
+}: {
+  items: ProductionInboxItem[];
+  onOpen: (item: ProductionInboxItem) => void;
+}) {
+  return (
+    <section className="border border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-5 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="font-sans text-[10px] font-semibold tracking-[0.08em] text-[var(--color-ink-subtle)]">
+            Production Inbox
+          </div>
+          <p className="mt-2 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink-muted)]">
+            先处理会阻塞交付或需要拍板的制作对象。
+          </p>
+        </div>
+        <div className="font-mono text-[11px] text-[var(--color-ink-subtle)]">
+          {items.length} items
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <div className="mt-4 border-t border-[var(--color-rule)] pt-4 font-[Geist,sans-serif] text-[13px] text-[var(--color-ink-subtle)]">
+          当前没有需要导演/制片处理的事项。
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4 border-t border-[var(--color-rule)] pt-4">
+          {items.map((item) => (
+            <article key={item.key} className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="font-mono text-[11px] text-[var(--color-ink-subtle)]">
+                    {item.priority} · {item.stage}
+                  </div>
+                  <div className="font-serif text-[24px] leading-tight text-[var(--color-ink)]">
+                    {item.title}
+                  </div>
+                  <p className="font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink-muted)]">
+                    {item.reason}
+                  </p>
+                  {item.path && (
+                    <div className="font-mono text-[11px] text-[var(--color-ink-subtle)]">
+                      {item.path}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onOpen(item)}
+                  className="border border-[var(--color-rule)] px-3 py-1 font-[Geist,sans-serif] text-[11px] font-semibold text-[var(--color-ink)]"
+                >
+                  {item.cta}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function OverviewView() {
   const { name, state, tree, refresh } = useProject();
@@ -26,6 +94,7 @@ export function OverviewView() {
   const videoCount = tree.filter((n) => n.type === "file" && /\.(mp4|webm|mov)$/i.test(n.name)).length;
   const resumeDecision = getResumeDecision(state);
   const workbench = buildOverviewWorkbench(state);
+  const inbox = buildProductionInbox(state);
   const workspaceSummary = buildWorkspaceSummary(name, tree);
   const workflowStatus = buildWorkflowStatus(state);
   const workflowProgress = buildWorkflowProgress({
@@ -97,7 +166,16 @@ export function OverviewView() {
         )}
       </section>
 
-      <WorkflowProgressStrip items={workflowProgress} />
+      <ProductionInboxPanel
+        items={inbox.primaryItems}
+        onOpen={(item) => item.path && openWorkbenchPath(item.path, item.title)}
+      />
+
+      <section className="grid grid-cols-3 gap-10 border-y border-[var(--color-rule)] py-8">
+        <Stat label="需拍板" value={inbox.summary.decisions} />
+        <Stat label="阻塞项" value={inbox.summary.blocked} />
+        <Stat label="总事项" value={inbox.summary.total} />
+      </section>
 
       <WorkflowStatusCard
         status={workflowStatus}
@@ -106,12 +184,7 @@ export function OverviewView() {
         onOpenTarget={resumeTargetPath ? () => openWorkbenchPath(resumeTargetPath, decisionTitle(resumeDecision, resumeTargetPath)) : undefined}
       />
 
-      <WorkspaceCard
-        summary={workspaceSummary}
-        uploadState={uploadState}
-        onUpload={handleSourceUpload}
-        onOpen={(path) => openWorkbenchPath(path, path)}
-      />
+      <WorkflowProgressStrip items={workflowProgress} />
 
       <section className="grid grid-cols-3 gap-10 border-y border-[var(--color-rule)] py-8">
         <Stat label="待审核" value={workbench.reviewItems.length} />
@@ -141,6 +214,13 @@ export function OverviewView() {
         items={workbench.staleItems}
         actionLabel="查看入口"
         onOpen={(item) => item.path && openWorkbenchPath(item.path, item.title)}
+      />
+
+      <WorkspaceCard
+        summary={workspaceSummary}
+        uploadState={uploadState}
+        onUpload={handleSourceUpload}
+        onOpen={(path) => openWorkbenchPath(path, path)}
       />
 
       <section className="grid grid-cols-3 gap-10 border-t border-[var(--color-rule)] pt-8">
