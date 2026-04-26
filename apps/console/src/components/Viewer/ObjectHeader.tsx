@@ -15,6 +15,21 @@ interface Props {
   viewKind: ViewKind;
 }
 
+function viewKindLabel(kind: ViewKind): string {
+  switch (kind) {
+    case "overview": return "OVERVIEW";
+    case "script": return "SCRIPT";
+    case "storyboard": return "STORYBOARD";
+    case "asset-gallery": return "GALLERY";
+    case "video-grid": return "VIDEO GRID";
+    case "image": return "IMAGE";
+    case "video": return "VIDEO";
+    case "text": return "TEXT";
+    case "json": return "JSON";
+    default: return "FILE";
+  }
+}
+
 function objectPath(object: ProductionObject): string | null {
   if ("path" in object && object.path) return object.path;
   return null;
@@ -24,6 +39,7 @@ export function ObjectHeader({ object, viewKind }: Props) {
   const label = getProductionObjectLabel(object);
   const lineage = getProductionObjectLineage(object);
   const scope = getProductionObjectScope(object);
+  const viewLabel = viewKindLabel(viewKind);
   const path = objectPath(object);
 
   return (
@@ -34,7 +50,7 @@ export function ObjectHeader({ object, viewKind }: Props) {
             {label}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--color-ink-subtle)]">
-            <span>{viewKind}</span>
+            <span>{viewLabel}</span>
             <span aria-hidden>·</span>
             <span>{lineage.join(" → ")}</span>
           </div>

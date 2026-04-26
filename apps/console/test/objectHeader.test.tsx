@@ -26,4 +26,21 @@ describe("ObjectHeader", () => {
     expect(html).toContain("script");
     expect(html).toContain("output/ep001/scn002/clip003/v1.mp4");
   });
+
+  test("renders display label for view kind", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ObjectHeader, {
+        object: {
+          type: "episode",
+          episodeId: "ep001",
+          artifactRole: "video",
+          path: "output/ep001",
+        },
+        viewKind: "video-grid",
+      }),
+    );
+
+    expect(html).toContain("VIDEO GRID");
+    expect(html).not.toContain("video-grid");
+  });
 });
