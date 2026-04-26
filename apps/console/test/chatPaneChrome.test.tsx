@@ -1,7 +1,25 @@
-import { describe, expect, test } from "bun:test";
-import React from "react";
+import { describe, expect, mock, test } from "bun:test";
+import React, * as ReactModule from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatPane } from "../src/components/Chat/ChatPane";
+
+function findElementByType(node: unknown, type: string): any {
+  if (!node || typeof node !== "object") return null;
+
+  const element = node as { type?: unknown; props?: { children?: unknown } };
+  if (element.type === type) return element;
+
+  const children = element.props?.children;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      const match = findElementByType(child, type);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  return findElementByType(children, type);
+}
 
 describe("ChatPane chrome", () => {
   test("renders workflow-aligned suggestions instead of hard-coded post-production prompts", () => {
@@ -91,6 +109,47 @@ describe("ChatPane chrome", () => {
     expect(html).toContain("bg-[var(--color-chat-user)]");
     expect(html).toContain("bg-[var(--color-chat-assistant)]");
   });
+
+  test("submits the original composer input so transcript whitespace stays intact", () => {
+    const onSend = mock(() => undefined);
+    const rawInput = " /storyboard ep001 ";
+    const actualReact = { ...ReactModule };
+
+    mock.module("react", () => ({
+      ...actualReact,
+      useEffect: () => undefined,
+      useRef: () => ({ current: null }),
+      useState<T>(initialState: T | (() => T)) {
+        const value =
+          typeof initialState === "string"
+            ? (rawInput as unknown as T)
+            : typeof initialState === "function"
+              ? (initialState as () => T)()
+              : initialState;
+        return [value, () => undefined] as const;
+      },
+    }));
+
+    try {
+      const tree = ChatPane({
+        isConnected: true,
+        isStreaming: false,
+        onSend,
+        messages: [],
+        suggestions: [],
+      });
+
+      const form = findElementByType(tree, "form");
+      expect(form).not.toBeNull();
+      form.props.onSubmit({ preventDefault() {} });
+
+      expect(onSend).toHaveBeenCalledTimes(1);
+      expect(onSend).toHaveBeenCalledWith(rawInput);
+    } finally {
+      mock.module("react", () => actualReact);
+    }
+  });
+
 
   test("renders active production scope above the transcript", () => {
     const html = renderToStaticMarkup(

@@ -49,9 +49,8 @@ export function ChatPane({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const text = input.trim();
-    if (!text || !isConnected) return;
-    onSend(text);
+    if (!input.trim() || !isConnected) return;
+    onSend(input);
     setInput("");
   }
 
