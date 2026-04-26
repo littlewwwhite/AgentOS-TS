@@ -59,14 +59,21 @@ function titleCase(value: string): string {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
 }
 
-function normalizeEpisodeId(value: string): string {
+export function normalizeEpisodeId(value: string): string {
   const digits = value.match(/\d+/)?.[0] ?? value;
   return `ep${digits.padStart(3, "0")}`;
 }
 
-function episodeIdFromStoryboard(path: string): string | null {
-  const match = path.match(/(?:^|\/)(ep_?\d+)_storyboard\.json$/i);
+export function storyboardEpisodeIdFromPath(path: string): string | null {
+  const match = path.match(/(?:^|\/)(ep_?\d+)(?:_storyboard|\.shots)\.json$/i);
   return match ? normalizeEpisodeId(match[1]) : null;
+}
+
+export function isStoryboardArtifactPath(path: string): boolean {
+  return storyboardEpisodeIdFromPath(path) !== null && (
+    /^output\/storyboard\/(draft|approved)\//i.test(path) ||
+    /^draft\/storyboard\//i.test(path)
+  );
 }
 
 function episodeRoleFromPath(path: string): EpisodeArtifactRole | undefined {
@@ -112,8 +119,11 @@ export function resolveProductionObjectFromPath(path: string, options: ResolveOp
   const sceneMatch = path.match(/(?:^|\/)(ep\d+)\/(scn\d+)(?:\/|$)/);
   if (sceneMatch) return { type: "scene", episodeId: sceneMatch[1], sceneId: sceneMatch[2], path };
 
-  const storyboardEpisodeId = episodeIdFromStoryboard(path);
+  const storyboardEpisodeId = storyboardEpisodeIdFromPath(path);
   if (storyboardEpisodeId) return { type: "episode", episodeId: storyboardEpisodeId, artifactRole: "storyboard", path };
+
+  const draftEpisodeMatch = path.match(/^draft\/episodes\/(ep\d+)\.md$/i);
+  if (draftEpisodeMatch) return { type: "episode", episodeId: draftEpisodeMatch[1].toLowerCase(), path };
 
   const episodeMatch = path.match(/(?:^|\/)(ep\d+)(?:\/|$)/);
   if (episodeMatch) return { type: "episode", episodeId: episodeMatch[1], artifactRole: episodeRoleFromPath(path), path };

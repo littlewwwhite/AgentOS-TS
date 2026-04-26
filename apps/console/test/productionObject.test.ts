@@ -61,6 +61,17 @@ describe("productionObject", () => {
     });
   });
 
+  test("draft episode files resolve to episode objects instead of generic artifacts", () => {
+    const object = resolveProductionObjectFromPath("draft/episodes/ep007.md");
+    expect(object).toEqual({
+      type: "episode",
+      episodeId: "ep007",
+      path: "draft/episodes/ep007.md",
+    });
+    expect(getProductionObjectLabel(object)).toBe("ep007");
+    expect(getProductionObjectScope(object).defaultScope).toBe("current episode");
+  });
+
   test("shot video path resolves to shot object", () => {
     const object = resolveProductionObjectFromPath("output/ep001/scn002/clip003/v1.mp4");
     expect(object).toEqual({
