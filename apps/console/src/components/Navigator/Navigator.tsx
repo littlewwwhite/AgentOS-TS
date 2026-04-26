@@ -4,7 +4,9 @@ import { useTabs } from "../../contexts/TabsContext";
 import { resolveView } from "../Viewer/resolveView";
 import { StageNode } from "./StageNode";
 import { EpisodeNode } from "./EpisodeNode";
+import { StoryboardNode } from "./StoryboardNode";
 import { buildNavigatorSections } from "../../lib/navigatorSections";
+import { isStoryboardArtifactPath } from "../../lib/productionObject";
 import { STAGE_ORDER } from "../../lib/workflowModel";
 
 export function Navigator() {
@@ -35,11 +37,8 @@ export function Navigator() {
     .filter((node) => node.type === "file" && /^draft\/episodes\/ep\d+\.md$/i.test(node.path))
     .map((node) => node.path)
     .sort();
-  const draftStoryboardPaths = tree
-    .filter((node) => node.type === "file" && (
-      /^output\/storyboard\/draft\/ep\d+_storyboard\.json$/i.test(node.path) ||
-      /^draft\/storyboard\/ep\d+\.shots\.json$/i.test(node.path)
-    ))
+  const storyboardPaths = tree
+    .filter((node) => node.type === "file" && isStoryboardArtifactPath(node.path))
     .map((node) => node.path)
     .sort();
 
@@ -52,8 +51,9 @@ export function Navigator() {
   const sections = buildNavigatorSections({
     hasSource: sourcePaths.length > 0,
     hasCatalog: has("draft/catalog.json"),
-    hasScript: has("output/script.json") || has("draft/design.json") || draftEpisodePaths.length > 0 || draftStoryboardPaths.length > 0,
+    hasScript: has("output/script.json") || has("draft/design.json") || draftEpisodePaths.length > 0,
     hasAssets: hasPrefix("output/actors") || hasPrefix("output/locations") || hasPrefix("output/props"),
+    hasStoryboard: storyboardPaths.length > 0,
     episodeIds: epIds,
   });
 
@@ -79,6 +79,7 @@ export function Navigator() {
               unread={unread.get("input") ?? unread.get("source.txt")}
               expandable
               defaultOpen
+              disabled={!section.available}
             >
               {sourcePaths.map((path) => (
                 <div
@@ -99,7 +100,9 @@ export function Navigator() {
               key={section.key}
               label={section.label}
               unread={unread.get("draft/catalog.json")}
-              onClick={() => { open("draft/catalog.json", "设定目录"); markSeen("draft/catalog.json"); }}
+              disabled={!section.available}
+              pendingLabel="待生成角色、场景、道具"
+              onClick={section.available ? () => { open("draft/catalog.json", "视觉设定"); markSeen("draft/catalog.json"); } : undefined}
             />
           );
         }
@@ -113,6 +116,7 @@ export function Navigator() {
               unread={unread.get("output/script.json") ?? unread.get("draft")}
               expandable
               defaultOpen
+              disabled={!section.available}
             >
               {has("output/script.json") && (
                 <div
@@ -146,29 +150,13 @@ export function Navigator() {
                   })}
                 </StageNode>
               )}
-              {draftStoryboardPaths.length > 0 && (
-                <StageNode label="分镜草稿" unread={(unread.get("output/storyboard/draft") ?? 0) + (unread.get("draft/storyboard") ?? 0)} expandable>
-                  {draftStoryboardPaths.map((path) => {
-                    const episodeId = path.match(/(ep\d+)/i)?.[1]?.toLowerCase() ?? path;
-                    return (
-                      <div
-                        key={path}
-                        className="pl-6 pr-4 py-1 text-[12px] text-[var(--color-ink-subtle)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
-                        onClick={() => { open(path, `${episodeId}/分镜草稿`); markSeen(path); }}
-                      >
-                        {episodeId}
-                      </div>
-                    );
-                  })}
-                </StageNode>
-              )}
             </StageNode>
           );
         }
 
         if (section.key === "assets") {
           return (
-            <StageNode key={section.key} label={section.label} status={state?.stages?.VISUAL?.status} expandable defaultOpen>
+            <StageNode key={section.key} label={section.label} status={state?.stages?.VISUAL?.status} expandable defaultOpen disabled={!section.available}>
               {hasPrefix("output/actors") && (
                 <div
                   className="pl-6 pr-4 py-1.5 text-[13px] text-[var(--color-ink-muted)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
@@ -191,8 +179,21 @@ export function Navigator() {
           );
         }
 
+        if (section.key === "storyboard") {
+          return (
+            <StoryboardNode
+              key={section.key}
+              status={state?.stages?.STORYBOARD?.status}
+              paths={storyboardPaths}
+              unread={unread}
+              openPath={openPath}
+              markSeen={markSeen}
+            />
+          );
+        }
+
         return (
-          <StageNode key={section.key} label={section.label} expandable defaultOpen>
+          <StageNode key={section.key} label={section.label} expandable defaultOpen disabled={!section.available}>
             {epIds.map((id) => (
               <EpisodeNode key={id} epId={id} ep={state?.episodes?.[id]} unread={unread} markSeen={markSeen} />
             ))}

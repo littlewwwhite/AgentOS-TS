@@ -2,7 +2,13 @@
 // output: editor timelines, prompt summaries, media paths, and selection helpers
 // pos: shared domain helpers behind rendered storyboard editing and playback
 
-import { resolveRefs } from "./fountain";
+import {
+  buildFountainTokens,
+  buildRefDict,
+  resolveRefs,
+  type FountainToken,
+  type ScriptJson,
+} from "./fountain";
 import { episodeIdFromStoryboardPath, episodeRuntimeDirForStoryboardPath } from "./storyboardPaths";
 
 export interface StoryboardShotLike {
@@ -15,6 +21,8 @@ export interface StoryboardShotLike {
   camera_movement?: string;
   is_overlap?: boolean;
   is_bridge?: boolean;
+  source_refs?: unknown;
+  prompt?: string;
 }
 
 export interface StoryboardSceneLike {
@@ -87,6 +95,27 @@ export interface StoryboardEditorModel {
   defaultShotKey: string | null;
   totalDuration: number;
   episodeVideoPath: string | null;
+}
+
+export interface StoryboardGenerationUnitShot {
+  shotId: string;
+  timeRange: string | null;
+  duration: number;
+  prompt: string;
+}
+
+export interface StoryboardGenerationUnit {
+  key: string;
+  episodeId: string;
+  sceneId: string;
+  partId: string;
+  sourceRefsLabel: string;
+  scriptExcerpt: string[];
+  prompt: string;
+  promptSummary: string;
+  shots: StoryboardGenerationUnitShot[];
+  videoPath: string;
+  videoStatus: "generated" | "not_generated";
 }
 
 export interface DraftStoryboardShotSummary {
@@ -270,12 +299,20 @@ function resolveEpisodeVideoPath(
 
   const episodeDir = episodeRuntimeDirForStoryboardPath(storyboardPath);
   const episodeSlug = episodeSlugFromPath(storyboardPath);
-  const exactBasename = `${episodeSlug}.mp4`;
-  const exactCandidate = episodeDir ? `${episodeDir}/${exactBasename}` : exactBasename;
 
-  if (availablePaths.includes(exactCandidate)) return exactCandidate;
+  for (const extension of ["mp4", "mov", "webm"]) {
+    const exactBasename = `${episodeSlug}.${extension}`;
+    const exactCandidate = episodeDir ? `${episodeDir}/${exactBasename}` : exactBasename;
 
-  return availablePaths.find((path) => dirnameOf(path) === episodeDir && basenameOf(path) === exactBasename) ?? null;
+    if (availablePaths.includes(exactCandidate)) return exactCandidate;
+
+    const siblingMatch = availablePaths.find(
+      (path) => dirnameOf(path) === episodeDir && basenameOf(path) === exactBasename,
+    );
+    if (siblingMatch) return siblingMatch;
+  }
+
+  return null;
 }
 
 function resolveClipVideoPath(
@@ -322,13 +359,19 @@ function resolveClipVideoPath(
   return scopedMatches[0] ?? fallbackPath;
 }
 
+function secondsFromTimeMark(value: string): number | null {
+  const parts = value.split(":").map(Number);
+  if (parts.some((part) => !Number.isFinite(part))) return null;
+  return parts.reduce((total, part) => total * 60 + part, 0);
+}
+
 export function durationFromRange(range: string | undefined): number | null {
   if (!range) return null;
-  const match = range.match(/(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)/);
+  const match = range.match(/(\d+(?::\d+(?:\.\d+)?|\.\d+)?)\s*[-–—]\s*(\d+(?::\d+(?:\.\d+)?|\.\d+)?)/);
   if (!match) return null;
-  const start = Number(match[1]);
-  const end = Number(match[2]);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  const start = secondsFromTimeMark(match[1]);
+  const end = secondsFromTimeMark(match[2]);
+  if (start === null || end === null) return null;
   return Math.max(0, end - start);
 }
 
@@ -337,6 +380,213 @@ export function shotDuration(shot: StoryboardShotLike): number {
     return shot.duration;
   }
   return durationFromRange(shot.time_range) ?? 1;
+}
+
+function cameraSetupText(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return coerceString((value as Record<string, unknown>).type);
+}
+
+function shotBeatsText(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  return value
+    .map((item) => typeof item === "string" ? item.trim() : "")
+    .filter(Boolean)
+    .join("\n") || null;
+}
+
+function storyboardPromptShotText(shot: Record<string, unknown>): string {
+  return [
+    cameraSetupText(shot.camera_setup),
+    shotBeatsText(shot.beats),
+  ].filter(Boolean).join("\n");
+}
+
+function storyboardShotsFromPrompt(prompt: string): StoryboardShotLike[] {
+  const parsed = extractStoryboardShotsObject(prompt);
+  return (parsed?.shots ?? [])
+    .filter((shot): shot is Record<string, unknown> => !!shot && typeof shot === "object" && !Array.isArray(shot))
+    .map((shot, index) => ({
+      shot_id: coerceString(shot.shot_id) ?? `S${index + 1}`,
+      time_range: coerceString(shot.time_range) ?? undefined,
+      partial_prompt: storyboardPromptShotText(shot),
+    }));
+}
+
+function storyboardPromptSummary(prompt: string): string {
+  const lines = prompt.split(/\r?\n/).map((line) => line.trim());
+  const fenceIndex = lines.findIndex((line) => line.startsWith("```") || line.startsWith("{"));
+  const proseLines = (fenceIndex >= 0 ? lines.slice(1, fenceIndex) : lines.slice(1)).filter(Boolean);
+  return proseLines[0] ?? "";
+}
+
+function scenePromptClips(
+  scene: StoryboardSceneLike & {
+    scene_id: string;
+    shots?: ReadonlyArray<StoryboardShotLike>;
+  },
+): Array<StoryboardClipLike & { clip_id: string; shots?: ReadonlyArray<StoryboardShotLike> }> {
+  return (scene.shots ?? [])
+    .filter((shot) => typeof shot.prompt === "string" && shot.prompt.trim())
+    .map((shot, index) => ({
+      clip_id: `part_${String(index + 1).padStart(3, "0")}`,
+      script_source: storyboardPromptSummary(shot.prompt ?? ""),
+      shots: storyboardShotsFromPrompt(shot.prompt ?? ""),
+    }));
+}
+
+function sceneTokenKey(epIndex: number, sceneIndex: number): string {
+  return `${epIndex}:${sceneIndex}`;
+}
+
+type SceneActionToken = Extract<FountainToken, {
+  kind: "action" | "character" | "dialogue";
+}>;
+
+function actionTokenKey(token: SceneActionToken): string {
+  return `${token.epIndex}:${token.sceneIndex}:${token.actionIndex}`;
+}
+
+function sourceRefsFromValue(value: unknown): number[] {
+  return isNumberArray(value) ? [...value] : [];
+}
+
+type SceneBeatIndexEntry = {
+  episodeId: string;
+  beats: string[];
+};
+
+function buildSceneBeatIndex(script: ScriptJson | null | undefined): Map<string, SceneBeatIndexEntry> {
+  if (!script) return new Map();
+  const dict = buildRefDict(script);
+  const tokens = buildFountainTokens(script);
+  const episodeIds = new Map<number, string>();
+  const scenes = new Map<string, { episodeId: string | null; sceneId: string; beats: string[] }>();
+  const speakers = new Map<string, string>();
+
+  for (const token of tokens) {
+    if (token.kind === "episode") {
+      episodeIds.set(token.epIndex, token.episodeId);
+      continue;
+    }
+
+    if (token.kind === "scene_heading") {
+      scenes.set(sceneTokenKey(token.epIndex, token.sceneIndex), {
+        episodeId: episodeIds.get(token.epIndex) ?? "",
+        sceneId: token.sceneId,
+        beats: [],
+      });
+      continue;
+    }
+
+    if (token.kind === "character") {
+      speakers.set(actionTokenKey(token), token.name);
+      continue;
+    }
+
+    const scene = scenes.get(sceneTokenKey(token.epIndex, token.sceneIndex));
+    if (!scene) continue;
+
+    if (token.kind === "action") {
+      const text = resolveRefs(token.text, dict).trim();
+      if (text) scene.beats.push(text);
+      continue;
+    }
+
+    if (token.kind === "dialogue") {
+      const text = resolveRefs(token.text, dict).trim();
+      if (!text) continue;
+      const speaker = speakers.get(actionTokenKey(token)) ?? dict[token.actorId] ?? token.actorId;
+      scene.beats.push(`${speaker}：${text}`);
+    }
+  }
+
+  return new Map(
+    Array.from(scenes.values()).map((scene) => [
+      `${scene.episodeId}::${scene.sceneId}`,
+      { episodeId: scene.episodeId, beats: scene.beats },
+    ]),
+  );
+}
+
+function sceneBeatEntry(
+  sceneBeats: Map<string, SceneBeatIndexEntry>,
+  episodeId: string,
+  sceneId: string,
+): SceneBeatIndexEntry | null {
+  return (
+    sceneBeats.get(`${episodeId}::${sceneId}`) ??
+    Array.from(sceneBeats.entries())
+      .find(([key]) => key.endsWith(`::${sceneId}`))
+      ?.[1] ??
+    null
+  );
+}
+
+function sceneExcerptFromRefs(
+  sceneBeats: Map<string, SceneBeatIndexEntry>,
+  episodeId: string,
+  sceneId: string,
+  refs: number[],
+): string[] {
+  const entry = sceneBeatEntry(sceneBeats, episodeId, sceneId);
+  if (!entry) return [];
+  const lines = refs.length > 0
+    ? refs.map((index) => entry.beats[index]).filter((beat): beat is string => Boolean(beat && beat.trim()))
+    : entry.beats.filter((beat): beat is string => Boolean(beat && beat.trim()));
+  return lines;
+}
+
+function generationPromptSummary(prompt: string): string {
+  return parseDraftStoryboardPrompt(prompt).summary ?? storyboardPromptSummary(prompt);
+}
+
+export function buildStoryboardGenerationUnits(
+  storyboardPath: string,
+  scenes: ReadonlyArray<StoryboardSceneLike & {
+    scene_id: string;
+    shots?: ReadonlyArray<StoryboardShotLike>;
+  }>,
+  script: ScriptJson | null | undefined,
+  availablePaths?: Iterable<string>,
+): StoryboardGenerationUnit[] {
+  const episodeId = episodeIdFromStoryboardPath(storyboardPath) ?? "";
+  const mediaPaths = availablePaths
+    ? Array.from(new Set(Array.from(availablePaths).filter(isVideoPath)))
+    : undefined;
+  const sceneBeats = buildSceneBeatIndex(script);
+
+  return scenes.flatMap((scene) =>
+    (scene.shots ?? [])
+      .filter((shot) => typeof shot.prompt === "string" && shot.prompt.trim())
+      .map((shot, index) => {
+        const partId = `part_${String(index + 1).padStart(3, "0")}`;
+        const videoPath = resolveClipVideoPath(storyboardPath, scene.scene_id, partId, mediaPaths);
+        const sourceRefs = sourceRefsFromValue(shot.source_refs);
+        const prompt = shot.prompt ?? "";
+        const trimmedPrompt = prompt.trim();
+
+        return {
+          key: `${scene.scene_id}::${partId}`,
+          episodeId,
+          sceneId: scene.scene_id,
+          partId,
+          sourceRefsLabel: summarizeSourceRefs(sourceRefs),
+          scriptExcerpt: sceneExcerptFromRefs(sceneBeats, episodeId, scene.scene_id, sourceRefs),
+          prompt,
+          promptSummary: generationPromptSummary(trimmedPrompt),
+          shots: storyboardShotsFromPrompt(trimmedPrompt).map((promptShot) => ({
+            shotId: promptShot.shot_id ?? "shot",
+            timeRange: promptShot.time_range ?? null,
+            duration: shotDuration(promptShot),
+            prompt: promptShot.partial_prompt ?? "",
+          })),
+          videoPath,
+          videoStatus: mediaPaths?.includes(videoPath) ? "generated" : "not_generated",
+        } satisfies StoryboardGenerationUnit;
+      }),
+  );
 }
 
 export function splitStoryboardText(
@@ -389,6 +639,7 @@ export function buildStoryboardEditorModel(
       clip_id: string;
       shots?: ReadonlyArray<StoryboardShotLike>;
     }>;
+    shots?: ReadonlyArray<StoryboardShotLike>;
   }>,
   dict: Record<string, string>,
   availablePaths?: Iterable<string>,
@@ -401,7 +652,8 @@ export function buildStoryboardEditorModel(
   let episodeOffset = 0;
 
   scenes.forEach((scene, sceneIndex) => {
-    (scene.clips ?? []).forEach((clip, clipIndex) => {
+    const sceneClips = scene.clips && scene.clips.length > 0 ? scene.clips : scenePromptClips(scene);
+    sceneClips.forEach((clip, clipIndex) => {
       const key = `${scene.scene_id}::${clip.clip_id}`;
       let clipOffset = 0;
       const clipShots = (clip.shots ?? []).map((shot, shotIndex) => {

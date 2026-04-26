@@ -5,7 +5,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useProject } from "../../contexts/ProjectContext";
 import { fileUrl } from "../../lib/fileUrl";
-import { getEditPolicy } from "../../lib/editPolicy";
+import { resolveProductionObjectFromPath } from "../../lib/productionObject";
+import { getEditImpactUiLabel, getProductionObjectUiTitle } from "../../lib/productionObjectUi";
 import { ArtifactLifecycleActions } from "./ArtifactLifecycleActions";
 
 interface Props {
@@ -36,18 +37,6 @@ function helperLabel(
   if (state === "error") return `保存失败：${error ?? "未知错误"}`;
   if (dirty) return "有未保存修改";
   return "未修改";
-}
-
-function impactLabel(path: string): string | null {
-  const policy = getEditPolicy(path);
-  if (!policy) return null;
-  const invalidateTargets = policy.invalidateStages.join(" → ");
-  return `你正在编辑 ${policy.stage} 阶段业务节点；保存后将进入审核，并使下游阶段失效：${invalidateTargets || "无"}`;
-}
-
-function artifactTitle(path: string): string {
-  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  return normalized.split("/").pop() || "源文件";
 }
 
 export function RawFileEditor({ projectName, path, contentKind, onSaved }: Props) {
@@ -87,8 +76,10 @@ export function RawFileEditor({ projectName, path, contentKind, onSaved }: Props
     };
   }, [path, projectName]);
 
+  const object = useMemo(() => resolveProductionObjectFromPath(path), [path]);
+  const objectLabel = getProductionObjectUiTitle(object);
   const dirty = serverText !== null && draftText !== serverText;
-  const impact = useMemo(() => impactLabel(path), [path]);
+  const impact = useMemo(() => getEditImpactUiLabel(path), [path]);
   const locked = projectState?.artifacts?.[path]?.status === "locked" || projectState?.artifacts?.[path]?.editable === false;
 
   const handleSave = useCallback(async () => {
@@ -130,17 +121,17 @@ export function RawFileEditor({ projectName, path, contentKind, onSaved }: Props
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-6 py-3">
+      <div className="border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-6 py-2">
         <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="truncate font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink)]">
-              {artifactTitle(path)}
-            </div>
-            <div className="font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-subtle)]">
-              可编辑源文件
-            </div>
+          <div className="min-w-0 truncate font-serif text-[24px] leading-tight text-[var(--color-ink)]">
+            {objectLabel}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
+            {impact && (
+              <span className="font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-subtle)]">
+                {impact}
+              </span>
+            )}
             <span className="font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-muted)]">
               {helperLabel(state, savedAt, error, dirty)}
             </span>
@@ -155,11 +146,6 @@ export function RawFileEditor({ projectName, path, contentKind, onSaved }: Props
             </button>
           </div>
         </div>
-        {impact && (
-          <div className="mt-2 font-[Geist,sans-serif] text-[12px] leading-relaxed text-[var(--color-ink-subtle)]">
-            {impact}
-          </div>
-        )}
       </div>
 
       <div className="min-h-0 flex-1 bg-[var(--color-paper-sunk)] px-8 py-8">
@@ -172,7 +158,7 @@ export function RawFileEditor({ projectName, path, contentKind, onSaved }: Props
           disabled={locked}
           spellCheck={false}
           className="h-full min-h-[420px] w-full resize-none border border-[var(--color-rule)] bg-[var(--color-paper)] p-4 font-mono text-[13px] leading-[1.7] text-[var(--color-ink)] outline-none disabled:cursor-not-allowed disabled:bg-[var(--color-paper-soft)] disabled:text-[var(--color-ink-muted)]"
-          aria-label={`${path} raw editor`}
+          aria-label={`${objectLabel} 编辑区`}
         />
       </div>
     </div>

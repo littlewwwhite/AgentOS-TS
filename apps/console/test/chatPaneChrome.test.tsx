@@ -1,7 +1,27 @@
-import { describe, expect, test } from "bun:test";
-import React from "react";
+import { describe, expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import React, * as ReactModule from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatPane } from "../src/components/Chat/ChatPane";
+
+function findElementByType(node: unknown, type: string): any {
+  if (!node || typeof node !== "object") return null;
+
+  const element = node as { type?: unknown; props?: { children?: unknown } };
+  if (element.type === type) return element;
+
+  const children = element.props?.children;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      const match = findElementByType(child, type);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  return findElementByType(children, type);
+}
 
 describe("ChatPane chrome", () => {
   test("renders workflow-aligned suggestions instead of hard-coded post-production prompts", () => {
@@ -30,7 +50,9 @@ describe("ChatPane chrome", () => {
       }),
     );
 
-    expect(html).toContain("输入消息，或输入 / 调用 Claude Code 命令…");
+    expect(html).toContain("导演指令");
+    expect(html).toContain("描述你要调整的镜头、分镜、素材或下一步制作任务…");
+    expect(html).not.toContain("输入消息，或输入 / 调用 Claude Code 命令…");
     expect(html).not.toMatch(/<textarea[^>]*\sdisabled(?:=|\s|>)/);
   });
 
@@ -90,5 +112,113 @@ describe("ChatPane chrome", () => {
 
     expect(html).toContain("bg-[var(--color-chat-user)]");
     expect(html).toContain("bg-[var(--color-chat-assistant)]");
+  });
+
+  test("submits the original composer input so transcript whitespace stays intact", () => {
+    const onSend = mock(() => undefined);
+    const rawInput = " /storyboard ep001 ";
+    const actualReact = { ...ReactModule };
+
+    mock.module("react", () => ({
+      ...actualReact,
+      useEffect: () => undefined,
+      useRef: () => ({ current: null }),
+      useState<T>(initialState: T | (() => T)) {
+        const value =
+          typeof initialState === "string"
+            ? (rawInput as unknown as T)
+            : typeof initialState === "function"
+              ? (initialState as () => T)()
+              : initialState;
+        return [value, () => undefined] as const;
+      },
+    }));
+
+    try {
+      const tree = ChatPane({
+        isConnected: true,
+        isStreaming: false,
+        onSend,
+        messages: [],
+        suggestions: [],
+      });
+
+      const form = findElementByType(tree, "form");
+      expect(form).not.toBeNull();
+      form.props.onSubmit({ preventDefault() {} });
+
+      expect(onSend).toHaveBeenCalledTimes(1);
+      expect(onSend).toHaveBeenCalledWith(rawInput);
+    } finally {
+      mock.module("react", () => actualReact);
+    }
+  });
+
+
+  test("renders skill descriptions in slash command options", () => {
+    const actualReact = { ...ReactModule };
+
+    mock.module("react", () => ({
+      ...actualReact,
+      useEffect: () => undefined,
+      useRef: () => ({ current: null }),
+      useState<T>(initialState: T | (() => T)) {
+        const value = typeof initialState === "string"
+          ? ("/s" as unknown as T)
+          : typeof initialState === "function"
+            ? (initialState as () => T)()
+            : initialState;
+        return [value, () => undefined] as const;
+      },
+    }));
+
+    try {
+      const html = renderToStaticMarkup(
+        React.createElement(ChatPane, {
+          isConnected: true,
+          isStreaming: false,
+          onSend: () => undefined,
+          messages: [],
+          suggestions: [],
+          slashCommands: ["/storyboard", "/script-writer"],
+        }),
+      );
+
+      expect(html).toContain("/storyboard");
+      expect(html).toContain("根据剧本和视觉设定生成视频前故事板");
+      expect(html).toContain("/script-writer");
+      expect(html).toContain("从故事源扩写正式剧本");
+      expect(html).not.toContain("高级命令");
+    } finally {
+      mock.module("react", () => actualReact);
+    }
+  });
+
+  test("renders active production scope as a compact command target", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ChatPane, {
+        isConnected: true,
+        isStreaming: false,
+        onSend: () => undefined,
+        messages: [],
+        suggestions: [],
+        productionObject: {
+          type: "shot",
+          episodeId: "ep001",
+          sceneId: "scn002",
+          shotId: "clip003",
+          path: "output/ep001/scn002/clip003/v1.mp4",
+        },
+      }),
+    );
+
+    expect(html).toContain("指令对象");
+    expect(html).toContain("ep001 · scn002 · clip003");
+    expect(html).not.toContain("当前指令对象");
+    expect(html).not.toContain("默认只改当前镜头");
+    expect(html).not.toContain("不改剧本、分镜定稿和登记素材");
+    expect(html).not.toContain("Current scope");
+    expect(html).not.toContain("current shot");
+    expect(html).not.toContain("selected file");
   });
 });

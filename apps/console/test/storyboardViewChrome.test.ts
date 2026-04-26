@@ -27,8 +27,35 @@ describe("StoryboardView chrome", () => {
       "utf-8",
     );
 
-    expect(source).toContain("分镜草稿");
+    expect(source).toContain("故事板草稿");
     expect(source).toContain("结构保护");
     expect(source).toContain("shots.${partIndex}.prompt");
+  });
+
+  test("presents storyboard json as the pre-video production plan", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/components/Viewer/views/StoryboardView.tsx"),
+      "utf-8",
+    );
+
+    expect(source).toContain("视频生成前");
+    expect(source).toContain("故事板");
+    expect(source).not.toContain("分镜脚本");
+    expect(source).not.toContain("分镜文件");
+    expect(source).not.toContain("PR 工作台模式");
+  });
+
+  test("does not use video-first wording on the storyboard primary surface", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/components/Viewer/views/StoryboardView.tsx"),
+      "utf-8",
+    );
+
+    expect(source).toContain("剧本到故事板");
+    expect(source).toContain("来源剧本");
+    expect(source).toContain("分镜提示词");
+    expect(source).not.toContain("每组展示一次视频生成结果");
+    expect(source).not.toContain("故事板视频");
+    expect(source).not.toContain("当前片段");
   });
 });

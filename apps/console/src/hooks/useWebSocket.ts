@@ -18,6 +18,10 @@ function extractPath(content: unknown): string | undefined {
   return m?.[1];
 }
 
+interface SendOptions {
+  agentMessage?: string;
+}
+
 export function useWebSocket(
   url: string,
   onToolResult?: (path: string) => void,
@@ -236,7 +240,7 @@ export function useWebSocket(
   }, [url]);
 
   const send = useCallback(
-    (message: string, project?: string, sessionId?: string) => {
+    (message: string, project?: string, sessionId?: string, options: SendOptions = {}) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
       const userMsg: ChatMessage = {
         id: uid(),
@@ -246,7 +250,7 @@ export function useWebSocket(
       };
       setIsStreaming(true);
       setMessages((prev) => [...prev, userMsg]);
-      wsRef.current.send(JSON.stringify({ message, project, sessionId }));
+      wsRef.current.send(JSON.stringify({ message: options.agentMessage ?? message, project, sessionId }));
     },
     []
   );

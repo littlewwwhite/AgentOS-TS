@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { fileUrl } from "../src/lib/fileUrl";
 import { detectSchema } from "../src/lib/schemaDetect";
-import { buildRefDict, resolveRefs } from "../src/lib/fountain";
+import { buildRefDict, resolveRefs, type ScriptJson } from "../src/lib/fountain";
 import {
   buildClipInspectorData,
   buildStoryboardEditorModel,
+  buildStoryboardGenerationUnits,
   clipVideoPath,
   durationFromRange,
   parseDraftStoryboardPrompt,
@@ -240,6 +241,195 @@ describe("storyboard helpers", () => {
     });
   });
 
+  test("builds storyboard timeline from approved scene shot prompts", () => {
+    const model = buildStoryboardEditorModel(
+      "output/storyboard/approved/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              source_refs: [0, 1, 2],
+              prompt: `PART1\n\n总体描述：压抑内宅。\n\n\`\`\`json\n{"shots":[{"shot_id":"S1","time_range":"00:00-00:06","camera_setup":"近景手部+银锭特写","beats":["账房摊开银锭"]},{"shot_id":"S2","time_range":"00:06-00:10","camera_setup":{"type":"中景"},"beats":["主角抬眼"]}]}\n\`\`\``,
+            },
+          ],
+        },
+      ],
+      {},
+    );
+
+    expect(model.clips).toHaveLength(1);
+    expect(model.shots).toHaveLength(2);
+    expect(model.defaultClipKey).toBe("scn_001::part_001");
+    expect(model.defaultShotKey).toBe("scn_001::part_001::S1");
+    expect(model.clips[0]).toMatchObject({
+      sceneId: "scn_001",
+      clipId: "part_001",
+      displayText: "总体描述：压抑内宅。",
+      shotCount: 2,
+      totalDuration: 10,
+    });
+    expect(model.shots[0]).toMatchObject({
+      shotId: "S1",
+      timeRange: "00:00-00:06",
+      duration: 6,
+      prompt: "近景手部+银锭特写\n账房摊开银锭",
+    });
+    expect(model.shots[1]).toMatchObject({
+      shotId: "S2",
+      duration: 4,
+      prompt: "中景\n主角抬眼",
+    });
+  });
+
+  test("builds storyboard generation units from script refs and approved prompt calls", () => {
+    const script: ScriptJson = {
+      actors: [{ actor_id: "act_001", actor_name: "灵霜" }],
+      episodes: [
+        {
+          episode_id: "ep001",
+          scenes: [
+            {
+              scene_id: "scn_001",
+              actions: [
+                { type: "action", content: "{act_001}把银锭推到桌边。" },
+                { type: "dialogue", actor_id: "act_001", content: "这些账，今晚要清。" },
+                { type: "action", content: "她抬眼看向门外。" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const rawPrompt = `
+PART1
+
+总体描述：压抑内宅。
+
+\`\`\`json
+{"shots":[{"shot_id":"S1","time_range":"00:00-00:06","camera_setup":"近景手部+银锭特写","beats":["灵霜把银锭推到桌边"]},{"shot_id":"S2","time_range":"00:06-00:10","camera_setup":{"type":"中景"},"beats":["灵霜抬眼看向门外"]}]}
+\`\`\`
+`;
+
+    const units = buildStoryboardGenerationUnits(
+      "output/storyboard/approved/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              source_refs: [0, 1, 2],
+              prompt: rawPrompt,
+            },
+          ],
+        },
+      ],
+      script,
+      new Set(["output/ep001/scn001/ep001_scn001_part001.mp4"]),
+    );
+
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({
+      key: "scn_001::part_001",
+      episodeId: "ep001",
+      sceneId: "scn_001",
+      partId: "part_001",
+      sourceRefsLabel: "0-2",
+      scriptExcerpt: [
+        "灵霜把银锭推到桌边。",
+        "灵霜：这些账，今晚要清。",
+        "她抬眼看向门外。",
+      ],
+      promptSummary: "总体描述：压抑内宅。",
+      shots: [
+        {
+          shotId: "S1",
+          timeRange: "00:00-00:06",
+          duration: 6,
+          prompt: "近景手部+银锭特写\n灵霜把银锭推到桌边",
+        },
+        {
+          shotId: "S2",
+          timeRange: "00:06-00:10",
+          duration: 4,
+          prompt: "中景\n灵霜抬眼看向门外",
+        },
+      ],
+      videoStatus: "generated",
+      videoPath: "output/ep001/scn001/ep001_scn001_part001.mp4",
+    });
+    expect(units[0]?.prompt).toBe(rawPrompt);
+  });
+
+  test("marks storyboard generation units as not generated when video is missing", () => {
+    const units = buildStoryboardGenerationUnits(
+      "output/storyboard/approved/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              source_refs: [0],
+              prompt: `PART1\n\n总体描述：压抑内宅。\n\n{"shots":[{"shot_id":"S1","time_range":"00:00-00:06","camera_setup":"近景","beats":["账房摊开银锭"]}]}`,
+            },
+          ],
+        },
+      ],
+      undefined,
+      new Set(),
+    );
+
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({
+      videoStatus: "not_generated",
+      videoPath: "output/ep001/scn001/ep001_scn001_part001.mp4",
+      sourceRefsLabel: "0",
+      scriptExcerpt: [],
+    });
+  });
+
+  test("keeps storyboard generation units stable without matching script refs", () => {
+    const script = {
+      episodes: [
+        {
+          episode_id: "ep001",
+          scenes: [
+            {
+              scene_id: "scn_001",
+              actions: [{ type: "action", content: "账房摊开银锭。" }],
+            },
+          ],
+        },
+      ],
+    } satisfies ScriptJson;
+
+    const units = buildStoryboardGenerationUnits(
+      "output/storyboard/approved/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              source_refs: [9, 10],
+              prompt: `PART1\n\n总体描述：压抑内宅。\n\n{"shots":[{"shot_id":"S1","time_range":"00:00-00:06","camera_setup":"近景"}]}`,
+            },
+          ],
+        },
+      ],
+      script,
+    );
+
+    expect(units).toHaveLength(1);
+    expect(Array.isArray(units[0]?.scriptExcerpt)).toBe(true);
+    expect(units[0]).toMatchObject({
+      sourceRefsLabel: "9-10",
+      scriptExcerpt: [],
+      videoStatus: "not_generated",
+      videoPath: "output/ep001/scn001/ep001_scn001_part001.mp4",
+    });
+  });
+
   test("prefers merged episode video when it exists beside the storyboard", () => {
     const model = buildStoryboardEditorModel(
       "output/ep001/ep001_storyboard.json",
@@ -257,6 +447,25 @@ describe("storyboard helpers", () => {
     );
 
     expect(model.episodeVideoPath).toBe("output/ep001/ep001.mp4");
+  });
+
+  test("resolves merged episode video when the available file uses webm", () => {
+    const model = buildStoryboardEditorModel(
+      "output/ep001/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          clips: [{ clip_id: "clip_001", shots: [{ shot_id: "shot_001", time_range: "0-4s", partial_prompt: "A" }] }],
+        },
+      ],
+      {},
+      new Set([
+        "output/ep001/ep001.webm",
+        "output/ep001/scn001/clip001/ep001_scn001_clip001.mp4",
+      ]),
+    );
+
+    expect(model.episodeVideoPath).toBe("output/ep001/ep001.webm");
   });
 
   test("resolves real clip media paths from the tree instead of assuming one folder layout", () => {

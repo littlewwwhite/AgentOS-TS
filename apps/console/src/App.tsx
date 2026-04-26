@@ -9,6 +9,8 @@ import { Viewer } from "./components/Viewer/Viewer";
 import { Navigator } from "./components/Navigator/Navigator";
 import { buildWorkflowStatus } from "./lib/workflowStatus";
 import { buildChatSuggestions } from "./lib/chatSuggestions";
+import { buildAgentMessage } from "./lib/scopedMessage";
+import { resolveProductionObjectFromPath } from "./lib/productionObject";
 import {
   CHAT_PANEL_DEFAULT,
   CHAT_PANEL_STORYBOARD,
@@ -79,10 +81,6 @@ function Shell() {
     sessionId,
   );
 
-  function handleSend(message: string) {
-    send(message, name ?? undefined, sessionId ?? undefined);
-  }
-
   const statusLabel = !isConnected ? "离线" : isStreaming ? "处理中" : "已连接";
   const statusColor = !isConnected
     ? "var(--color-ink-faint)"
@@ -90,6 +88,17 @@ function Shell() {
       ? "var(--color-run)"
       : "var(--color-ok)";
   const activeTab = tabs.find((tab) => tab.id === activeId) ?? null;
+  const activeProductionObject = useMemo(
+    () => resolveProductionObjectFromPath(activeTab?.path ?? "", { projectId: name }),
+    [activeTab?.path, name],
+  );
+
+  function handleSend(message: string) {
+    send(message, name ?? undefined, sessionId ?? undefined, {
+      agentMessage: buildAgentMessage(message, activeProductionObject),
+    });
+  }
+
   const activeView = activeTab?.view ?? "overview";
   const workflowStatus = name && state ? buildWorkflowStatus(state) : null;
   const suggestions = buildChatSuggestions({
@@ -286,6 +295,7 @@ function Shell() {
             onStop={stop}
             suggestions={suggestions}
             slashCommands={slashCommands}
+            productionObject={activeProductionObject}
           />
         </div>
       </div>

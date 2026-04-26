@@ -4,8 +4,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../../types";
+import type { ProductionObject } from "../../lib/productionObject";
 import { MessageBubble } from "./MessageBubble";
-import { nextSlashCommandIndex, visibleSlashCommands } from "../../lib/slashCommands";
+import { nextSlashCommandIndex, visibleSlashCommandOptions } from "../../lib/slashCommands";
+import { ScopeSummary } from "./ScopeSummary";
 
 interface Props {
   messages: ChatMessage[];
@@ -15,17 +17,27 @@ interface Props {
   onStop?: () => void;
   suggestions: string[];
   slashCommands?: string[];
+  productionObject?: ProductionObject;
 }
 
-export function ChatPane({ messages, isStreaming, isConnected, onSend, onStop, suggestions, slashCommands }: Props) {
+export function ChatPane({
+  messages,
+  isStreaming,
+  isConnected,
+  onSend,
+  onStop,
+  suggestions,
+  slashCommands = [],
+  productionObject,
+}: Props) {
   const [input, setInput] = useState("");
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const commandOptions = visibleSlashCommands(input, slashCommands);
-  const commandOptionsKey = commandOptions.join("\n");
+  const commandOptions = visibleSlashCommandOptions(input, slashCommands);
+  const commandOptionsKey = commandOptions.map((option) => option.command).join("\n");
   const selectedCommand =
-    commandOptions[Math.min(selectedCommandIndex, Math.max(commandOptions.length - 1, 0))];
+    commandOptions[Math.min(selectedCommandIndex, Math.max(commandOptions.length - 1, 0))]?.command;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -37,9 +49,8 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend, onStop, s
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const text = input.trim();
-    if (!text || !isConnected) return;
-    onSend(text);
+    if (!input.trim() || !isConnected) return;
+    onSend(input);
     setInput("");
   }
 
@@ -77,6 +88,7 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend, onStop, s
 
   return (
     <div className="flex flex-col h-full bg-[var(--color-paper)]">
+      {productionObject && <ScopeSummary object={productionObject} />}
       <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-3">
         {messages.length === 0 && (
           <div className="flex flex-col justify-center h-full gap-8">
@@ -145,17 +157,17 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend, onStop, s
       </div>
       <form
         onSubmit={handleSubmit}
-        className="relative px-5 py-4 flex gap-3 items-end bg-[var(--color-paper)]"
+        className="relative border-t border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-5 py-4"
       >
         {commandOptions.length > 0 && (
           <div className="absolute bottom-full left-5 right-5 mb-2 max-h-64 overflow-auto bg-[var(--color-paper)] py-1 shadow-[0_12px_36px_rgba(0,0,0,0.08)] ring-1 ring-[var(--color-rule)]">
-            {commandOptions.map((command, index) => {
+            {commandOptions.map((option, index) => {
               const active = index === selectedCommandIndex;
               return (
                 <button
-                  key={command}
+                  key={option.command}
                   type="button"
-                  onClick={() => insertCommand(command)}
+                  onClick={() => insertCommand(option.command)}
                   className={
                     "flex w-full items-center gap-3 px-3 py-2 text-left transition-colors " +
                     (active ? "bg-[var(--color-accent-soft)]" : "hover:bg-[var(--color-paper-soft)]")
@@ -163,45 +175,59 @@ export function ChatPane({ messages, isStreaming, isConnected, onSend, onStop, s
                   aria-selected={active}
                 >
                   <span className="font-mono text-[12px] font-semibold text-[var(--color-ink)]">
-                    {command}
+                    {option.command}
                   </span>
-                  <span className="font-sans text-[11px] text-[var(--color-ink-subtle)]">
-                    Claude Code command
+                  <span className="min-w-0 flex-1 truncate font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
+                    {option.description}
                   </span>
                 </button>
               );
             })}
           </div>
         )}
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleComposerKeyDown}
-          placeholder={isConnected ? "输入消息，或输入 / 调用 Claude Code 命令…" : "连接中…"}
-          disabled={!isConnected}
-          rows={1}
-          className="flex-1 resize-none border-0 border-b border-[var(--color-rule)] bg-transparent px-0 py-2.5 text-[13px] text-[var(--color-ink)] outline-none placeholder-[var(--color-ink-faint)] focus:border-[var(--color-accent)] disabled:opacity-40"
-        />
-        <button
-          type="submit"
-          disabled={!input.trim() || !isConnected}
-          className="shrink-0 font-sans text-[11px] font-semibold tracking-[0.04em] text-[var(--color-accent)] hover:text-[var(--color-ink)] px-2 py-2.5 disabled:text-[var(--color-ink-faint)] disabled:cursor-not-allowed transition-colors"
-        >
-          发送
-        </button>
-        {isStreaming && (
-          <button
-            type="button"
-            onClick={onStop}
-            disabled={!isConnected || !onStop}
-            aria-label="暂停生成"
-            title="暂停生成"
-            className="shrink-0 font-mono text-[16px] leading-none text-[var(--color-ink-muted)] hover:text-[var(--color-err)] px-1.5 py-2.5 disabled:text-[var(--color-ink-faint)] disabled:cursor-not-allowed transition-colors"
-          >
-            ⏸
-          </button>
-        )}
+        <div className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.03)]">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="font-sans text-[10px] font-semibold tracking-[0.08em] text-[var(--color-ink-subtle)]">
+              导演指令
+            </div>
+            <div className="font-sans text-[10px] text-[var(--color-ink-faint)]">
+              输入 / 调用制作技能
+            </div>
+          </div>
+          <div className="flex items-end gap-3">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              placeholder={isConnected ? "描述你要调整的镜头、分镜、素材或下一步制作任务…" : "连接中…"}
+              disabled={!isConnected}
+              rows={2}
+              className="min-h-[54px] flex-1 resize-none border-0 bg-transparent px-0 py-0 text-[13px] leading-relaxed text-[var(--color-ink)] outline-none placeholder-[var(--color-ink-faint)] disabled:opacity-40"
+            />
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="submit"
+                disabled={!input.trim() || !isConnected}
+                className="bg-[var(--color-ink)] px-4 py-2 font-sans text-[11px] font-semibold text-[var(--color-paper)] transition-colors hover:bg-[var(--color-accent)] disabled:bg-transparent disabled:text-[var(--color-ink-faint)] disabled:cursor-not-allowed"
+              >
+                发送
+              </button>
+              {isStreaming && (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  disabled={!isConnected || !onStop}
+                  aria-label="暂停生成"
+                  title="暂停生成"
+                  className="font-mono text-[16px] leading-none text-[var(--color-ink-muted)] hover:text-[var(--color-err)] px-1.5 py-2 disabled:text-[var(--color-ink-faint)] disabled:cursor-not-allowed transition-colors"
+                >
+                  ⏸
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       </form>
     </div>
   );
