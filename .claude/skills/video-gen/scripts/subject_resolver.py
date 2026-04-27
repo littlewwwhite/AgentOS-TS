@@ -71,6 +71,7 @@ def resolve_subject_tokens(
             "name": token,
             "display_name": entry.get("name", token),
             "subject_id": entry.get("subject_id", ""),
+            "role": "reference_image",
         })
         token_to_index[token] = len(refs)
 

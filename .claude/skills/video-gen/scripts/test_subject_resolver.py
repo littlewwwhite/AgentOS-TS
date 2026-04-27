@@ -75,6 +75,14 @@ class ResolveSubjectTokensTest(unittest.TestCase):
         self.assertEqual(refs[0]["name"], "act_001")
         self.assertEqual(refs[1]["display_name"], "诛仙台")
 
+    def test_each_ref_carries_role_reference_image(self):
+        from subject_resolver import resolve_subject_tokens
+
+        prompt = "@act_001 与 @act_002 在 @loc_003"
+        _, refs = resolve_subject_tokens(prompt, self._mapping())
+        self.assertEqual(len(refs), 3)
+        self.assertTrue(all(r["role"] == "reference_image" for r in refs))
+
     def test_dedupes_so_one_token_one_image_one_index(self):
         from subject_resolver import resolve_subject_tokens
 
