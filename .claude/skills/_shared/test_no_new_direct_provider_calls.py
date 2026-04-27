@@ -35,6 +35,7 @@ MIGRATED_SCRIPT_PATHS = [
 ]
 
 MIGRATED_USER_FACING_PATHS = [
+    ".claude/skills/asset-gen/scripts/style_generate.py",
     ".claude/skills/music-matcher/scripts/run_music_pipeline.py",
     ".claude/skills/subtitle-maker/scripts/phase2_transcribe.py",
 ]
@@ -53,6 +54,9 @@ FORBIDDEN_TEXT_SNIPPETS = (
 )
 
 FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS = (
+    "调用 Gemini 分析世界观类型",
+    "Gemini 分析失败",
+    "Gemini 世界观视觉分析",
     "Gemini video analysis",
     "Gemini ASR",
 )

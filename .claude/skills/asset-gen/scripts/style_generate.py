@@ -3,7 +3,7 @@
 """
 style_generate.py - Step 0: 世界观视觉分析
 
-读取 design.json，调用 Gemini 分析世界观类型，生成统一视觉风格配置 style.json。
+读取 design.json，通过 aos-cli model 分析世界观类型，生成统一视觉风格配置 style.json。
 style.json 被 generate_scenes.py 和 generate_props.py 加载，确保：
   1. 生图前缀与世界观完全一致（仙侠用游戏CG词，科幻用UE5词）
   2. 审图时按世界观标准检验风格合规性
@@ -96,7 +96,7 @@ def generate_style(script_json_path, output_path, style_override=None):
         log(f'✓ 世界观分析完成: 【{wt}】')
     except Exception as e:
         log(f'❌ 世界观分析失败: {e}')
-        log('❌ Gemini 分析失败，请手动创建 style.json')
+        log('❌ aos-cli 世界观分析失败，请手动创建 style.json')
         sys.exit(1)
 
     out = Path(output_path)
@@ -127,7 +127,7 @@ def generate_style(script_json_path, output_path, style_override=None):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Step 0: Gemini 世界观视觉分析 → style.json')
+    parser = argparse.ArgumentParser(description='Step 0: aos-cli 世界观视觉分析 → style.json')
     parser.add_argument('--script-json',    required=True, help='script.json 路径')
     parser.add_argument('--output',         required=True, help='输出 style.json 路径')
     parser.add_argument('--style-override', default=None,  help='覆写风格（如 真人、动漫、水墨），优先级高于 script.json 中的 style 字段')
