@@ -711,15 +711,17 @@ def run_batch_generate(
             ls_id = ls['clip_id']
             scene_id = ls.get('scene_id', '?')
             pv = ls.get('prompt_version', 0)
-            subject_ids = extract_subject_ids(ls['full_prompts'])
 
-            reference_images = map_subject_ids_to_images(subject_ids, assets_mapping)
+            prompt_with_indices, reference_images = resolve_subject_tokens(
+                ls['full_prompts'], assets_mapping
+            )
+            subject_ids = extract_subject_ids(ls['full_prompts'])
             if reference_images:
-                print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (图片参考)")
+                print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (image-reference mode)")
             # JSON 中已有 lsi.url（上一 clip 最后镜头首帧），同时作为参考图加入
             lsi_url = ls.get('lsi_url', '')
             if lsi_url:
-                reference_images = list(reference_images or [])
+                reference_images = list(reference_images)
                 reference_images.append({
                     "url": lsi_url,
                     "name": "lsi",
@@ -727,7 +729,7 @@ def run_batch_generate(
                 })
                 print(f"  [{ls_id}] lsi 参考图已加入 (url={lsi_url[:50]})")
 
-            prompt = convert_prompt_brackets(ls['full_prompts'])
+            prompt = convert_prompt_brackets(prompt_with_indices)
             dur_api = parse_duration(ls.get('duration_seconds', '5'))
             location_num, clip_num = parse_clip_id(ls_id)
 
