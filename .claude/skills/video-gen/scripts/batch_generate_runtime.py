@@ -447,8 +447,15 @@ def _write_lsi_to_json(
     target_clip_num: int,
     url: str,
     description: Optional[str],
+    video_url: Optional[str] = None,
 ) -> bool:
-    """Persist only the next clip's continuity reference without mutating prompt text."""
+    """Persist only the next clip's continuity reference without mutating prompt text.
+
+    The lsi dict carries both the previous clip's last-shot first-frame URL
+    (`url`) and, when available, its remote video URL (`video_url`). The
+    consumer side (preprocess) feeds these into the next clip's
+    `reference_image` and `reference_video` channels.
+    """
     with lock:
         for scene in data["scenes"]:
             if scene["scene_id"] != target_scene_id:
@@ -458,7 +465,9 @@ def _write_lsi_to_json(
                 if not match or int(match.group(1)) != target_clip_num:
                     continue
 
-                frame_ref_value = {"url": url}
+                frame_ref_value: Dict[str, str] = {"url": url}
+                if video_url:
+                    frame_ref_value["video_url"] = video_url
                 new_clip = {}
                 inserted = False
                 first_prompt_key = (
@@ -607,6 +616,7 @@ def _process_scene_clips(
 
     first_frame_url: Optional[str] = None
     prev_frame_filename: Optional[str] = None
+    prev_video_url: Optional[str] = None
 
     for clip_num in sorted(clips_by_num.keys()):
         clip_group = clips_by_num[clip_num]
@@ -620,7 +630,8 @@ def _process_scene_clips(
         print(f"\n{'='*60}")
         print(
             f"  场景 {scene_id}  Clip {clip_num:03d}  开始生成"
-            f"  (首帧: {'有, COS=' + first_frame_url[:40] if first_frame_url else '无'})"
+            f"  (首帧: {'有, COS=' + first_frame_url[:40] if first_frame_url else '无'}"
+            f" | 前段视频: {'有' if prev_video_url else '无'})"
         )
         print(f"{'='*60}")
 
@@ -636,7 +647,7 @@ def _process_scene_clips(
             gemini_api_key=gemini_api_key,
             first_frame_url=first_frame_url,
             first_frame_text=None,
-            prev_video_url=None,
+            prev_video_url=prev_video_url,
             on_first_video_ready=None,
             skip_review=skip_review,
         )
@@ -659,6 +670,28 @@ def _process_scene_clips(
                 clip_review_cfg=None,
             )
         first_frame_url = next_frame_url
+
+        # Capture this clip's remote video URL so the next clip can pick it up
+        # as a reference_video for richer temporal context (Ark accepts up to
+        # 3 video refs per task; we forward only the most recent).
+        next_video_url: Optional[str] = None
+        for clip in clip_group:
+            best_version = clip.get("best_version")
+            for version in clip.get("versions", []):
+                if best_version and version.get("version") != best_version:
+                    continue
+                video_url = version.get("video_url")
+                if video_url:
+                    next_video_url = video_url
+                    break
+            if next_video_url:
+                break
+        prev_video_url = next_video_url
+        if prev_video_url:
+            print(
+                f"  [VIDEO] {scn_label}_clip{clip_num:03d} 视频 URL 已捕获，"
+                f"将作为下一 clip 的 reference_video"
+            )
 
         if not first_frame_url:
             print(
@@ -700,6 +733,7 @@ def _process_scene_clips(
                     target_clip_num=next_in_json,
                     url=first_frame_url,
                     description=None,
+                    video_url=prev_video_url,
                 )
                 if not written:
                     print(

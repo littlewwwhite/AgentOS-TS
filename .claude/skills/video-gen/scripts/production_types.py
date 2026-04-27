@@ -10,9 +10,11 @@ from typing import Dict, List, Optional
 class ClipIntent:
     """Upstream intent for generating one clip.
 
-    `first_frame_url` carries cross-run continuity loaded from JSON `clip.lsi.url`
-    (orthogonal to `reference_images`, which is for subject binding only).
-    Runtime in-scene continuity arrives separately via `ContinuityContext`.
+    `first_frame_url` and `prev_video_url` carry cross-run continuity loaded
+    from JSON `clip.lsi.url` and `clip.lsi.video_url` respectively (orthogonal
+    to `reference_images`, which is for subject binding only). Runtime
+    in-scene continuity arrives separately via `ContinuityContext` and takes
+    precedence in `compile_request`.
     """
 
     clip_id: str
@@ -23,6 +25,7 @@ class ClipIntent:
     subjects: List[Dict] = field(default_factory=list)
     reference_images: List[Dict] = field(default_factory=list)
     first_frame_url: Optional[str] = None
+    prev_video_url: Optional[str] = None
     location_num: int = 0
     clip_num: int = 0
 

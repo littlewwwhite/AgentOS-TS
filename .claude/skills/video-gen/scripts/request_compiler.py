@@ -46,11 +46,12 @@ def compile_request(
             }
         )
 
+    effective_prev_video_url = continuity.prev_video_url or intent.prev_video_url
     reference_videos = []
-    if continuity.prev_video_url:
+    if effective_prev_video_url:
         reference_videos.append(
             {
-                "url": continuity.prev_video_url,
+                "url": effective_prev_video_url,
                 "role": "reference_video",
                 "name": "prev_video",
             }

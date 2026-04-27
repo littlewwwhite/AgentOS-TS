@@ -125,7 +125,10 @@ def iter_clips(data: dict) -> list:
 
             prompts = _extract_clip_prompts(clip)
             # lsi.url：上一个 clip 最后镜头首帧的 COS 路径（可能为 None）
-            lsi_url = (clip.get('lsi') or {}).get('url', '') or ''
+            # lsi.video_url：上一个 clip 远端 mp4 URL（可能为 None）
+            lsi_dict = clip.get('lsi') or {}
+            lsi_url = lsi_dict.get('url', '') or ''
+            lsi_video_url = lsi_dict.get('video_url', '') or ''
 
             # Generate one entry per prompt version
             for pv_idx, prompt_text in enumerate(prompts):
@@ -138,6 +141,7 @@ def iter_clips(data: dict) -> list:
                     'location': scene_location,
                     'prompt_version': pv_idx,
                     'lsi_url': lsi_url,
+                    'lsi_video_url': lsi_video_url,
                 }
                 result.append(entry)
 
@@ -744,6 +748,18 @@ def run_batch_generate(
                     f"  [{ls_id}] 跨次续帧（lsi.url）将作为追加 reference_image 注入: "
                     f"{clip_first_frame_url[:60]}"
                 )
+            lsi_video_url_raw = (ls.get('lsi_video_url') or '').strip()
+            usable_lsi_video = bool(lsi_video_url_raw) and lsi_video_url_raw.startswith(
+                ('http://', 'https://')
+            )
+            clip_prev_video_url: Optional[str] = (
+                lsi_video_url_raw if usable_lsi_video else None
+            )
+            if clip_prev_video_url:
+                print(
+                    f"  [{ls_id}] 跨次续接视频（lsi.video_url）将作为 reference_video 注入: "
+                    f"{clip_prev_video_url[:60]}"
+                )
 
             prompt = convert_prompt_brackets(prompt_with_indices)
             dur_api = parse_duration(ls.get('duration_seconds', '5'))
@@ -779,6 +795,7 @@ def run_batch_generate(
                 subjects=[],
                 reference_images=list(reference_images or []),
                 first_frame_url=clip_first_frame_url,
+                prev_video_url=clip_prev_video_url,
                 location_num=location_num,
                 clip_num=clip_num,
             )
