@@ -315,9 +315,18 @@ class _FakeProvider:
         )()
 
     def submit_video(self, *, prompt, options):
-        return type("VideoTask", (), {"task_id": "fake-video-task", "model": "fake-video-model", "raw": {}})()
+        return type(
+            "VideoTask",
+            (),
+            {
+                "task_id": "fake-video-task",
+                "model": "fake-video-model",
+                "raw": {"requestedDurationSeconds": options.get("duration")},
+            },
+        )()
 
     def poll_video(self, *, task_id, options):
+        duration = options.get("duration") or options.get("expectedDuration")
         return type(
             "VideoResult",
             (),
@@ -330,6 +339,7 @@ class _FakeProvider:
                         "uri": "https://example.com/fake-video.mp4",
                         "remoteUrl": "https://example.com/fake-video.mp4",
                         "mimeType": "video/mp4",
+                        "durationSeconds": duration,
                     }
                 ],
                 "model": "fake-video-model",
@@ -434,12 +444,17 @@ def _is_task_receipt(payload: dict) -> bool:
 
 
 def _poll_request_from_task_receipt(payload: dict) -> dict:
+    raw_output = (payload.get("output") or {}).get("raw") or {}
+    options = {}
+    if raw_output.get("requestedDurationSeconds") is not None:
+        options["duration"] = raw_output["requestedDurationSeconds"]
     request = {
         "apiVersion": payload.get("apiVersion"),
         "task": payload.get("task", "unknown"),
         "capability": payload.get("capability", "video.generate"),
         "output": {"kind": "task_result"},
         "input": {"taskId": payload["output"].get("taskId")},
+        "options": options,
         "modelPolicy": {"model": payload.get("model")} if payload.get("model") else {},
     }
     for field in METADATA_FIELDS:

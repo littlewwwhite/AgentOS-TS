@@ -301,6 +301,27 @@ def _extract_video_artifact(envelope: Dict[str, Any]) -> Dict[str, Any]:
     return next((a for a in artifacts if a.get("kind") == "video"), {})
 
 
+def _extract_actual_duration_seconds(artifact: Dict[str, Any]) -> Optional[float]:
+    for key in ("actualDurationSeconds", "durationSeconds", "duration"):
+        value = artifact.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    metadata = artifact.get("metadata") or {}
+    for key in ("actualDurationSeconds", "durationSeconds", "duration"):
+        value = metadata.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def poll_multiple_tasks(
     tasks: List[Dict[str, Any]],
     interval: int = 10,
@@ -357,6 +378,7 @@ def poll_multiple_tasks(
                         artifact.get("lastFrameUrl")
                         or artifact.get("last_frame_url")
                     )
+                    actual_duration_seconds = _extract_actual_duration_seconds(artifact)
                     video_path = None
                     if video_url and info.get("output_path"):
                         video_path = download_video(video_url, info["output_path"])
@@ -367,6 +389,7 @@ def poll_multiple_tasks(
                         video_path=video_path,
                         result_data=envelope,
                         last_frame_url=last_frame_url,
+                        actual_duration_seconds=actual_duration_seconds,
                     )
                     finished[task_id] = info
                     pending.pop(task_id, None)

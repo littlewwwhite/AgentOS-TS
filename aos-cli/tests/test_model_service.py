@@ -316,6 +316,26 @@ def test_build_default_model_service_fakes_video_gen_review(monkeypatch):
     assert data["prompt_compliance"]["content_compliance_score"] == 8
 
 
+def test_fake_video_submit_poll_preserves_requested_duration(monkeypatch):
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
+    service = build_default_model_service()
+
+    task_receipt = service.submit(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video.generate",
+            "capability": "video.generate",
+            "output": {"kind": "task"},
+            "input": {"prompt": "slow push", "duration": 11},
+        }
+    )
+
+    result = service.poll(task_receipt)
+
+    assert result["ok"] is True
+    assert result["output"]["artifacts"][0]["durationSeconds"] == 11
+
+
 def test_build_default_model_service_fakes_video_editing_phase2_review(monkeypatch):
     monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
 

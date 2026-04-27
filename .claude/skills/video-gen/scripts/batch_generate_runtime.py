@@ -63,6 +63,10 @@ def _save_clip_result(
     passed,
     analysis_dict,
     review_dict,
+    requested_duration_seconds=None,
+    actual_duration_seconds=None,
+    provider=None,
+    model_code=None,
 ):
     """Update one clip's in-memory review state."""
     clip["versions"].append(
@@ -74,9 +78,15 @@ def _save_clip_result(
             "success": True,
             "passed": passed,
             "video_path": actual_path,
+            "output_path": actual_path,
             "video_url": video_url,
             "last_frame_url": last_frame_url,
             "task_id": task_id,
+            "provider_task_id": task_id,
+            "provider": provider,
+            "model_code": model_code,
+            "requested_duration_seconds": requested_duration_seconds,
+            "actual_duration_seconds": actual_duration_seconds,
             "total_score": review_dict.get("total_score"),
             "analysis": analysis_dict,
             "review": review_dict,
@@ -316,8 +326,12 @@ def _run_generation_rounds(
                 "version": version,
                 "actual_path": actual_path,
                 "task_id": submitted_item["task_id"],
+                "provider": submitted_item.get("provider"),
+                "model_code": submitted_item.get("model_code"),
                 "video_url": poll_result.get("video_url"),
                 "last_frame_url": poll_result.get("last_frame_url"),
+                "requested_duration_seconds": clip["dur_api"],
+                "actual_duration_seconds": poll_result.get("actual_duration_seconds"),
             }
         )
 
@@ -349,6 +363,10 @@ def _run_generation_rounds(
                 True,
                 {},
                 {"skipped": True, "reason": "skip-review"},
+                item.get("requested_duration_seconds"),
+                item.get("actual_duration_seconds"),
+                item.get("provider"),
+                item.get("model_code"),
             )
     elif review_requested and review_items:
         print(f"    [REVIEW] 显式启用 aos-cli video.analyze 评审，处理 {len(review_items)} 个视频...")
@@ -395,6 +413,10 @@ def _run_generation_rounds(
                     passed,
                     analysis_dict,
                     review_dict,
+                    item.get("requested_duration_seconds"),
+                    item.get("actual_duration_seconds"),
+                    item.get("provider"),
+                    item.get("model_code"),
                 )
                 print(
                     f"    [{item['clip']['ls_id']}] v{item['version']:03d} "
@@ -415,6 +437,10 @@ def _run_generation_rounds(
                 True,
                 {},
                 {"skipped": True, "reason": "default-path"},
+                item.get("requested_duration_seconds"),
+                item.get("actual_duration_seconds"),
+                item.get("provider"),
+                item.get("model_code"),
             )
 
     for clip in clip_group:

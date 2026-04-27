@@ -100,6 +100,7 @@ class ProviderSwitchTest(unittest.TestCase):
                         "kind": "video",
                         "uri": "https://cdn.example.com/out.mp4",
                         "lastFrameUrl": "https://cdn.example.com/last.png",
+                        "durationSeconds": 8.0,
                     }
                 ],
             },
@@ -123,6 +124,7 @@ class ProviderSwitchTest(unittest.TestCase):
         self.assertTrue(results[0]["success"])
         self.assertEqual(results[0]["video_url"], "https://cdn.example.com/out.mp4")
         self.assertEqual(results[0]["last_frame_url"], "https://cdn.example.com/last.png")
+        self.assertEqual(results[0]["actual_duration_seconds"], 8.0)
         self.assertEqual(results[0]["video_path"], "/tmp/out.mp4")
 
 
