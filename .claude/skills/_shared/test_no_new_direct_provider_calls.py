@@ -44,6 +44,7 @@ MIGRATED_USER_FACING_PATHS = [
     ".claude/skills/asset-gen/scripts/generate_prompts_from_script.py",
     ".claude/skills/music-matcher/scripts/run_music_pipeline.py",
     ".claude/skills/subtitle-maker/scripts/phase2_transcribe.py",
+    ".claude/skills/video-gen/scripts/evaluator.py",
 ]
 
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -70,6 +71,7 @@ FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS = (
     "Gemini review bypassed",
     "角色专用 Gemini 审图",
     "Gemini 场景分组失败",
+    "Gemini 分析结果",
     "Gemini config not taking effect",
     "Gemini video analysis",
     "Gemini ASR",
