@@ -192,6 +192,11 @@ def blur_faces_only(
 # ============================================================
 # Gemini 画面描述
 # ============================================================
+# Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+# This helper sends image+text to Gemini for a frame description used as the
+# next clip's lsi.prompt. aos-cli model v1 does not yet define an image-input
+# generate contract, so this path stays on the direct SDK. Do NOT add new
+# callers; migrate when protocol coverage lands.
 
 def describe_frame_with_gemini(
     img_path: str,
