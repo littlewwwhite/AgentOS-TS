@@ -49,18 +49,26 @@ def _public_url(url: str) -> str:
 
 
 def _normalize_reference_images(reference_images: Optional[List[Dict]]) -> List[Dict[str, Any]]:
+    """Normalize boundary contract for Ark referenceImages[].
+
+    Each entry must carry an explicit `role` (Ark rejects the request otherwise).
+    Fail-fast at the boundary so missing role never silently survives downstream.
+    """
     normalized: List[Dict[str, Any]] = []
     for image in reference_images or []:
         url = image.get("url")
         if not url:
             continue
-        entry: Dict[str, Any] = {"url": _public_url(url)}
+        role = image.get("role")
+        if not role:
+            raise ValueError(
+                "reference image missing required 'role' field "
+                f"(name={image.get('name')!r}, url={url[:60]!r})"
+            )
+        entry: Dict[str, Any] = {"url": _public_url(url), "role": role}
         name = image.get("name")
         if name:
             entry["name"] = name
-        role = image.get("role")
-        if role:
-            entry["role"] = role
         normalized.append(entry)
     return normalized
 
