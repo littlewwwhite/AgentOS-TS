@@ -46,19 +46,15 @@ def get_config() -> dict:
     """返回与旧 generation_config.json 完全等价的 dict。"""
     style_cfg = _read_json(ASSETS_DIR / "style" / "style_generate.json")
     model_config = _read_json(ASSETS_DIR / "common" / "gemini_backend.json")
-    retry_rules = _read_json(ASSETS_DIR / "generation" / "retry_rules.json")
     return {
         "num_prompts": style_cfg["num_prompts"],
         "text_generate": model_config["text_generate"],
         "vision_review": model_config["vision_review"],
         "generate_scenes": {
             "ref_prompt_template": load_template("generation", "scene_ref_prompt"),
-            **retry_rules["generate_scenes"],
         },
-        "character_generation": retry_rules["character_generation"],
         "generate_props": {
             "ref_prompt_template": load_template("generation", "prop_ref_prompt"),
-            **retry_rules["generate_props"],
         },
         "prompt_templates": {
             "retry_prompt_rewrite": load_template("generation", "retry_prompt_rewrite"),

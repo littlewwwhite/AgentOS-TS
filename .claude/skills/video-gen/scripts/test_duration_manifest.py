@@ -47,7 +47,6 @@ def test_generation_result_records_requested_and_actual_duration(tmp_path, monke
 
     monkeypatch.setattr(runtime, "submit_video", fake_submit_video)
     monkeypatch.setattr(runtime, "poll_multiple_tasks", fake_poll_multiple_tasks)
-    monkeypatch.setattr(runtime, "precheck_and_fix", lambda prompt, clip_id: (True, prompt, []))
 
     clip = {
         "ls": {"full_prompts": "slow push in"},
@@ -121,7 +120,6 @@ def test_generation_runs_aos_cli_review_without_provider_key(tmp_path, monkeypat
 
     monkeypatch.setattr(runtime, "submit_video", fake_submit_video)
     monkeypatch.setattr(runtime, "poll_multiple_tasks", fake_poll_multiple_tasks)
-    monkeypatch.setattr(runtime, "precheck_and_fix", lambda prompt, clip_id: (True, prompt, []))
     monkeypatch.setattr(runtime, "_review_single_clip", fake_review_single_clip)
 
     clip = {

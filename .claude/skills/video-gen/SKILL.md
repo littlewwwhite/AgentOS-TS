@@ -230,7 +230,6 @@ video-gen
 | `references/MODE_RULES.md` | Mode selection, resume, prompt-only/video-only precedence |
 | `references/SHOT_VALIDATION_RULES.md` | Lightweight preflight validation rules before expensive generation |
 | `references/STORYBOARD_SCHEMA.md` | STORYBOARD 层与 VIDEO 导出层的双层 JSON 契约说明（含 `shots[]` / `clips[]` 兼容关系） |
-| `references/SENSITIVE_WORDS.md` | Sensitive word replacement table for content moderation |
 | `references/AI_CONFIG_AND_DELIVERY.md` | Provider config, storyboard draft text endpoint, video review, delivery JSON format |
 
 ## Version

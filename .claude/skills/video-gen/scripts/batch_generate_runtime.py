@@ -30,7 +30,6 @@ from frame_extractor import (
 )
 from production_types import ClipIntent, ContinuityContext
 from request_compiler import compile_request
-from sensitive_precheck import precheck_and_fix
 from analyzer import analyze_video_parallel
 from video_api import (
     _cos_relative_url,
@@ -205,25 +204,10 @@ def _run_generation_rounds(
         )
         paths.init_clip_dir(episode, intent.location_num, intent.clip_num)
 
-        can_submit, safe_prompt, _subs = precheck_and_fix(
-            request.prompt, clip_id=clip["ls_id"]
-        )
         clip["attempts"] += 1
-        if not can_submit:
-            clip["done"] = True
-            clip["versions"].append(
-                {
-                    "version": version,
-                    "attempt": clip["attempts"],
-                    "success": False,
-                    "passed": False,
-                    "message": "Skipped: residual sensitive words after auto-replace",
-                }
-            )
-            continue
 
         submit_result = submit_video(
-            prompt=safe_prompt,
+            prompt=request.prompt,
             model_code=model_code,
             subjects=request.subjects or None,
             reference_images=request.reference_images or None,
