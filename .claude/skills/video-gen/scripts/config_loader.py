@@ -2,12 +2,19 @@
 # -*- coding: utf-8 -*-
 # input: assets/config.json and local environment variables
 # output: normalized skill runtime configuration dictionaries
-# pos: central config boundary for video-gen scripts
+# pos: central config boundary; gemini section feeds deferred multimodal paths only
 """
 config_loader.py — video-gen 统一配置加载器
 
 从 assets/config.json 加载配置，支持环境变量 STORYBOARD_CONFIG 覆盖路径。
 找不到文件时返回内置默认值（向后兼容）。
+
+Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+The `gemini` config section exposed by `get_gemini_config()` and
+`get_gemini_review_config()` exists solely to support the deferred multimodal
+review (`analyzer.py`) and frame description (`frame_extractor.py`) paths.
+Migrated text/JSON/image/video paths route through aos-cli model and do not
+read this section. Do not introduce new consumers of `get_gemini_config`.
 """
 
 import json
