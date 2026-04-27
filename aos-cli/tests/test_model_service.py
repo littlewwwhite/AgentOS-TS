@@ -340,6 +340,32 @@ def test_build_default_model_service_fakes_video_editing_phase2_review(monkeypat
     }
 
 
+def test_build_default_model_service_fakes_video_gen_frame_description(monkeypatch):
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
+
+    response = build_default_model_service().run(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video-gen.frame.describe",
+            "capability": "vision.review",
+            "output": {"kind": "json"},
+            "input": {
+                "content": {
+                    "prompt": "describe continuity frame",
+                    "images": ["file:///tmp/frame.png"],
+                }
+            },
+        }
+    )
+
+    assert response["ok"] is True
+    assert response["provider"] == "gemini"
+    assert response["output"]["kind"] == "json"
+    assert response["output"]["data"] == {
+        "description": "fake continuity frame description",
+    }
+
+
 def test_build_default_model_service_fakes_audio_transcribe_segments(monkeypatch):
     monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
 

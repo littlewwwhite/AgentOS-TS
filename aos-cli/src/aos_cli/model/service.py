@@ -392,6 +392,8 @@ def _fake_json_payload(request: dict) -> dict:
             "issues": [],
             "edit_suggestions": [],
         }
+    if request.get("capability") == "vision.review" and request.get("task") == "video-gen.frame.describe":
+        return {"description": "fake continuity frame description"}
     return {"ok": True, "task": request["task"]}
 
 

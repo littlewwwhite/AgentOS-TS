@@ -45,9 +45,9 @@ selection, authentication, and multimodal upload handling behind aos-cli.
 }
 ```
 
-The `gemini` section in `assets/config.json` remains only for the deferred
-`frame_extractor.describe_frame_with_gemini` continuity-helper path until that
-path is also migrated.
+The historical `frame_extractor.describe_frame_with_gemini` compatibility
+entrypoint now routes continuity frame description through `aos-cli model`
+`vision.review`; it no longer calls a provider SDK directly.
 
 ## Delivery JSON Format
 
