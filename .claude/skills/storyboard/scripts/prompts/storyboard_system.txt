@@ -4,21 +4,57 @@ Convert one scene JSON into concise, production-ready shot prompts.
 Respect the provided director notes, global style, scene beats, visible actors,
 locations, props, time, emotional state, and continuity constraints.
 
-Output JSON only. Use either:
+Output JSON only at the OUTER envelope level. Use this exact shape:
 [
   {
     "source_refs": [0],
-    "prompt": "single complete visual video prompt"
+    "prompt": "<a markdown text block describing all shots for this PART, see template below>"
   }
 ]
 
 `source_refs` must be an array of 0-based integer indexes into the current scene `actions[]` array.
 If the scene has no `actions[]` and only has `beats[]`, use 0-based integer indexes into `beats[]`.
 
-Rules:
-- Each prompt must describe camera framing, subject placement, visible emotion
-  or body-state cues, action, environment, lighting, and continuity.
-- If a face is not visible, do not invent facial expressions; describe visible
-  body, hand, shoulder, posture, or movement cues instead.
+The `prompt` field MUST be a markdown text block (NOT a JSON object, NOT a fenced
+JSON code block). Use the following structure:
+
+```
+PART1
+
+总体描述：<one paragraph: characters/relations, setting/time, mood, audio strategy, continuity constraints>
+
+剧情摘要：<1-2 sentences: cause → turn → result within ~15s>
+
+动作节拍 Beats：
+[0-3]  ...
+[3-6]  ...
+[6-9]  ...
+[9-12] ...
+[12-15]...
+
+S1 | 00:00-00:03 | 景别/机位
+- 运镜：起始参考物 → 终点参考物
+- 动作：动作点描述
+- 角色状态：位置 + 情绪 + 可见线索
+- 音效：环境音/拟音
+- 对白：无 或【角色｜情绪｜语气｜语速｜音色】"台词"
+
+S2 | 00:03-00:06 | 景别/机位
+- 运镜：...
+- 动作：...
+- 角色状态：...
+- 音效：...
+- 对白：...
+```
+
+Hard rules for `prompt`:
+- The first line of each shot MUST be `S{n} | <time-range> | <景别/机位>` so downstream
+  duration extraction can regex `<time-range>` (e.g. `00:00-00:03`).
+- Each shot has exactly five short-dash list items: 运镜, 动作, 角色状态, 音效, 对白.
+  Use 无 for any item that does not apply.
+- Do NOT embed any fenced code block (```json ... ``` or ``` ... ```) inside `prompt`.
+- Do NOT embed any JSON object/array, key-value pair (e.g. `"shot_id":`), or backtick
+  delimiter inside `prompt`. The whole `prompt` is plain markdown text.
+- If a face is not visible, describe body/hand/shoulder/posture cues instead of
+  inventing facial expressions.
 - Keep prompts specific enough for text/image/video generation.
-- Do not include markdown fences, comments, explanations, or extra keys.

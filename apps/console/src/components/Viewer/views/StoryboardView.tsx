@@ -21,12 +21,15 @@ import {
   buildClipInspectorData,
   buildStoryboardEditorModel,
   buildStoryboardGenerationUnits,
+  findScriptSceneSnapshot,
   parseDraftStoryboardPrompt,
   resolveStoryboardSelectionAtTime,
+  storyboardPromptAsMarkdown,
   summarizeSourceRefs,
   splitStoryboardText,
   type ClipInspectorData,
   type DraftStoryboardPromptSummary,
+  type ScriptSceneSnapshot,
   type StoryboardClipLike,
   type StoryboardEditorClip,
   type StoryboardEditorShot,
@@ -702,11 +705,9 @@ function DraftStoryboardEditor({
   data,
   path,
   projectName,
-  patch,
   status,
   savedAt,
   error,
-  readOnly,
   onActionDone,
 }: {
   data: StoryboardJson & { shots: DraftStoryboardPart[] };
@@ -719,9 +720,6 @@ function DraftStoryboardEditor({
   readOnly: boolean;
   onActionDone: () => void;
 }) {
-  const editStatus: "idle" | "saving" | "saved" | "error" =
-    status === "loading" ? "idle" : status;
-
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex items-center justify-between gap-6 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-6 py-3 shrink-0">
@@ -729,9 +727,6 @@ function DraftStoryboardEditor({
           <h1 className="font-serif text-[24px] leading-tight text-[var(--color-ink)]">
             {data.episode_id} 故事板草稿
           </h1>
-          <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
-            结构保护：只编辑每个分段的 prompt 字段，episode_id / scene_id / source_refs / shots[] 外层结构保持不变。
-          </div>
         </header>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <SaveStatusLabel status={status} savedAt={savedAt} error={error} />
@@ -746,7 +741,6 @@ function DraftStoryboardEditor({
           {data.shots.map((part, partIndex) => {
             const prompt = typeof part.prompt === "string" ? part.prompt : "";
             const summary = parseDraftStoryboardPrompt(prompt);
-            const promptPath = `shots.${partIndex}.prompt`;
 
             return (
               <section
@@ -771,24 +765,6 @@ function DraftStoryboardEditor({
                 </div>
 
                 <DraftShotSummaryList summary={summary} />
-
-                <details className="mt-4 border-t border-[var(--color-rule)] pt-3" open>
-                  <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
-                    故事板 prompt / 可编辑
-                  </summary>
-                  <div className="mt-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)]">
-                    <EditableText
-                      value={prompt}
-                      onChange={(value) => patch(promptPath, value)}
-                      placeholder="（故事板 prompt）"
-                      multiline
-                      status={editStatus}
-                      className="block w-full whitespace-pre-wrap"
-                      ariaLabel={`${summary.partLabel} 故事板 prompt`}
-                      readOnly={readOnly}
-                    />
-                  </div>
-                </details>
               </section>
             );
           })}
@@ -796,10 +772,6 @@ function DraftStoryboardEditor({
       </div>
     </div>
   );
-}
-
-function generationVideoStatusLabel(status: StoryboardGenerationUnit["videoStatus"]): string {
-  return status === "generated" ? "视频已生成" : "视频待生成";
 }
 
 function projectTreePaths(tree: unknown): string[] {
@@ -818,113 +790,124 @@ function projectTreePaths(tree: unknown): string[] {
   return results;
 }
 
-function StoryboardGenerationUnitCard({ unit }: { unit: StoryboardGenerationUnit }) {
-  return (
-    <article className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-3">
-        <div className="space-y-1">
-          <div className="font-mono text-[12px] font-semibold text-[var(--color-accent)]">
-            {unit.sceneId} · {unit.partId}
-          </div>
-          <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
-            来源剧本 {unit.sourceRefsLabel}
-          </div>
-        </div>
-        <MetaBadge label="视频状态" value={generationVideoStatusLabel(unit.videoStatus)} />
-      </div>
+type JsonPatch = (path: string, value: unknown) => void;
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <section className="space-y-2">
-          <FieldLabel>剧本摘录</FieldLabel>
-          {unit.scriptExcerpt.length === 0 ? (
-            <div className="font-serif italic text-[14px] text-[var(--color-ink-faint)]">
-              （无剧本摘录）
+function StoryboardPromptEditor({
+  unit,
+  patch,
+  readOnly,
+}: {
+  unit: StoryboardGenerationUnit;
+  patch: JsonPatch;
+  readOnly: boolean;
+}) {
+  const markdown = useMemo(() => storyboardPromptAsMarkdown(unit.rawPrompt), [unit.rawPrompt]);
+
+  return (
+    <textarea
+      aria-label={`${unit.sceneId} ${unit.partId} 生成视频 prompt`}
+      className="block min-h-[260px] w-full resize-y border border-[var(--color-rule)] bg-[var(--color-paper-soft)] p-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] outline-none transition-colors focus:border-[var(--color-accent)] disabled:opacity-70"
+      readOnly={readOnly}
+      value={markdown}
+      placeholder="用一段自然语言描述这一镜头要拍什么"
+      onChange={(event) => {
+        patch(unit.promptPath, event.target.value);
+      }}
+    />
+  );
+}
+
+function ScriptSceneColumn({ scene }: { scene: ScriptSceneSnapshot }) {
+  if (scene.actions.length === 0) return null;
+  return (
+    <ol className="space-y-2.5">
+      {scene.actions.map((action, index) => (
+        <li
+          key={`${scene.sceneId}-${index}`}
+          className="grid grid-cols-[24px_minmax(0,1fr)] gap-3"
+        >
+          <span className="pt-1 font-mono text-[10px] text-[var(--color-ink-faint)]">
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          {action.kind === "dialogue" ? (
+            <div className="space-y-0.5">
+              {action.actorName && (
+                <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-faint)]">
+                  {action.actorName}
+                </div>
+              )}
+              <div className="font-serif italic text-[14px] leading-relaxed text-[var(--color-ink)]">
+                {action.text}
+              </div>
             </div>
           ) : (
-            <ol className="space-y-2">
-              {unit.scriptExcerpt.map((line, index) => (
-                <li key={`${unit.key}-excerpt-${index}`} className="grid grid-cols-[24px_1fr] gap-3">
-                  <span className="pt-0.5 font-mono text-[10px] text-[var(--color-ink-faint)]">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span className="font-serif italic text-[14px] leading-relaxed text-[var(--color-ink)]">
-                    {line}
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <div className="font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)]">
+              {action.text}
+            </div>
           )}
-        </section>
+        </li>
+      ))}
+    </ol>
+  );
+}
 
-        <section className="space-y-3">
-          <InfoPanelSection title="分镜提示词">
-            {unit.promptSummary || "（无提示词摘要）"}
-          </InfoPanelSection>
-
-          <section className="space-y-1.5">
-            <FieldLabel>镜头结果</FieldLabel>
-            {unit.shots.length === 0 ? (
-              <div className="font-[Geist,sans-serif] text-[12px] italic text-[var(--color-ink-faint)]">
-                （未解析到镜头结果）
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {unit.shots.map((shot) => (
-                  <div
-                    key={`${unit.key}-${shot.shotId}-${shot.timeRange ?? shot.duration}`}
-                    className="grid grid-cols-[72px_1fr] gap-3 border-l-2 border-[var(--color-accent)] pl-3"
-                  >
-                    <div>
-                      <div className="font-mono text-[11px] uppercase tracking-wider text-[var(--color-accent)]">
-                        {shot.shotId}
-                      </div>
-                      <div className="font-mono text-[10px] text-[var(--color-ink-faint)]">
-                        {shot.timeRange ?? durationLabel(shot.duration)}
-                      </div>
-                    </div>
-                    <div className="whitespace-pre-wrap font-[Geist,sans-serif] text-[12px] leading-relaxed text-[var(--color-ink-muted)]">
-                      {shot.prompt || "（无镜头提示词）"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <details className="border-t border-[var(--color-rule)] pt-3">
-            <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
-              展开原始分镜提示词
-            </summary>
-            <pre className="mt-2 whitespace-pre-wrap break-words font-[Geist,sans-serif] text-[12px] italic leading-relaxed text-[var(--color-ink-muted)]">
-              {unit.prompt}
-            </pre>
-          </details>
-        </section>
-      </div>
+function StoryboardGenerationUnitCard({
+  unit,
+  scriptScene,
+  patch,
+  readOnly,
+}: {
+  unit: StoryboardGenerationUnit;
+  scriptScene: ScriptSceneSnapshot | null;
+  patch: JsonPatch;
+  readOnly: boolean;
+}) {
+  const showScript = scriptScene !== null && scriptScene.actions.length > 0;
+  return (
+    <article className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-4">
+      <header className="mb-3 flex flex-wrap items-baseline justify-between gap-3 border-b border-[var(--color-rule)] pb-2">
+        <span className="font-serif text-[16px] text-[var(--color-ink)]">
+          {unit.sceneId} · {unit.partId}
+        </span>
+        <FieldLabel>生成视频 prompt</FieldLabel>
+      </header>
+      {showScript ? (
+        <div
+          className="grid gap-4 lg:gap-5"
+          style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.3fr)" }}
+        >
+          <ScriptSceneColumn scene={scriptScene} />
+          <StoryboardPromptEditor unit={unit} patch={patch} readOnly={readOnly} />
+        </div>
+      ) : (
+        <StoryboardPromptEditor unit={unit} patch={patch} readOnly={readOnly} />
+      )}
     </article>
   );
 }
 
-function StoryboardGenerationUnitList({ units }: { units: StoryboardGenerationUnit[] }) {
+function StoryboardGenerationUnitList({
+  units,
+  sceneLookup,
+  patch,
+  readOnly,
+}: {
+  units: StoryboardGenerationUnit[];
+  sceneLookup: Map<string, ScriptSceneSnapshot>;
+  patch: JsonPatch;
+  readOnly: boolean;
+}) {
   return (
-    <section className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-4 lg:px-5">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-3">
-        <div className="space-y-1">
-          <h2 className="font-serif text-[20px] leading-tight text-[var(--color-ink)]">
-            剧本到故事板
-          </h2>
-          <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
-            以制作单元串联来源剧本、分镜提示词、镜头结果与视频生成状态。
-          </div>
-        </div>
-        <MetaBadge label="生成单元" value={`${units.length}`} />
-      </div>
-
-      <div className="mt-4 grid gap-4">
-        {units.map((unit) => (
-          <StoryboardGenerationUnitCard key={unit.key} unit={unit} />
-        ))}
-      </div>
+    <section className="grid gap-4">
+      {units.map((unit) => (
+        <StoryboardGenerationUnitCard
+          key={unit.key}
+          unit={unit}
+          scriptScene={sceneLookup.get(unit.sceneId) ?? null}
+          patch={patch}
+          readOnly={readOnly}
+        />
+      ))}
     </section>
   );
 }
@@ -960,9 +943,19 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
   const treePaths = useMemo(() => new Set(treePathList), [treePathList]);
   const scenes = data?.scenes ?? [];
   const generationUnits = useMemo(
-    () => buildStoryboardGenerationUnits(path, scenes, scriptData, treePathList),
-    [path, scenes, scriptData, treePathList],
+    () => buildStoryboardGenerationUnits(scenes),
+    [scenes],
   );
+  const scriptSceneLookup = useMemo(() => {
+    const lookup = new Map<string, ScriptSceneSnapshot>();
+    for (const scene of scenes) {
+      const sceneId = scene?.scene_id;
+      if (!sceneId || lookup.has(sceneId)) continue;
+      const snapshot = findScriptSceneSnapshot(scriptData, sceneId, dict);
+      if (snapshot) lookup.set(sceneId, snapshot);
+    }
+    return lookup;
+  }, [dict, scenes, scriptData]);
   const editorModel = useMemo(
     () => buildStoryboardEditorModel(path, scenes, dict, treePathList),
     [dict, path, scenes, treePathList],
@@ -1276,7 +1269,7 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     );
   }
 
-  if (generationUnits.length === 0 || !currentClip || !currentClipData || !currentScene || !currentSummary) {
+  if (generationUnits.length === 0) {
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <div className="flex items-center justify-between gap-6 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-6 py-3 shrink-0">
@@ -1300,6 +1293,8 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     );
   }
 
+  const showPromptOnly = generationUnits.length > 0;
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex items-center justify-between gap-6 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-6 py-2 shrink-0">
@@ -1307,126 +1302,134 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
           <h1 className="font-serif text-[24px] leading-tight text-[var(--color-ink)]">
             {data.title ? data.title : `${data.episode_id} 故事板`}
           </h1>
-          <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
-            视频生成前的镜头规划与提示词定稿
-          </div>
+          {!showPromptOnly && (
+            <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
+              视频生成前的镜头规划与提示词定稿
+            </div>
+          )}
         </header>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           <SaveStatusLabel status={status} savedAt={savedAt} error={error} />
           <ArtifactLifecycleActions projectName={projectName} path={path} onActionDone={refresh} />
-          <MetaBadge label="场次" value={`${scenes.length}`} />
-          <MetaBadge label="片段" value={`${totalClips}`} />
-          <MetaBadge label="镜头" value={`${totalShots}`} />
-          <MetaBadge label="总时长" value={durationLabel(editorModel.totalDuration)} />
+          {!showPromptOnly && (
+            <>
+              <MetaBadge label="场次" value={`${scenes.length}`} />
+              <MetaBadge label="片段" value={`${totalClips}`} />
+              <MetaBadge label="镜头" value={`${totalShots}`} />
+              <MetaBadge label="总时长" value={durationLabel(editorModel.totalDuration)} />
+            </>
+          )}
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[var(--color-paper-sunk)] px-4 py-3 lg:px-6 lg:py-4">
         <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-3 lg:gap-4">
-          <StoryboardGenerationUnitList units={generationUnits} />
+          <StoryboardGenerationUnitList units={generationUnits} sceneLookup={scriptSceneLookup} patch={patch} readOnly={locked} />
 
-          <section className="grid gap-2 lg:gap-3">
-            <div className="flex items-center justify-between gap-3 border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-3">
-              <div>
-                <div className="font-serif text-[18px] leading-tight text-[var(--color-ink)]">
-                  时间轴与预览辅助区
-                </div>
-                <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
-                  用于校对镜头切换、预览素材与编辑当前镜头单元字段。
+          {!showPromptOnly && currentClip && currentClipData && currentScene && currentSummary && (
+            <section className="grid gap-2 lg:gap-3">
+              <div className="flex items-center justify-between gap-3 border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-3">
+                <div>
+                  <div className="font-serif text-[18px] leading-tight text-[var(--color-ink)]">
+                    时间轴与预览辅助区
+                  </div>
+                  <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
+                    用于校对镜头切换、预览素材与编辑当前镜头单元字段。
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="grid gap-2 lg:gap-3">
-              <div
-                className="grid min-h-0 min-w-0 gap-2 overflow-hidden lg:gap-3"
-                style={{ gridTemplateColumns: "minmax(0, 1fr) clamp(220px, 26%, 320px)" }}
-              >
-                <PreviewStage
-                  projectName={projectName}
-                  videoPath={previewVideoPath}
-                  clip={currentClip}
-                  exists={previewExists}
-                  placeholderTitle={previewPlaceholderTitle}
-                  videoRef={videoRef}
-                  onLoadedMetadata={handleLoadedMetadata}
-                  onTimeUpdate={handleTimeUpdate}
-                  onEnded={handleEnded}
-                  onPlay={handlePlay}
-                  onPause={handlePause}
-                />
-
-                <ClipInfoPanel
-                  summary={currentSummary}
-                  source={currentScriptSource}
-                  selectedShot={selectedShot}
-                  dict={dict}
-                  className="min-h-0 overflow-y-auto overscroll-contain"
+              <div className="grid gap-2 lg:gap-3">
+                <div
+                  className="grid min-h-0 min-w-0 gap-2 overflow-hidden lg:gap-3"
+                  style={{ gridTemplateColumns: "minmax(0, 1fr) clamp(220px, 26%, 320px)" }}
                 >
-                  {dictEntries.length > 0 && (
-                    <details className="border-t border-[var(--color-rule)] pt-3">
-                      <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
-                        展开参考表（{dictEntries.length} 项）
-                      </summary>
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-subtle)]">
-                        {dictEntries.map(([id, name]) => (
-                          <span key={id}>
-                            <span className="font-mono text-[var(--color-ink-faint)]">{`{${id}}`}</span>
-                            <span className="ml-1">{name}</span>
-                          </span>
-                        ))}
-                      </div>
-                    </details>
-                  )}
+                  <PreviewStage
+                    projectName={projectName}
+                    videoPath={previewVideoPath}
+                    clip={currentClip}
+                    exists={previewExists}
+                    placeholderTitle={previewPlaceholderTitle}
+                    videoRef={videoRef}
+                    onLoadedMetadata={handleLoadedMetadata}
+                    onTimeUpdate={handleTimeUpdate}
+                    onEnded={handleEnded}
+                    onPlay={handlePlay}
+                    onPause={handlePause}
+                  />
 
-                  <ShotList shots={(currentClipData.shots as ShotRef[] | undefined) ?? []} dict={dict} />
+                  <ClipInfoPanel
+                    summary={currentSummary}
+                    source={currentScriptSource}
+                    selectedShot={selectedShot}
+                    dict={dict}
+                    className="min-h-0 overflow-y-auto overscroll-contain"
+                  >
+                    {dictEntries.length > 0 && (
+                      <details className="border-t border-[var(--color-rule)] pt-3">
+                        <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
+                          展开参考表（{dictEntries.length} 项）
+                        </summary>
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-subtle)]">
+                          {dictEntries.map(([id, name]) => (
+                            <span key={id}>
+                              <span className="font-mono text-[var(--color-ink-faint)]">{`{${id}}`}</span>
+                              <span className="ml-1">{name}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </details>
+                    )}
 
-                  {(currentClipData.complete_prompt || currentClipData.complete_prompt_v2) && (
-                    <details className="border-t border-[var(--color-rule)] pt-3">
-                      <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
-                        展开完整合成提示词 complete_prompt
-                      </summary>
-                      <div className="mt-2 space-y-2">
-                        {currentClipData.complete_prompt && (
-                          <pre className="whitespace-pre-wrap break-words font-[Geist,sans-serif] text-[12px] italic text-[var(--color-ink-muted)]">
-                            {resolveRefs(currentClipData.complete_prompt, dict)}
-                          </pre>
-                        )}
-                        {currentClipData.complete_prompt_v2 && (
-                          <pre className="whitespace-pre-wrap break-words font-[Geist,sans-serif] text-[12px] italic text-[var(--color-ink-muted)]">
-                            {resolveRefs(currentClipData.complete_prompt_v2, dict)}
-                          </pre>
-                        )}
-                      </div>
-                    </details>
-                  )}
+                    <ShotList shots={(currentClipData.shots as ShotRef[] | undefined) ?? []} dict={dict} />
 
-                  {currentClipPath && (
-                    <EditableClipFields
-                      clip={currentClipData}
-                      clipPath={currentClipPath}
-                      data={data}
-                      patch={patch}
-                      status={status}
-                      readOnly={locked}
-                    />
-                  )}
-                </ClipInfoPanel>
+                    {(currentClipData.complete_prompt || currentClipData.complete_prompt_v2) && (
+                      <details className="border-t border-[var(--color-rule)] pt-3">
+                        <summary className="cursor-pointer select-none font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)] transition-colors hover:text-[var(--color-ink)]">
+                          展开完整合成提示词 complete_prompt
+                        </summary>
+                        <div className="mt-2 space-y-2">
+                          {currentClipData.complete_prompt && (
+                            <pre className="whitespace-pre-wrap break-words font-[Geist,sans-serif] text-[12px] italic text-[var(--color-ink-muted)]">
+                              {resolveRefs(currentClipData.complete_prompt, dict)}
+                            </pre>
+                          )}
+                          {currentClipData.complete_prompt_v2 && (
+                            <pre className="whitespace-pre-wrap break-words font-[Geist,sans-serif] text-[12px] italic text-[var(--color-ink-muted)]">
+                              {resolveRefs(currentClipData.complete_prompt_v2, dict)}
+                            </pre>
+                          )}
+                        </div>
+                      </details>
+                    )}
+
+                    {currentClipPath && (
+                      <EditableClipFields
+                        clip={currentClipData}
+                        clipPath={currentClipPath}
+                        data={data}
+                        patch={patch}
+                        status={status}
+                        readOnly={locked}
+                      />
+                    )}
+                  </ClipInfoPanel>
+                </div>
+
+                <EditorTimeline
+                  clips={editorModel.clips}
+                  shots={editorModel.shots}
+                  totalDuration={editorModel.totalDuration}
+                  currentClipKey={currentClip.key}
+                  currentShotKey={selectedShot?.key ?? null}
+                  episodeTime={episodeTime}
+                  onSelectClip={handleSelectClip}
+                  onSelectShot={handleSelectShot}
+                />
               </div>
-
-              <EditorTimeline
-                clips={editorModel.clips}
-                shots={editorModel.shots}
-                totalDuration={editorModel.totalDuration}
-                currentClipKey={currentClip.key}
-                currentShotKey={selectedShot?.key ?? null}
-                episodeTime={episodeTime}
-                onSelectClip={handleSelectClip}
-                onSelectShot={handleSelectShot}
-              />
-            </div>
-          </section>
+            </section>
+          )}
         </div>
       </div>
     </div>

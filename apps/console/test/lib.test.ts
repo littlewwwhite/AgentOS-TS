@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { fileUrl } from "../src/lib/fileUrl";
 import { detectSchema } from "../src/lib/schemaDetect";
-import { buildRefDict, resolveRefs, type ScriptJson } from "../src/lib/fountain";
+import { buildRefDict, resolveRefs } from "../src/lib/fountain";
 import {
   buildClipInspectorData,
   buildStoryboardEditorModel,
@@ -9,7 +9,9 @@ import {
   clipVideoPath,
   durationFromRange,
   parseDraftStoryboardPrompt,
+  replaceStoryboardGenerationPromptText,
   resolveStoryboardSelectionAtTime,
+  storyboardGenerationPromptText,
   summarizeSourceRefs,
   splitStoryboardText,
 } from "../src/lib/storyboard";
@@ -282,38 +284,19 @@ describe("storyboard helpers", () => {
     });
   });
 
-  test("builds storyboard generation units from script refs and approved prompt calls", () => {
-    const script: ScriptJson = {
-      actors: [{ actor_id: "act_001", actor_name: "灵霜" }],
-      episodes: [
-        {
-          episode_id: "ep001",
-          scenes: [
-            {
-              scene_id: "scn_001",
-              actions: [
-                { type: "action", content: "{act_001}把银锭推到桌边。" },
-                { type: "dialogue", actor_id: "act_001", content: "这些账，今晚要清。" },
-                { type: "action", content: "她抬眼看向门外。" },
-              ],
-            },
-          ],
-        },
-      ],
-    };
-
+  test("builds storyboard generation units from approved prompt calls", () => {
+    const promptJson = `{"shots":[{"shot_id":"S1","time_range":"00:00-00:06","camera_setup":"近景手部+银锭特写","beats":["灵霜把银锭推到桌边"]},{"shot_id":"S2","time_range":"00:06-00:10","camera_setup":{"type":"中景"},"beats":["灵霜抬眼看向门外"]}]}`;
     const rawPrompt = `
 PART1
 
 总体描述：压抑内宅。
 
 \`\`\`json
-{"shots":[{"shot_id":"S1","time_range":"00:00-00:06","camera_setup":"近景手部+银锭特写","beats":["灵霜把银锭推到桌边"]},{"shot_id":"S2","time_range":"00:06-00:10","camera_setup":{"type":"中景"},"beats":["灵霜抬眼看向门外"]}]}
+${promptJson}
 \`\`\`
 `;
 
     const units = buildStoryboardGenerationUnits(
-      "output/storyboard/approved/ep001_storyboard.json",
       [
         {
           scene_id: "scn_001",
@@ -325,46 +308,35 @@ PART1
           ],
         },
       ],
-      script,
-      new Set(["output/ep001/scn001/ep001_scn001_part001.mp4"]),
     );
 
     expect(units).toHaveLength(1);
     expect(units[0]).toMatchObject({
       key: "scn_001::part_001",
-      episodeId: "ep001",
       sceneId: "scn_001",
       partId: "part_001",
-      sourceRefsLabel: "0-2",
-      scriptExcerpt: [
-        "灵霜把银锭推到桌边。",
-        "灵霜：这些账，今晚要清。",
-        "她抬眼看向门外。",
-      ],
-      promptSummary: "总体描述：压抑内宅。",
-      shots: [
-        {
-          shotId: "S1",
-          timeRange: "00:00-00:06",
-          duration: 6,
-          prompt: "近景手部+银锭特写\n灵霜把银锭推到桌边",
-        },
-        {
-          shotId: "S2",
-          timeRange: "00:06-00:10",
-          duration: 4,
-          prompt: "中景\n灵霜抬眼看向门外",
-        },
-      ],
-      videoStatus: "generated",
-      videoPath: "output/ep001/scn001/ep001_scn001_part001.mp4",
+      promptPath: "scenes.0.shots.0.prompt",
+      prompt: promptJson,
+      rawPrompt,
     });
-    expect(units[0]?.prompt).toBe(rawPrompt);
+    expect(units[0]?.prompt).toBe(promptJson);
+    expect(units[0]?.prompt).not.toContain("PART1");
   });
 
-  test("marks storyboard generation units as not generated when video is missing", () => {
+  test("replaces only the storyboard prompt json block after editing", () => {
+    const rawPrompt = `PART1\n\n总体描述：保留。\n\n\`\`\`json\n{"shots":[{"shot_id":"S1"}]}\n\`\`\`\n`;
+    const editedPrompt = `{"shots":[{"shot_id":"S2","time_range":"00:00-00:03"}]}`;
+    const nextPrompt = replaceStoryboardGenerationPromptText(rawPrompt, editedPrompt);
+
+    expect(storyboardGenerationPromptText(rawPrompt)).toBe(`{"shots":[{"shot_id":"S1"}]}`);
+    expect(nextPrompt).toContain("PART1");
+    expect(nextPrompt).toContain("总体描述：保留。");
+    expect(nextPrompt).toContain(editedPrompt);
+    expect(nextPrompt).not.toContain(`{"shots":[{"shot_id":"S1"}]}`);
+  });
+
+  test("builds editable prompt units without video-status metadata", () => {
     const units = buildStoryboardGenerationUnits(
-      "output/storyboard/approved/ep001_storyboard.json",
       [
         {
           scene_id: "scn_001",
@@ -376,39 +348,27 @@ PART1
           ],
         },
       ],
-      undefined,
-      new Set(),
     );
 
     expect(units).toHaveLength(1);
     expect(units[0]).toMatchObject({
-      videoStatus: "not_generated",
-      videoPath: "output/ep001/scn001/ep001_scn001_part001.mp4",
-      sourceRefsLabel: "0",
-      scriptExcerpt: [],
+      key: "scn_001::part_001",
+      promptPath: "scenes.0.shots.0.prompt",
     });
+    expect(units[0]?.prompt).toContain("账房摊开银锭");
+    expect(units[0]).not.toHaveProperty("videoStatus");
+    expect(units[0]).not.toHaveProperty("sourceRefsLabel");
   });
 
-  test("keeps storyboard generation units stable without matching script refs", () => {
-    const script = {
-      episodes: [
-        {
-          episode_id: "ep001",
-          scenes: [
-            {
-              scene_id: "scn_001",
-              actions: [{ type: "action", content: "账房摊开银锭。" }],
-            },
-          ],
-        },
-      ],
-    } satisfies ScriptJson;
-
+  test("keeps storyboard generation unit patch paths stable across scene indexes", () => {
     const units = buildStoryboardGenerationUnits(
-      "output/storyboard/approved/ep001_storyboard.json",
       [
         {
           scene_id: "scn_001",
+          shots: [],
+        },
+        {
+          scene_id: "scn_002",
           shots: [
             {
               source_refs: [9, 10],
@@ -417,16 +377,13 @@ PART1
           ],
         },
       ],
-      script,
     );
 
     expect(units).toHaveLength(1);
-    expect(Array.isArray(units[0]?.scriptExcerpt)).toBe(true);
     expect(units[0]).toMatchObject({
-      sourceRefsLabel: "9-10",
-      scriptExcerpt: [],
-      videoStatus: "not_generated",
-      videoPath: "output/ep001/scn001/ep001_scn001_part001.mp4",
+      sceneId: "scn_002",
+      partId: "part_001",
+      promptPath: "scenes.1.shots.0.prompt",
     });
   });
 

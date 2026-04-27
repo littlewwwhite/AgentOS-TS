@@ -18,8 +18,7 @@ const storyboardData = {
   ],
 };
 
-// Storyboard where source_refs point to a scene that does not exist in scriptData
-// — used to verify the empty scriptExcerpt UI path.
+// Storyboard where source_refs point to a scene that does not exist in scriptData.
 const storyboardDataNoScriptMatch = {
   episode_id: "ep_999",
   status: "approved",
@@ -111,52 +110,34 @@ describe("StoryboardView rendering", () => {
     );
 
     expect(html).not.toContain("当前故事板里还没有可浏览的镜头");
-    expect(html).toContain("剧本到故事板");
-    expect(html).toContain("来源剧本 0-2");
-    expect(html).toContain("账房摊开银锭。");
-    expect(html).toContain("灵霜：这些账，今晚要清。");
-    expect(html).toContain("分镜提示词");
+    expect(html).not.toContain("剧本到故事板");
+    expect(html).not.toContain("来源剧本");
+    expect(html).not.toContain("视频状态");
+    expect(html).not.toContain("时间轴与预览辅助区");
+    expect(html).not.toContain("总时长");
+    expect(html).toContain("账房摊开银锭");
+    expect(html).not.toContain("灵霜：这些账，今晚要清。");
+    expect(html).toContain("生成视频 prompt");
+    expect(html).not.toContain("video.generate");
+    expect(html).not.toContain("aos-cli.model/v1");
+    expect(html).toContain("PART1");
     expect(html).toContain("总体描述：压抑内宅。");
+    expect(html).not.toContain("&quot;shots&quot;");
+    expect(html).not.toContain("&quot;shot_id&quot;");
+    expect(html).not.toContain("&quot;time_range&quot;");
+    expect(html).not.toContain("&quot;camera_setup&quot;");
+    expect(html).not.toContain("&quot;beats&quot;");
     expect(html).toContain("S1");
+    expect(html).toContain("00:00-00:06");
     expect(html).toContain("近景手部+银锭特写");
-    expect(html).toContain("视频待生成");
-  });
-
-  test("videoStatus is 'generated' when the video path lives in a nested tree node", () => {
-    // The storyboard path is "output/storyboard/approved/ep001_storyboard.json".
-    // episodeId = "ep001", episodeRuntimeDir = "output/ep001"
-    // For scene scn_001 + part_001:
-    //   sceneSlug = compactStoryboardId("scn_001") = "scn001"
-    //   clipSlug  = compactStoryboardId("part_001") = "part001"
-    //   clipVideoPath = "output/ep001/scn001/ep001_scn001_part001.mp4"
-    currentStoryboardData = storyboardData;
-    currentScriptData = scriptData;
-    currentTree = [
-      {
-        path: "output/ep001",
-        children: [
-          {
-            path: "output/ep001/scn001",
-            children: [{ path: "output/ep001/scn001/ep001_scn001_part001.mp4" }],
-          },
-        ],
-      },
-    ];
-
-    const html = renderToStaticMarkup(
-      React.createElement(StoryboardView, {
-        projectName: "demo-project",
-        path: "output/storyboard/approved/ep001_storyboard.json",
-      }),
-    );
-
-    expect(html).toContain("视频已生成");
+    expect(html).toContain("账房摊开银锭");
     expect(html).not.toContain("视频待生成");
+    expect(html).not.toContain("视频已生成");
   });
 
-  // I-1: when scriptData has no matching scene, scriptExcerpt is [] and UI must
-  // render （无剧本摘录） instead of the old sentinel string.
-  test("renders （无剧本摘录） when scriptData has no matching scene, never renders sentinel string", () => {
+  // I-1: when scriptData has no matching scene, the primary surface still renders
+  // the editable video prompt without legacy missing-script placeholders.
+  test("renders prompt editor when scriptData has no matching scene, never renders sentinel string", () => {
     currentStoryboardData = storyboardDataNoScriptMatch;
     currentScriptData = scriptData; // scriptData has scn_001, storyboard uses scn_999 — no match
     currentTree = [{ path: "output/storyboard/approved/ep001_storyboard.json" }];
@@ -169,8 +150,9 @@ describe("StoryboardView rendering", () => {
     );
 
     expect(html).not.toContain("未找到对应剧本段落");
-    expect(html).toContain("（无剧本摘录）");
-    expect(html).toContain("剧本到故事板");
+    expect(html).not.toContain("（无剧本摘录）");
+    expect(html).toContain("生成视频 prompt");
+    expect(html).not.toContain("剧本到故事板");
   });
 
   // I-2: when storyboard has scenes[].shots[].prompt but editorModel clips are empty
@@ -181,7 +163,7 @@ describe("StoryboardView rendering", () => {
     // buildStoryboardEditorModel will derive synthetic clips from prompts — so clips
     // won't be empty here; the test validates the fast path via generationUnits.
     currentStoryboardData = storyboardDataNoScriptMatch;
-    currentScriptData = {}; // no script at all — ensures scriptExcerpt = []
+    currentScriptData = {};
     currentTree = [{ path: "output/storyboard/approved/ep001_storyboard.json" }];
 
     const html = renderToStaticMarkup(
@@ -191,7 +173,7 @@ describe("StoryboardView rendering", () => {
       }),
     );
 
-    expect(html).toContain("剧本到故事板");
+    expect(html).toContain("生成视频 prompt");
     expect(html).not.toContain("当前故事板里还没有可浏览的镜头");
   });
 });

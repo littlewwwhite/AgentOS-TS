@@ -81,39 +81,39 @@ version: 1.3.0
 
 画面中禁止出现任何文字：字幕、片头片尾字、水印、LOGO、屏幕UI文字、招牌字、书页印字等一律不出现；描述场景与道具时必须主动避开可读文字元素。
 
-### 分镜结构（JSON 强制规范）
+### 分镜结构（Markdown 强制规范）
 
-<!-- CHANGED: 强制要求使用嵌套 JSON 结构以符合 AI 生产流水线 -->
-必须使用以下 JSON 格式输出分镜，确保 `shots` 数组内包含 `beats` 数组，严禁扁平化结构：
+<!-- CHANGED: 由 fenced JSON 改为 markdown 段块，便于业务直接编辑 prompt；外层 envelope 仍为 [{ source_refs, prompt }] 不变 -->
+每段视频的 `prompt` 字段必须用以下 markdown 段块描述各分镜，禁止再嵌入 JSON 代码块：
 
-```json
-{
-  "shots": [
-    {
-      "shot_id": "S1",
-      "time_range": "00:00-00:03",
-      "camera_setup": "景别/机位",
-      "beats": [
-        {
-          "time": "00:00-00:03",
-          "camera_movement": "运镜（明确起始点与终点参考物）",
-          "action": "动作点描述",
-          "character_state": "角色位置+情绪+可见线索",
-          "audio": "环境音/拟音",
-          "dialogue": "对白或无"
-        }
-      ]
-    }
-  ]
-}
 ```
+S1 | 00:00-00:03 | 景别/机位
+- 运镜：起始参考物 → 终点参考物
+- 动作：动作点描述
+- 角色状态：位置 + 情绪 + 可见线索
+- 音效：环境音/拟音
+- 对白：无 或【角色｜情绪｜语气｜语速｜音色】"台词"
+
+S2 | 00:03-00:06 | 景别/机位
+- 运镜：……
+- 动作：……
+- 角色状态：……
+- 音效：……
+- 对白：……
+```
+
+约束：
+- `S{n} | <time-range> | <景别/机位>` 是分镜首行的固定结构，`time-range` 必须形如 `00:00-00:03`，下游用正则提取镜头时长。
+- 每个分镜下用短横线列表写 5 项：运镜、动作、角色状态、音效、对白；缺省项写"无"。
+- 禁止在 prompt 内输出 ```` ```json ```` / ```` ``` ```` 代码块、JSON 对象或数组、键值对（如 `"shot_id":`）。整段 prompt 是纯 markdown。
+- 单个 PART 内分镜按时间顺序连排，分镜之间用空行分隔。
 
 ### STORYBOARD 阶段 artifact 约定
 
 - 每个 scene 最终只交付 `shots[]`
 - 每个 `shots[]` 元素只保留两个字段：`source_refs` 和 `prompt`
 - `source_refs` 是当前场里 `actions[]` 的 0-based 下标数组，表示这段视频由哪几段剧本生成
-- `prompt` 必须完整保留本 skill 的输出模板：`PART`、`总体描述`、`剧情摘要`、`动作节拍Beats`、`S1/S2 切镜头...`
+- `prompt` 是一段 markdown 文本，依本 skill「输出格式模板」组织：`PART` 标头、`总体描述`、`剧情摘要`、`动作节拍 Beats`、若干 `S{n} | <time-range> | 景别/机位` 分镜段块；不得再嵌入 JSON 代码块或键值对结构
 - `STORYBOARD` 阶段不得改写 `output/script.json`；剧本是编剧事实源，分镜是导演 artifact
 - 草稿写入 `output/storyboard/draft/ep{NNN}_storyboard.json`
 - 用户批准后写入 `output/storyboard/approved/ep{NNN}_storyboard.json`
@@ -232,34 +232,29 @@ PART1
 
 剧情摘要：……
 
-动作节拍Beats：
+动作节拍 Beats：
 [0-3]  …
 [3-6]  …
 [6-9]  …
 [9-12] …
 [12-15]…
 
-```json
-{
-  "shots": [
-    {
-      "shot_id": "S1",
-      "time_range": "00:00-00:03",
-      "camera_setup": "...",
-      "beats": [
-        {
-          "time": "00:00-00:03",
-          "camera_movement": "...",
-          "action": "...",
-          "character_state": "...",
-          "audio": "...",
-          "dialogue": "..."
-        }
-      ]
-    }
-  ]
-}
+S1 | 00:00-00:03 | 景别/机位
+- 运镜：起始参考物 → 终点参考物
+- 动作：动作点描述
+- 角色状态：位置 + 情绪 + 可见线索
+- 音效：环境音/拟音
+- 对白：无 或【角色｜情绪｜语气｜语速｜音色】"台词"
+
+S2 | 00:03-00:06 | 景别/机位
+- 运镜：……
+- 动作：……
+- 角色状态：……
+- 音效：……
+- 对白：……
 ```
+
+整段 prompt 必须是纯 markdown，禁止再嵌入 fenced JSON 代码块或 `"shot_id"` / `"beats"` 等键值对结构。
 
 ---
 
