@@ -114,7 +114,10 @@ Image generation:
 }
 ```
 
-Video submit:
+Video submit (Ark Seedance 2.0 has two **mutually exclusive** per-task modes,
+verified 2026-04-27 against Ark production):
+
+**Mode A — subject binding** (`role: "reference_image"` × N indexed by `[图N]`):
 
 ```json
 {
@@ -129,23 +132,46 @@ Video submit:
     "quality": "standard",
     "referenceImages": [
       { "url": "https://.../act_001.png", "role": "reference_image", "name": "act_001" },
-      { "url": "https://.../loc_002.png", "role": "reference_image", "name": "loc_002" },
+      { "url": "https://.../loc_002.png", "role": "reference_image", "name": "loc_002" }
+    ]
+  }
+}
+```
+
+`[图N]` markers in `prompt` are 1-based indexes into the `reference_image`
+entries; Ark binds them by index. The boundary forwards each entry into Ark's
+`content[]` array, preserving its `role`.
+
+**Mode B — first/last-frame continuity** (`role: "first_frame"` only, prompt
+must NOT carry `[图N]` markers):
+
+```json
+{
+  "apiVersion": "aos-cli.model/v1",
+  "task": "video.ep001.scn001.clip002",
+  "capability": "video.generate",
+  "output": {"kind": "task"},
+  "input": {
+    "prompt": "白行风 抬眼望向远处，灵霜 凑近耳语。",
+    "duration": 5,
+    "ratio": "16:9",
+    "quality": "standard",
+    "referenceImages": [
       { "url": "data:image/jpeg;base64,...", "role": "first_frame", "name": "lsi" }
     ]
   }
 }
 ```
 
-`[图N]` markers in `prompt` are 1-based indexes into `input.referenceImages[]`
-entries with `role: "reference_image"`; Ark binds them by index. The boundary
-forwards each entry into Ark's `content[]` array, preserving its `role`.
+The first-frame `url` may be either a public http(s) URL or a
+`data:image/jpeg;base64,...` URI for inline injection — base64 lets the caller
+skip an external bucket.
 
-Continuity between consecutive clips is expressed as an extra
-`referenceImages[]` entry with `role: "first_frame"` carrying the previous
-clip's last-shot first frame. The `url` may be either a public http(s) URL or
-a `data:image/jpeg;base64,...` URI for inline injection — base64 lets the
-caller skip an external bucket. The first-frame entry is **not** indexed by
-`[图N]`, so it never collides with subject-binding refs.
+**Mode mutex is a hard constraint.** Mixing `reference_image` and `first_frame`
+items in the same task triggers Ark's `InvalidParameter`:
+`"first/last frame content cannot be mixed with reference media content"`.
+Pick one mode per clip in the upstream preprocess; the boundary
+(`video_api.submit_video_generation`) fail-fasts if both are passed.
 
 `referenceImages[]` is optional — omit it for plain text-to-video generation.
 

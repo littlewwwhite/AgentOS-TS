@@ -132,5 +132,66 @@ class ResolveSubjectTokensTest(unittest.TestCase):
         self.assertEqual(refs[1]["url"], "https://x/P.png")
 
 
+class ResolveSubjectTokensToNamesTest(unittest.TestCase):
+    """Coverage for the first/last-frame mode prompt rewriter (no [图N])."""
+
+    def _mapping(self):
+        return {
+            "act_001": {
+                "subject_id": "s1",
+                "name": "白行风",
+                "type": "actor",
+                "image_url": "https://x/a1.png",
+            },
+            "act_002": {
+                "subject_id": "s2",
+                "name": "灵霜",
+                "type": "actor",
+                "image_url": "https://x/a2.png",
+            },
+            "loc_003": {
+                "subject_id": "s3",
+                "name": "寝宫",
+                "type": "location",
+                "image_url": "https://x/L.png",
+            },
+        }
+
+    def test_at_form_replaced_with_display_names(self):
+        from subject_resolver import resolve_subject_tokens_to_names
+
+        prompt = "@act_001 走入 @loc_003，望向 @act_002"
+        out = resolve_subject_tokens_to_names(prompt, self._mapping())
+        self.assertEqual(out, "白行风 走入 寝宫，望向 灵霜")
+
+    def test_brace_form_also_replaced(self):
+        from subject_resolver import resolve_subject_tokens_to_names
+
+        prompt = "{act_001} 转身"
+        out = resolve_subject_tokens_to_names(prompt, self._mapping())
+        self.assertEqual(out, "白行风 转身")
+
+    def test_unknown_token_passes_through_unchanged(self):
+        from subject_resolver import resolve_subject_tokens_to_names
+
+        prompt = "@act_001 与 @act_999 对话"
+        out = resolve_subject_tokens_to_names(prompt, self._mapping())
+        self.assertEqual(out, "白行风 与 @act_999 对话")
+
+    def test_token_with_empty_name_falls_back_to_token(self):
+        from subject_resolver import resolve_subject_tokens_to_names
+
+        mapping = {"act_001": {"subject_id": "s1", "name": "", "type": "actor", "image_url": ""}}
+        out = resolve_subject_tokens_to_names("@act_001 出场", mapping)
+        self.assertEqual(out, "act_001 出场")
+
+    def test_no_brackets_or_refs_emitted(self):
+        from subject_resolver import resolve_subject_tokens_to_names
+
+        prompt = "@act_001 凝视 @act_002"
+        out = resolve_subject_tokens_to_names(prompt, self._mapping())
+        self.assertNotIn("[图", out)
+
+
 if __name__ == "__main__":
     unittest.main()

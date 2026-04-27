@@ -84,3 +84,33 @@ def resolve_subject_tokens(
 
     rewritten = _TOKEN_RE.sub(_replace, prompt)
     return rewritten, refs
+
+
+def resolve_subject_tokens_to_names(
+    prompt: str,
+    assets_mapping: Dict[str, Dict],
+) -> str:
+    """Rewrite @/{} tokens to human-readable display names with no reference list.
+
+    Use this for clips that submit through Ark's first/last-frame mode, which
+    Ark rejects when mixed with `reference_image` items in `content[]`. The
+    prompt still needs to name subjects so the model can follow the action;
+    the lsi frame anchors their appearance visually.
+
+    Args:
+        prompt: Storyboard prompt text with @act_xxx / {act_xxx} tokens.
+        assets_mapping: Same shape consumed by `resolve_subject_tokens`.
+
+    Returns:
+        Prompt with each known token replaced by its `name`. Unknown tokens
+        are left unchanged so missing-mapping bugs surface in the output.
+    """
+
+    def _replace(match: "re.Match[str]") -> str:
+        token = match.group(1)
+        entry = assets_mapping.get(token)
+        if not entry:
+            return match.group(0)
+        return entry.get("name") or token
+
+    return _TOKEN_RE.sub(_replace, prompt)
