@@ -7,6 +7,7 @@ import ast
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -102,8 +103,14 @@ class AosCliModelAdapterTest(unittest.TestCase):
 
         self.assertEqual(
             command,
-            ["uv", "run", "--project", str(REPO_ROOT / "aos-cli"), "aos-cli"],
+            [sys.executable, "-m", "aos_cli.cli"],
         )
+
+    def test_repo_local_cli_env_adds_aos_cli_src_to_pythonpath(self):
+        with mock.patch.object(aos_cli_model, "find_repo_root", return_value=REPO_ROOT):
+            env = aos_cli_model._aos_cli_env(REPO_ROOT / ".claude")
+
+        self.assertEqual(env["PYTHONPATH"].split(os.pathsep)[0], str(REPO_ROOT / "aos-cli" / "src"))
 
     def test_command_falls_back_to_global_cli_when_repo_root_missing(self):
         with mock.patch.object(aos_cli_model, "find_repo_root", side_effect=RuntimeError("missing repo root")), mock.patch.object(

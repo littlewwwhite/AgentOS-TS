@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Iterable, Optional, Union
 
@@ -68,6 +69,7 @@ def run_aos_cli(
     return subprocess.run(
         [*command, *args],
         cwd=working_dir,
+        env=_aos_cli_env(working_dir),
         text=True,
         capture_output=True,
         check=False,
@@ -82,7 +84,20 @@ def _aos_cli_command(start: Path) -> list[str]:
             return ["aos-cli"]
         raise
 
-    return ["uv", "run", "--project", str(repo_root / "aos-cli"), "aos-cli"]
+    return [sys.executable, "-m", "aos_cli.cli"]
+
+
+def _aos_cli_env(start: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    try:
+        repo_root = find_repo_root(start)
+    except RuntimeError:
+        return env
+
+    src_path = str(repo_root / "aos-cli" / "src")
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = src_path if not existing else os.pathsep.join([src_path, existing])
+    return env
 
 
 def find_repo_root(start: PathLike) -> Path:

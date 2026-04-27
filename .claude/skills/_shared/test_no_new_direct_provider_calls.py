@@ -14,9 +14,13 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 MIGRATED_SCRIPT_PATHS = [
     ".claude/skills/storyboard/scripts/storyboard_batch.py",
     ".claude/skills/asset-gen/scripts/common_gemini_client.py",
+    ".claude/skills/asset-gen/scripts/common_vision_review.py",
     ".claude/skills/asset-gen/scripts/generate_prompts_from_script.py",
     ".claude/skills/asset-gen/scripts/style_generate.py",
     ".claude/skills/asset-gen/scripts/common_image_api.py",
+    ".claude/skills/asset-gen/scripts/review_scene.py",
+    ".claude/skills/asset-gen/scripts/review_char.py",
+    ".claude/skills/asset-gen/scripts/review_props.py",
     ".claude/skills/video-gen/scripts/video_api.py",
 ]
 
@@ -38,11 +42,6 @@ DEFERRED_MULTIMODAL_PATHS = [
     ".claude/skills/video-gen/scripts/frame_extractor.py",
     ".claude/skills/video-gen/scripts/config_loader.py",
     ".claude/skills/video-gen/assets/config.json",
-    ".claude/skills/asset-gen/assets/common/gemini_backend.json",
-    ".claude/skills/asset-gen/scripts/gemini_multimodal_legacy.py",
-    ".claude/skills/asset-gen/scripts/review_scene.py",
-    ".claude/skills/asset-gen/scripts/review_char.py",
-    ".claude/skills/asset-gen/scripts/review_props.py",
     ".claude/skills/video-editing/scripts/phase1_analyze.py",
     ".claude/skills/video-editing/scripts/phase2_assemble.py",
     ".claude/skills/music-matcher/scripts/analyze_video.py",
