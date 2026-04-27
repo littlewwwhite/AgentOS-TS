@@ -1,0 +1,19 @@
+{
+  "apiVersion": "aos-cli.model/v1",
+  "task": "asset.image.character.front",
+  "capability": "image.generate",
+  "output": {
+    "kind": "artifact"
+  },
+  "input": {
+    "prompt": "stylized 3D historical fantasy character, front view, clean production reference, moon-white and deep-blue costume accents"
+  },
+  "artifactPolicy": {
+    "download": true,
+    "localDir": "/tmp/aos-cli-asset-image",
+    "role": "character.front"
+  },
+  "options": {
+    "size": "1024x1024"
+  }
+}

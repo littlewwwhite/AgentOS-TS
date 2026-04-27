@@ -1,0 +1,19 @@
+{
+  "apiVersion": "aos-cli.model/v1",
+  "task": "script.asset.analysis",
+  "capability": "generate",
+  "output": {
+    "kind": "json"
+  },
+  "input": {
+    "system": "Return only valid JSON.",
+    "content": {
+      "sceneText": "A quiet young woman meets a frail nobleman under a warm orange lantern in a moonlit courtyard.",
+      "requiredKeys": ["characters", "locations", "props", "mood"]
+    }
+  },
+  "options": {
+    "temperature": 0.2,
+    "maxOutputTokens": 1200
+  }
+}
