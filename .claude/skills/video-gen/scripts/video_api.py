@@ -150,15 +150,6 @@ def poll_video_generation(
     return poll_envelope(task_envelope, cwd=project_dir, tmp_prefix="video-poll-aos-cli-")
 
 
-def upload_to_cos(file_path: str, scene_type: str = "first_frame") -> Optional[str]:
-    print(f"[WARN] local upload disabled; public URL required for {file_path}", file=sys.stderr)
-    return None
-
-
-def _cos_relative_url(full_url: str) -> str:
-    return full_url
-
-
 def download_video(url: str, output_path: str) -> str:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)

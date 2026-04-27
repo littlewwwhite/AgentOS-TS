@@ -32,10 +32,9 @@ from production_types import ClipIntent, ContinuityContext
 from request_compiler import compile_request
 from analyzer import analyze_video_parallel
 from video_api import (
-    _cos_relative_url,
+    image_path_to_data_uri,
     poll_multiple_tasks,
     submit_video,
-    upload_to_cos,
 )
 
 _gen_cfg = get_generation_config()
@@ -43,12 +42,18 @@ MIN_GENERATION_ATTEMPTS = _gen_cfg.get("min_attempts", 1)
 MAX_GENERATION_ATTEMPTS = _gen_cfg.get("max_attempts", 2)
 
 
-def upload_frame_to_cos(png_path: str) -> Optional[str]:
-    """Upload the last-shot first-frame PNG to COS and return the relative URL."""
-    cos_url = upload_to_cos(png_path, "first_frame")
-    if cos_url is None:
+def frame_to_data_uri(png_path: str) -> Optional[str]:
+    """Encode the extracted last-shot first-frame PNG as a data: URI.
+
+    Ark Seedance 2.0 accepts a base64-encoded image as the first_frame
+    anchor, so we inject the lsi continuity frame inline rather than
+    routing it through an external bucket.
+    """
+    try:
+        return image_path_to_data_uri(png_path)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[WARN] frame_to_data_uri failed for {png_path}: {exc}", file=sys.stderr)
         return None
-    return _cos_relative_url(cos_url)
 
 
 def _save_clip_result(
@@ -530,14 +535,14 @@ def _extract_and_upload_frame(
             config=clip_review_cfg,
         )
 
-    cos_key = upload_frame_to_cos(png_path)
-    if cos_key:
+    data_uri = frame_to_data_uri(png_path)
+    if data_uri:
         print(
-            f"  [FRAME] {scn_label}_clip{clip_num:03d} 最后镜头首帧已保存并上传: "
-            f"{frame_path} -> {cos_key}"
+            f"  [FRAME] {scn_label}_clip{clip_num:03d} 最后镜头首帧已编码为 data URI: "
+            f"{frame_path} ({len(data_uri)} chars)"
             f"{' (含描述)' if first_frame_text else ''}"
         )
-        return cos_key, first_frame_text, frame_filename
+        return data_uri, first_frame_text, frame_filename
 
     print(
         f"  [FRAME] {scn_label}_clip{clip_num:03d} 最后镜头首帧提取/上传失败，"
