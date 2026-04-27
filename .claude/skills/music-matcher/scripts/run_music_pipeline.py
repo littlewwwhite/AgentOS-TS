@@ -7,7 +7,7 @@
 One-shot music pipeline: analyze video mood, then compose BGM.
 
 The full pipeline has three phases:
-  1. batch_analyze.py   — Gemini video analysis → output/segments-{stem}.json
+  1. batch_analyze.py   — aos-cli video.analyze → output/segments-{stem}.json
   2. MCP match_music    — vector music matching  → output/results-{stem}.json
                           (must be run by a Claude agent with MCP access, NOT automated here)
   3. batch_compose.py   — ffmpeg BGM composition → output/compose-{stem}.mp4
@@ -186,7 +186,7 @@ def main():
     t_start = time.time()
 
     # ------------------------------------------------------------------
-    # Phase 1: Gemini video analysis
+    # Phase 1: aos-cli video.analyze
     # ------------------------------------------------------------------
     if not args.skip_analyze:
         ok = run_analyze(output_dir, workers=args.workers, recursive=args.recursive)

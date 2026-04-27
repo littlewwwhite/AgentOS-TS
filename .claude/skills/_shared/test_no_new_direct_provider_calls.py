@@ -34,6 +34,10 @@ MIGRATED_SCRIPT_PATHS = [
     ".claude/skills/video-gen/scripts/video_api.py",
 ]
 
+MIGRATED_USER_FACING_PATHS = [
+    ".claude/skills/music-matcher/scripts/run_music_pipeline.py",
+]
+
 FORBIDDEN_IMPORT_PREFIXES = (
     "google",
     "openai",
@@ -45,6 +49,10 @@ FORBIDDEN_TEXT_SNIPPETS = (
     "ARK_API_KEY",
     "OPENAI_API_KEY",
     "GEMINI_API_KEY",
+)
+
+FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS = (
+    "Gemini video analysis",
 )
 
 DEFERRED_MARKER = "Model boundary note: " + "deferred multimodal"
@@ -77,6 +85,16 @@ class DirectProviderGuardrailTests(unittest.TestCase):
         for relative_path in MIGRATED_SCRIPT_PATHS:
             source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
             for snippet in FORBIDDEN_TEXT_SNIPPETS:
+                if snippet in source:
+                    violations.append(f"{relative_path}: {snippet}")
+
+        self.assertEqual(violations, [])
+
+    def test_migrated_user_facing_scripts_do_not_describe_old_provider_path(self) -> None:
+        violations: list[str] = []
+        for relative_path in MIGRATED_USER_FACING_PATHS:
+            source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+            for snippet in FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS:
                 if snippet in source:
                     violations.append(f"{relative_path}: {snippet}")
 
