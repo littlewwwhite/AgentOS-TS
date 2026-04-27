@@ -114,10 +114,17 @@ def submit_video_generation(
         "ratio": ratio,
         "quality": quality,
     }
-    if reference_images:
-        input_payload["referenceImages"] = reference_images
+    merged_refs: List[Dict[str, Any]] = list(reference_images or [])
     if first_frame_url:
-        input_payload["firstFrameUrl"] = _public_url(first_frame_url)
+        merged_refs.append(
+            {
+                "url": _public_url(first_frame_url),
+                "role": "first_frame",
+                "name": "lsi",
+            }
+        )
+    if merged_refs:
+        input_payload["referenceImages"] = merged_refs
 
     request: Dict[str, Any] = {
         "apiVersion": "aos-cli.model/v1",
