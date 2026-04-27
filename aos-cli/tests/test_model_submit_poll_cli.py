@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from aos_cli.cli import main
 
@@ -58,6 +59,43 @@ def test_model_poll_writes_task_result_file(tmp_path, monkeypatch):
     assert payload["ok"] is True
     assert payload["output"]["kind"] == "task_result"
     assert payload["output"]["status"] == "SUCCESS"
+
+
+def test_model_fake_poll_returns_local_video_artifact_with_requested_duration(tmp_path, monkeypatch):
+    task_path = tmp_path / "task.json"
+    result_path = tmp_path / "result.json"
+    task_path.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "apiVersion": "aos-cli.model/v1",
+                "task": "video.ep001.scn001.clip001",
+                "capability": "video.generate",
+                "output": {
+                    "kind": "task",
+                    "taskId": "fake-video-task",
+                    "raw": {"requestedDurationSeconds": 11},
+                },
+                "provider": "ark",
+                "model": "fake-video-model",
+                "usage": {},
+                "latencyMs": 1,
+                "warnings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
+    code = main(["model", "poll", "--input", str(task_path), "--output", str(result_path)])
+
+    assert code == 0
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    artifact = payload["output"]["artifacts"][0]
+    assert artifact["kind"] == "video"
+    assert artifact["durationSeconds"] == 11
+    assert artifact["uri"].startswith("file://")
+    assert Path(artifact["uri"].removeprefix("file://")).is_file()
 
 
 def test_model_submit_accepts_request_without_output_kind(tmp_path, monkeypatch):

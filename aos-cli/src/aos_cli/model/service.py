@@ -327,6 +327,18 @@ class _FakeProvider:
 
     def poll_video(self, *, task_id, options):
         duration = options.get("duration") or options.get("expectedDuration")
+        artifact_dir = Path(
+            os.environ.get("AOS_CLI_MODEL_FAKE_ARTIFACT_DIR")
+            or "/tmp/aos-cli-model-fake-video"
+        )
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        safe_task_id = "".join(
+            char if char.isalnum() or char in ("-", "_") else "-"
+            for char in str(task_id or "fake-video-task")
+        )
+        video_path = artifact_dir / f"{safe_task_id}.mp4"
+        video_path.write_bytes(f"fake video duration={duration}\n".encode("utf-8"))
+        video_uri = video_path.resolve().as_uri()
         return type(
             "VideoResult",
             (),
@@ -336,8 +348,8 @@ class _FakeProvider:
                 "artifacts": [
                     {
                         "kind": "video",
-                        "uri": "https://example.com/fake-video.mp4",
-                        "remoteUrl": "https://example.com/fake-video.mp4",
+                        "uri": video_uri,
+                        "remoteUrl": video_uri,
                         "mimeType": "video/mp4",
                         "durationSeconds": duration,
                     }
