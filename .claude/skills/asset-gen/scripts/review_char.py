@@ -3,7 +3,8 @@
 """
 review_char.py - 角色专用 Gemini 审图脚本（世界观感知版）
 
-Model boundary note: this image+text review path remains deferred until `aos-cli model` defines an explicit multimodal review contract for the required media upload/processing lifecycle and review I/O shape.
+Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+This image+text review path remains deferred until `aos-cli model` defines an explicit multimodal review contract for the required media upload/processing lifecycle and review I/O shape.
 
 三种审查类型：
   front      - 审查正视图（头身比 + 剧本符合度 + 无道具强制检查）

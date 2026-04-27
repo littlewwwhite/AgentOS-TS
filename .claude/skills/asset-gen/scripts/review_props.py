@@ -3,7 +3,8 @@
 """
 review_props.py - 道具统一审图脚本（主图 + 参考表）
 
-Model boundary note: this image+text review path remains deferred until `aos-cli model` defines an explicit multimodal review contract for the required media upload/processing lifecycle and review I/O shape.
+Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+This image+text review path remains deferred until `aos-cli model` defines an explicit multimodal review contract for the required media upload/processing lifecycle and review I/O shape.
 
 支持两种审核模式：
   1. main  - 道具主图审核（世界观合规性 + 提示词匹配度 + 技术质量）

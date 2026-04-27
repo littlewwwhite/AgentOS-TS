@@ -6,6 +6,8 @@
 """
 gemini_multimodal_legacy.py — direct Gemini SDK helpers for deferred multimodal review paths.
 
+Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+
 This module is intentionally excluded from the aos-cli migration guardrail. It exists
 only because `review_scene.py` / `review_char.py` / `review_props.py` perform
 image+text review, and the current `aos-cli model` protocol does not yet define an

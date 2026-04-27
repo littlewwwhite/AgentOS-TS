@@ -1,6 +1,11 @@
 """
 循环剪辑引擎：scn 级组装 + Gemini 质检 + 迭代替换
 
+Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+This phase calls Gemini multimodal review on assembled video sequences. aos-cli
+model v1 has no contract for video review with iterative replacement, so this
+path stays on the direct SDK pending protocol expansion.
+
 读取 Phase 1 analysis.json → 按 scn 组装最佳序列 → ffmpeg 拼接 →
 Gemini 整体评估 → 循环替换有问题的 shot → 输出 edit_decision.json
 

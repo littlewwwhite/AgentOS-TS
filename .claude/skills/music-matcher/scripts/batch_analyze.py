@@ -2,6 +2,11 @@
 批量视频分析：扫描目录下所有视频，并发调 Gemini 分析，输出 segments JSON
 用法：python batch_analyze.py <视频目录> [--workers 3] [--recursive]
 输出：output/segments-<视频名>.json（无时间戳，支持断点续传）
+
+Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+This is a thin batch wrapper around analyze_video.py and inherits the same
+deferred status: video upload + multimodal analysis is not covered by aos-cli
+model v1, so the underlying SDK calls remain in place pending protocol expansion.
 """
 
 import os

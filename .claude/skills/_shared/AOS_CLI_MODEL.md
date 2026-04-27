@@ -186,3 +186,29 @@ Recommended migration order:
 4. Multimodal video analysis, ASR, and music matching only after confirming the current `aos-cli` protocol covers the required input/output shape.
 
 Asset image review, post-production video analysis, music matching, and subtitle transcription remain deferred until `aos-cli model` has explicit protocol coverage for their required multimodal media upload/processing lifecycle or ASR input/output contracts. Do not force these through generic `generate` if doing so would hide domain-specific input/output semantics.
+
+## Deferred Paths Registry
+
+The following skill scripts are formally classified as deferred multimodal paths. Each carries the canonical marker `Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md` in its module docstring (or top-of-file comment), and is enforced by `_shared/test_no_new_direct_provider_calls.py::test_deferred_paths_carry_boundary_note`.
+
+| # | Path | Reason for deferral |
+|---|------|---------------------|
+| 1 | `asset-gen/scripts/gemini_multimodal_legacy.py` | Image+text multimodal helper (load_image_part, multimodal client) |
+| 2 | `asset-gen/scripts/review_char.py` | Image+text character review (front/three-view/head-closeup) |
+| 3 | `asset-gen/scripts/review_props.py` | Image+text prop review (main + reference table) |
+| 4 | `asset-gen/scripts/review_scene.py` | Image+text scene review (main + reference table) |
+| 5 | `video-gen/scripts/analyzer.py` | Video upload + multimodal analysis via Gemini Files API |
+| 6 | `video-gen/scripts/config_loader.py` | Provider config loader for deferred multimodal scripts |
+| 7 | `video-gen/scripts/frame_extractor.py` | Frame description via Gemini multimodal |
+| 8 | `video-editing/scripts/phase1_analyze.py` | Multi-variant video review with Gemini multimodal |
+| 9 | `video-editing/scripts/phase2_assemble.py` | Iterative assembled-video review via Gemini multimodal |
+| 10 | `music-matcher/scripts/analyze_video.py` | Video upload + V2T analysis via Gemini Files API |
+| 11 | `music-matcher/scripts/batch_analyze.py` | Batch wrapper around analyze_video.py |
+| 12 | `subtitle-maker/scripts/phase2_transcribe.py` | Video upload + ASR via Gemini Files API |
+
+Two non-script artifacts also carry the canonical marker via a `_boundary_note` JSON field:
+
+- `asset-gen/assets/common/gemini_backend.json`
+- `video-gen/assets/config.json`
+
+Adding a new entry here is the *only* sanctioned way to introduce a direct provider SDK call inside a skill. Any other new direct call will be caught by the import/contract guardrails.

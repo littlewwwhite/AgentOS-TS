@@ -2,6 +2,11 @@
 Phase 2：Gemini ASR 转录 — 上传视频到 Gemini，带字幕指南提示词进行语音识别
 用法：python phase2_transcribe.py <视频文件> [--glossary glossary.json] [--ep-dir output/ep001]
 输出：output/ep00x/_tmp/asr.json
+
+Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+This path uploads video to Gemini Files API and runs ASR transcription. aos-cli
+model v1 has no contract for ASR or video upload, so this stays on the direct
+SDK pending protocol expansion.
 """
 
 import os

@@ -2,6 +2,11 @@
 视频分析：调用 Gemini 分析视频，输出片段 JSON
 用法：python analyze_video.py <视频文件路径>
 输出：output/gemini-v2t-<视频名>-<时间戳>.json
+
+Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+This path uploads video files to Gemini via the Files API and runs video-to-text
+analysis. aos-cli model v1 has no contract for video upload/processing, so this
+remains on the direct SDK pending protocol expansion.
 """
 
 import os

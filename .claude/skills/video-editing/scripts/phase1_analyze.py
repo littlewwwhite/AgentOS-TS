@@ -1,6 +1,11 @@
 """
 视频分镜分析：clip 组对比分析
 
+Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+This phase uploads video bytes to Gemini Files API for multi-variant comparison
+analysis. aos-cli model v1 has no contract for video file upload + multi-clip
+comparison, so this path stays on the direct SDK pending protocol expansion.
+
 以 clip 目录为最小单位，一次发送同 clip 的所有变体（1-6个）给 Gemini，
 实现逐 shot 对比分析，输出供下游剪辑 AI 直接消费的结构化数据。
 
