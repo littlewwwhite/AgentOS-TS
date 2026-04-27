@@ -31,7 +31,6 @@ MIGRATED_SCRIPT_PATHS = [
     ".claude/skills/subtitle-maker/scripts/phase2_transcribe.py",
     ".claude/skills/video-gen/scripts/analyzer.py",
     ".claude/skills/video-gen/scripts/frame_extractor.py",
-    ".claude/skills/video-gen/scripts/video_review_adapter.py",
     ".claude/skills/video-gen/scripts/video_api.py",
 ]
 
@@ -50,7 +49,6 @@ MIGRATED_USER_FACING_PATHS = [
     ".claude/skills/video-gen/scripts/analyzer.py",
     ".claude/skills/video-gen/scripts/batch_generate.py",
     ".claude/skills/video-gen/scripts/evaluator.py",
-    ".claude/skills/video-gen/scripts/video_review_adapter.py",
 ]
 
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -99,7 +97,6 @@ MIGRATED_ASSET_CONFIG_PATHS = [
 VIDEO_GEN_REVIEW_RUNTIME_PATHS = [
     ".claude/skills/video-gen/scripts/analyzer.py",
     ".claude/skills/video-gen/scripts/batch_generate_runtime.py",
-    ".claude/skills/video-gen/scripts/video_review_adapter.py",
 ]
 
 

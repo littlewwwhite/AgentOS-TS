@@ -31,7 +31,7 @@ from frame_extractor import (
 from production_types import ClipIntent, ContinuityContext
 from request_compiler import compile_request
 from sensitive_precheck import precheck_and_fix
-from video_review_adapter import get_video_analysis
+from analyzer import analyze_video_parallel
 from video_api import (
     _cos_relative_url,
     get_subject_reference_for_model,
@@ -102,19 +102,16 @@ def _review_single_clip(
     segment_id: str,
     expected_duration: float,
     original_prompt: str,
-    output_dir: str,
 ) -> Tuple[bool, Dict, Dict]:
     """Review a single generated clip through aos-cli video.analyze and flatten the result."""
     print(f"  [REVIEW] aos-cli video.analyze 评审: {segment_id}")
 
     try:
-        analysis_result, _ = get_video_analysis(
+        analysis_result = analyze_video_parallel(
             video_path=video_path,
             segment_id=segment_id,
             expected_duration=expected_duration,
             original_prompt=original_prompt,
-            output_dir=output_dir,
-            force_reanalyze=True,
         )
 
         parallel_results = analysis_result.get("parallel_results", {})
@@ -371,17 +368,11 @@ def _run_generation_rounds(
 
         def do_review(item):
             clip = item["clip"]
-            clip_dir = str(
-                paths.get_video_path(
-                    episode, clip["location_num"], clip["clip_num"], 1
-                ).parent
-            )
             return item, _review_single_clip(
                 video_path=item["actual_path"],
                 segment_id=clip["ls_id"],
                 expected_duration=float(clip["dur_api"]),
                 original_prompt=clip["ls"].get("full_prompts", ""),
-                output_dir=clip_dir,
             )
 
         with ThreadPoolExecutor(max_workers=len(review_items)) as executor:
