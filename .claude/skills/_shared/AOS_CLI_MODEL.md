@@ -117,12 +117,12 @@ Image generation:
 Video submit (Ark Seedance 2.0 has two **mutually exclusive** per-task modes,
 verified 2026-04-27 against Ark production):
 
-**Mode A — subject binding** (`role: "reference_image"` × N indexed by `[图N]`):
+**Default — Mode A (subject binding via `[图N]` + continuity as references):**
 
 ```json
 {
   "apiVersion": "aos-cli.model/v1",
-  "task": "video.ep001.scn001.clip001",
+  "task": "video.ep001.scn001.clip002",
   "capability": "video.generate",
   "output": {"kind": "task"},
   "input": {
@@ -132,7 +132,11 @@ verified 2026-04-27 against Ark production):
     "quality": "standard",
     "referenceImages": [
       { "url": "https://.../act_001.png", "role": "reference_image", "name": "act_001" },
-      { "url": "https://.../loc_002.png", "role": "reference_image", "name": "loc_002" }
+      { "url": "https://.../loc_002.png", "role": "reference_image", "name": "loc_002" },
+      { "url": "https://.../prev_frame.jpg", "role": "reference_image", "name": "prev_frame" }
+    ],
+    "referenceVideos": [
+      { "url": "https://.../prev_clip.mp4", "role": "reference_video", "name": "prev_video" }
     ]
   }
 }
@@ -142,8 +146,19 @@ verified 2026-04-27 against Ark production):
 entries; Ark binds them by index. The boundary forwards each entry into Ark's
 `content[]` array, preserving its `role`.
 
-**Mode B — first/last-frame continuity** (`role: "first_frame"` only, prompt
-must NOT carry `[图N]` markers):
+Continuity from the previous clip is **routed as additional reference media**,
+not via the dedicated first/last-frame channel:
+
+- previous clip's last-shot first-frame → appended as another `reference_image`
+  with `name: "prev_frame"` (still indexable by `[图N]` if the prompt cares)
+- previous clip's remote mp4 → emitted as `referenceVideos[]` with
+  `role: "reference_video"`, `name: "prev_video"` (Ark accepts up to 3 video
+  refs, 2–15 s, ≤50 MB each)
+
+This is the only mode the default pipeline emits — it composes subject binding
+with continuity on a single task without tripping Ark's mode mutex.
+
+**Opt-in — Mode B (dedicated first/last-frame, no `[图N]` markers):**
 
 ```json
 {
@@ -165,15 +180,19 @@ must NOT carry `[图N]` markers):
 
 The first-frame `url` may be either a public http(s) URL or a
 `data:image/jpeg;base64,...` URI for inline injection — base64 lets the caller
-skip an external bucket.
+skip an external bucket. Mode B is reserved for callers that need pixel-level
+first-frame continuity and accept losing subject binding for that task; the
+default `request_compiler.compile_request` never produces it. Bypass the
+compiler and call `video_api.submit_video` directly to use it.
 
 **Mode mutex is a hard constraint.** Mixing `reference_image` and `first_frame`
 items in the same task triggers Ark's `InvalidParameter`:
 `"first/last frame content cannot be mixed with reference media content"`.
-Pick one mode per clip in the upstream preprocess; the boundary
-(`video_api.submit_video_generation`) fail-fasts if both are passed.
+The boundary (`video_api.submit_video_generation`) fail-fasts if both are
+passed.
 
-`referenceImages[]` is optional — omit it for plain text-to-video generation.
+`referenceImages[]` and `referenceVideos[]` are both optional — omit them for
+plain text-to-video generation.
 
 Video poll can use the task envelope returned by submit as input to `model poll`.
 
