@@ -290,7 +290,6 @@ if __name__ == "__main__":
     parser.add_argument("expected_duration", type=float, help="期望时长（秒）")
     parser.add_argument("--prompt", help="原始提示词")
     parser.add_argument("--prompt-file", help="提示词文件路径")
-    parser.add_argument("--api-key", help="已弃用：保留参数兼容性，实际由 aos-cli model provider 配置读取")
     parser.add_argument("--model", default=DEFAULT_REVIEW_MODEL, help="模型名称")
     parser.add_argument("--output", help="输出文件路径")
 
@@ -309,7 +308,6 @@ if __name__ == "__main__":
         segment_id=args.segment_id,
         expected_duration=args.expected_duration,
         original_prompt=prompt,
-        api_key=args.api_key,
         model=args.model
     )
 

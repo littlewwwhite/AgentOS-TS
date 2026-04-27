@@ -46,6 +46,7 @@ MIGRATED_USER_FACING_PATHS = [
     ".claude/skills/subtitle-maker/scripts/phase2_transcribe.py",
     ".claude/skills/video-editing/references/phase2_spec.md",
     ".claude/skills/video-gen/SKILL.md",
+    ".claude/skills/video-gen/scripts/analyzer.py",
     ".claude/skills/video-gen/scripts/batch_generate.py",
     ".claude/skills/video-gen/scripts/evaluator.py",
 ]
@@ -84,6 +85,7 @@ FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS = (
     "Seedance image reference",
     "ep-20260303234827-tfnzm",
     "--gemini-api-key",
+    "--api-key",
 )
 
 DEFERRED_MARKER = "Model boundary note: " + "deferred multimodal"
