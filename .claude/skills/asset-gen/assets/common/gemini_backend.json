@@ -1,4 +1,5 @@
 {
+  "_boundary_note": "Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md. Consumed by gemini_multimodal_legacy.py for review_scene/char/props.py image+text review, which stays on the direct Gemini SDK pending aos-cli protocol expansion.",
   "mode": "official",
   "model": "gemini-3.1-flash-lite-preview",
   "proxy": {
