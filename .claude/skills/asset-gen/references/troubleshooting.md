@@ -18,7 +18,7 @@ ls -lt draft/logs/ | head -5
 |---------|-------|-----|
 | `python: command not found` | macOS only has `python3` | Scripts use `sys.executable` internally; always invoke via `python3 -X utf8` from SKILL.md |
 | Text/JSON model preflight fails | aos-cli model provider config or API key is missing/invalid | Run `uv run --project aos-cli aos-cli model preflight --json`; verify the provider-specific env vars configured for `aos-cli model` |
-| aos-cli model config not taking effect | Edited wrong config file | The legacy-named model config is `assets/common/gemini_backend.json` — NOT `generation_config.json` (legacy file, deleted) |
+| aos-cli model config not taking effect | Edited wrong config file | Model config lives in `assets/common/gemini_backend.json` with capability-shaped keys (`text_generate`, `vision_review`) |
 | Image generation timeout | API slow or queue congestion | Re-run directly; checkpoint resume skips completed items |
 | All reviews rejected (max rounds) | Prompt-style mismatch | Use option 4 to review/modify prompts, then regenerate |
 | aos-cli vision.review failure defaults to pass | model provider rate-limited or network issue | No impact on results; quality review is skipped |

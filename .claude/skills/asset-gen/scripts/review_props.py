@@ -104,7 +104,7 @@ def review_main_props(config):
 
     contents.append(_RC["review_prompts"]["closing"])
 
-    return call_gemini(contents, models=["gemini-3.1-pro-preview"], task="asset.prop.main.review")
+    return call_gemini(contents, task="asset.prop.main.review")
 
 
 def review_ref_props(config):
@@ -151,16 +151,16 @@ def review_ref_props(config):
 
     contents.append(_RC["review_prompts"]["closing"])
 
-    return call_gemini(contents, models=["gemini-3.1-pro-preview"], task="asset.prop.ref.review")
+    return call_gemini(contents, task="asset.prop.ref.review")
 
 
 def call_gemini(contents, models=None, task="asset.prop.review"):
     result = call_vision_review(
         contents,
         task=task,
-        models=models or _RC["gemini"]["models"],
-        max_retries=_RC["gemini"]["retry_attempts"],
-        retry_sleep_seconds=_RC["gemini"]["retry_sleep_seconds"],
+        models=models or _RC["vision_review"]["models"],
+        max_retries=_RC["vision_review"]["retry_attempts"],
+        retry_sleep_seconds=_RC["vision_review"]["retry_sleep_seconds"],
     )
 
     if not result:

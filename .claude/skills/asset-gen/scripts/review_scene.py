@@ -108,7 +108,7 @@ def review_main_scenes(config):
 
     contents.append(_RC["review_prompts"]["closing"])
 
-    return call_gemini(contents, models=["gemini-3.1-pro-preview"], task="asset.scene.main.review")
+    return call_gemini(contents, task="asset.scene.main.review")
 
 
 def review_ref_scenes(config):
@@ -157,7 +157,7 @@ def review_ref_scenes(config):
 
     contents.append(_RC["review_prompts"]["closing"])
 
-    return call_gemini(contents, models=["gemini-3.1-pro-preview"], task="asset.scene.ref.review")
+    return call_gemini(contents, task="asset.scene.ref.review")
 
 
 def call_gemini(contents, models=None, task="asset.scene.review"):
@@ -165,9 +165,9 @@ def call_gemini(contents, models=None, task="asset.scene.review"):
     result = call_vision_review(
         contents,
         task=task,
-        models=models or _RC["gemini"]["models"],
-        max_retries=_RC["gemini"]["retry_attempts"],
-        retry_sleep_seconds=_RC["gemini"]["retry_sleep_seconds"],
+        models=models or _RC["vision_review"]["models"],
+        max_retries=_RC["vision_review"]["retry_attempts"],
+        retry_sleep_seconds=_RC["vision_review"]["retry_sleep_seconds"],
     )
 
     if not result:

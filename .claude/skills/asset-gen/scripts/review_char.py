@@ -201,9 +201,9 @@ def call_gemini(contents, models=None, task="asset.character.review"):
     return call_vision_review(
         contents,
         task=task,
-        models=models or _RC["gemini"]["models"],
-        max_retries=_RC["gemini"]["retry_attempts"],
-        retry_sleep_seconds=_RC["gemini"]["retry_sleep_seconds"],
+        models=models or _RC["vision_review"]["models"],
+        max_retries=_RC["vision_review"]["retry_attempts"],
+        retry_sleep_seconds=_RC["vision_review"]["retry_sleep_seconds"],
     )
 
 
@@ -246,7 +246,7 @@ def main():
     if review_type == 'head_closeup':
         _log('=== 头部特写质量评分 ===')
         contents = build_head_closeup_contents(chars_info)
-        score_result = call_gemini(contents, models=["gemini-3.1-pro-preview"], task="asset.character.head_closeup.review")
+        score_result = call_gemini(contents, task="asset.character.head_closeup.review")
         if not score_result:
             import logging
             logging.warning("aos-cli vision review bypassed (head_closeup): quota exhausted or all models failed")
@@ -285,7 +285,7 @@ def main():
     # ── three_view 模式：两阶段审核 ──────────────────────────────────────
     _log('=== Layer 1: 结构门控审查 ===')
     gate_contents = build_three_view_gate_contents(chars_info, visual_mode)
-    gate_result = call_gemini(gate_contents, models=["gemini-3.1-pro-preview"], task="asset.character.three_view_gate.review")
+    gate_result = call_gemini(gate_contents, task="asset.character.three_view_gate.review")
 
     if not gate_result:
         import logging
@@ -322,7 +322,7 @@ def main():
     if passed_chars:
         _log('=== Layer 2: 质量评分 ===')
         score_contents = build_three_view_contents(passed_chars, worldview_type, visual_mode, character_style)
-        score_result = call_gemini(score_contents, models=["gemini-3.1-pro-preview"], task="asset.character.three_view.review")
+        score_result = call_gemini(score_contents, task="asset.character.three_view.review")
         if not score_result:
             import logging
             logging.warning("aos-cli vision review bypassed (three_view quality): quota exhausted or all models failed")

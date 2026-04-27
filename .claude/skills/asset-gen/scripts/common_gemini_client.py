@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 def _load_backend_config() -> dict:
-    return get_config().get("gemini_backend", {})
+    return get_config().get("text_generate", {})
 
 
 def get_model(backend_config: dict | None = None) -> str:
