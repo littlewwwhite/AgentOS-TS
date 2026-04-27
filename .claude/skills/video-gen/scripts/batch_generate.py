@@ -719,17 +719,18 @@ def run_batch_generate(
             subject_ids = extract_subject_ids(ls['full_prompts'])
             if reference_images:
                 print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (image-reference mode)")
-            # JSON 中已有 lsi.url（上一 clip 最后镜头首帧）→ 走独立的 firstFrameUrl 通道。
+            # JSON 中已有 lsi.url（上一 clip 最后镜头首帧）→ 走独立的 first_frame_url 通道，
+            # 由 video_api 边界把它装配为 referenceImages 末项 role=first_frame。
             # 不要塞进 reference_images：那是主体绑定通道（[图N] 索引），与续帧正交。
             clip_first_frame_url: Optional[str] = None
             lsi_url = (ls.get('lsi_url') or '').strip()
             if lsi_url:
-                if lsi_url.startswith(('http://', 'https://')):
+                if lsi_url.startswith(('http://', 'https://', 'data:')):
                     clip_first_frame_url = lsi_url
-                    print(f"  [{ls_id}] lsi 续帧 URL 注入 firstFrameUrl: {lsi_url[:60]}")
+                    print(f"  [{ls_id}] lsi 续帧注入 first_frame_url: {lsi_url[:60]}")
                 else:
                     print(
-                        f"  [{ls_id}] [WARN] lsi.url 非公网 URL，跳过续帧: {lsi_url[:60]}",
+                        f"  [{ls_id}] [WARN] lsi.url 既非 http(s) 也非 data URI，跳过续帧: {lsi_url[:60]}",
                         file=sys.stderr,
                     )
 
