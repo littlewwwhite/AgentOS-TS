@@ -155,6 +155,46 @@ describe("StoryboardView rendering", () => {
     expect(html).not.toContain("剧本到故事板");
   });
 
+  // I-3: when one scene has multiple parts, the script column must render once
+  // (scene-level), not once per part. Each part shows only its own prompt editor.
+  test("renders script column once per scene even when scene has multiple parts", () => {
+    currentStoryboardData = {
+      episode_id: "ep_001",
+      status: "approved",
+      scenes: [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              source_refs: [0],
+              prompt: "PART1\n\n总体描述：第一段。\n\nS1 | 00:00-00:03 | 近景\n- 运镜：A→B",
+            },
+            {
+              source_refs: [1],
+              prompt: "PART2\n\n总体描述：第二段。\n\nS1 | 00:00-00:03 | 中景\n- 运镜：C→D",
+            },
+          ],
+        },
+      ],
+    };
+    currentScriptData = scriptData;
+    currentTree = [{ path: "output/storyboard/approved/ep001_storyboard.json" }];
+
+    const html = renderToStaticMarkup(
+      React.createElement(StoryboardView, {
+        projectName: "demo-project",
+        path: "output/storyboard/approved/ep001_storyboard.json",
+      }),
+    );
+
+    const scriptOccurrences = html.split("账房摊开银锭").length - 1;
+    expect(scriptOccurrences).toBe(1);
+    expect(html).toContain("part_001");
+    expect(html).toContain("part_002");
+    expect(html).toContain("总体描述：第一段。");
+    expect(html).toContain("总体描述：第二段。");
+  });
+
   // I-2: when storyboard has scenes[].shots[].prompt but editorModel clips are empty
   // (no legacy clips[] array), the main surface must still render — not fall back to
   // the "no clips" empty state.

@@ -851,25 +851,52 @@ function ScriptSceneColumn({ scene }: { scene: ScriptSceneSnapshot }) {
   );
 }
 
-function StoryboardGenerationUnitCard({
+function StoryboardPartBlock({
   unit,
-  scriptScene,
   patch,
   readOnly,
 }: {
   unit: StoryboardGenerationUnit;
+  patch: JsonPatch;
+  readOnly: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-serif text-[14px] text-[var(--color-ink)]">{unit.partId}</span>
+        <FieldLabel>生成视频 prompt</FieldLabel>
+      </div>
+      <StoryboardPromptEditor unit={unit} patch={patch} readOnly={readOnly} />
+    </div>
+  );
+}
+
+function StoryboardSceneGroup({
+  sceneId,
+  units,
+  scriptScene,
+  patch,
+  readOnly,
+}: {
+  sceneId: string;
+  units: StoryboardGenerationUnit[];
   scriptScene: ScriptSceneSnapshot | null;
   patch: JsonPatch;
   readOnly: boolean;
 }) {
   const showScript = scriptScene !== null && scriptScene.actions.length > 0;
+  const partsList = (
+    <div className="grid gap-4">
+      {units.map((unit) => (
+        <StoryboardPartBlock key={unit.key} unit={unit} patch={patch} readOnly={readOnly} />
+      ))}
+    </div>
+  );
+
   return (
     <article className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-4">
-      <header className="mb-3 flex flex-wrap items-baseline justify-between gap-3 border-b border-[var(--color-rule)] pb-2">
-        <span className="font-serif text-[16px] text-[var(--color-ink)]">
-          {unit.sceneId} · {unit.partId}
-        </span>
-        <FieldLabel>生成视频 prompt</FieldLabel>
+      <header className="mb-3 border-b border-[var(--color-rule)] pb-2">
+        <span className="font-serif text-[16px] text-[var(--color-ink)]">{sceneId}</span>
       </header>
       {showScript ? (
         <div
@@ -877,10 +904,10 @@ function StoryboardGenerationUnitCard({
           style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.3fr)" }}
         >
           <ScriptSceneColumn scene={scriptScene} />
-          <StoryboardPromptEditor unit={unit} patch={patch} readOnly={readOnly} />
+          {partsList}
         </div>
       ) : (
-        <StoryboardPromptEditor unit={unit} patch={patch} readOnly={readOnly} />
+        partsList
       )}
     </article>
   );
@@ -897,13 +924,29 @@ function StoryboardGenerationUnitList({
   patch: JsonPatch;
   readOnly: boolean;
 }) {
+  const sceneGroups = useMemo(() => {
+    const order: string[] = [];
+    const groups = new Map<string, StoryboardGenerationUnit[]>();
+    for (const unit of units) {
+      const existing = groups.get(unit.sceneId);
+      if (existing) {
+        existing.push(unit);
+      } else {
+        order.push(unit.sceneId);
+        groups.set(unit.sceneId, [unit]);
+      }
+    }
+    return order.map((sceneId) => ({ sceneId, units: groups.get(sceneId) ?? [] }));
+  }, [units]);
+
   return (
     <section className="grid gap-4">
-      {units.map((unit) => (
-        <StoryboardGenerationUnitCard
-          key={unit.key}
-          unit={unit}
-          scriptScene={sceneLookup.get(unit.sceneId) ?? null}
+      {sceneGroups.map((group) => (
+        <StoryboardSceneGroup
+          key={group.sceneId}
+          sceneId={group.sceneId}
+          units={group.units}
+          scriptScene={sceneLookup.get(group.sceneId) ?? null}
           patch={patch}
           readOnly={readOnly}
         />
