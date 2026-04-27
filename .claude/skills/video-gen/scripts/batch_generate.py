@@ -169,9 +169,10 @@ def _extract_clip_prompts(clip: dict) -> list[str]:
 # Subject Extraction from {id} placeholders and 【】 brackets
 # ============================================================
 
-# Pattern: matches @act_xxx / {act_xxx} / @loc_xxx / {loc_xxx} / @prop_xxx / {prop_xxx}
+# Pattern: matches @act_xxx / {act_xxx} / @loc_xxx / {loc_xxx} / @prp_xxx / {prp_xxx}
 # Storyboard skill v1.4.0 emits @-form; legacy storyboards still use {-form.
-_SUBJECT_ID_PATTERN = re.compile(r'[@{]((?:act|loc|prop)_\d+)\}?')
+# Note: prop ids use the `prp_` prefix to match asset-gen / props.json conventions.
+_SUBJECT_ID_PATTERN = re.compile(r'[@{]((?:act|loc|prp)_\d+)\}?')
 
 # Legacy patterns: matches 【xxx】 or 【xxx（yyy）】
 _SUBJECT_PATTERN = re.compile(r'【([^】]+)】')
@@ -182,12 +183,12 @@ def extract_subject_ids(full_prompt: str) -> List[str]:
     """Extract all unique subject IDs from @ or {} forms in prompt.
 
     Accepted forms (per storyboard skill v1.4.0): @act_xxx, @loc_xxx,
-    @prop_xxx, plus legacy {act_xxx}/{loc_xxx}/{prop_xxx} for back-compat.
+    @prp_xxx, plus legacy {act_xxx}/{loc_xxx}/{prp_xxx} for back-compat.
 
     Examples:
     - "@act_001 站在演武场中央" -> ["act_001"]
     - "@act_001 和 @act_002 在 @loc_003 对话" -> ["act_001", "act_002", "loc_003"]
-    - "{act_001} 与 @prop_004" -> ["act_001", "prop_004"]
+    - "{act_001} 与 @prp_004" -> ["act_001", "prp_004"]
 
     Args:
         full_prompt: The full_prompts string from ep_storyboard.json

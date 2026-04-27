@@ -11,11 +11,11 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 
 class ExtractSubjectTokensTest(unittest.TestCase):
-    def test_extracts_at_form_act_loc_prop_in_order(self):
+    def test_extracts_at_form_act_loc_prp_in_order(self):
         from subject_resolver import extract_subject_tokens
 
-        prompt = "@act_001 走入 @loc_002，望向 @prop_003"
-        self.assertEqual(extract_subject_tokens(prompt), ["act_001", "loc_002", "prop_003"])
+        prompt = "@act_001 走入 @loc_002，望向 @prp_003"
+        self.assertEqual(extract_subject_tokens(prompt), ["act_001", "loc_002", "prp_003"])
 
     def test_extracts_legacy_brace_form(self):
         from subject_resolver import extract_subject_tokens
@@ -57,7 +57,7 @@ class ResolveSubjectTokensTest(unittest.TestCase):
                 "type": "location",
                 "image_url": "https://x/L.png",
             },
-            "prop_004": {
+            "prp_004": {
                 "subject_id": "sP",
                 "name": "银锭",
                 "type": "prop",
@@ -115,10 +115,10 @@ class ResolveSubjectTokensTest(unittest.TestCase):
         self.assertEqual(rewritten, "[图1] 与 [图2] 在 [图3]")
         self.assertEqual(len(refs), 3)
 
-    def test_prop_token_resolves(self):
+    def test_prp_token_resolves(self):
         from subject_resolver import resolve_subject_tokens
 
-        prompt = "@act_001 拿起 @prop_004"
+        prompt = "@act_001 拿起 @prp_004"
         rewritten, refs = resolve_subject_tokens(prompt, self._mapping())
         self.assertEqual(rewritten, "[图1] 拿起 [图2]")
         self.assertEqual(refs[1]["url"], "https://x/P.png")

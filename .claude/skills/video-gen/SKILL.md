@@ -140,7 +140,7 @@ python3 ./.claude/skills/video-gen/scripts/batch_generate.py storyboard.json --o
 
 ### Subject reference resolution
 
-Storyboard prompts use `@act_xxx` / `@loc_xxx` / `@prop_xxx` tokens (legacy
+Storyboard prompts use `@act_xxx` / `@loc_xxx` / `@prp_xxx` tokens (legacy
 `{act_xxx}` form is also accepted). Before submission,
 `scripts/subject_resolver.resolve_subject_tokens()` rewrites them to `[图N]`
 markers and assembles the matching `referenceImages[]` entry list from

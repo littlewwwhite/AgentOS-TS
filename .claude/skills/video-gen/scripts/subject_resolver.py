@@ -5,7 +5,7 @@
 """Subject reference resolver for video-gen.
 
 Storyboard skill v1.4.0 emits prompts that reference characters/locations/props
-via `@act_001` / `@loc_002` / `@prop_003` tokens (legacy `{act_001}` form is
+via `@act_001` / `@loc_002` / `@prp_003` tokens (legacy `{act_001}` form is
 also accepted for back-compat). Ark's multi-image binding requires `[图N]`
 markers in the prompt that index 1-based into `content[]` reference images.
 This module rewrites the tokens and assembles the ordered reference list.
@@ -14,9 +14,9 @@ This module rewrites the tokens and assembles the ordered reference list.
 import re
 from typing import Dict, List, Tuple
 
-# Match @act_001 OR {act_001} OR @prop_002 OR {loc_003}; act/loc/prop only.
+# Match @act_001 OR {act_001} OR @prp_002 OR {loc_003}; act/loc/prp only.
 # Trailing `}` is optional so the same regex captures both forms.
-_TOKEN_RE = re.compile(r"[@{]((?:act|loc|prop)_\d+)\}?")
+_TOKEN_RE = re.compile(r"[@{]((?:act|loc|prp)_\d+)\}?")
 
 
 def extract_subject_tokens(prompt: str) -> List[str]:
@@ -26,7 +26,7 @@ def extract_subject_tokens(prompt: str) -> List[str]:
         prompt: Storyboard prompt text.
 
     Returns:
-        List of token ids like ["act_001", "loc_002", "prop_003"].
+        List of token ids like ["act_001", "loc_002", "prp_003"].
     """
     seen: List[str] = []
     seen_set = set()
@@ -46,7 +46,7 @@ def resolve_subject_tokens(
     Args:
         prompt: Storyboard prompt text containing @act_xxx / {act_xxx} tokens.
         assets_mapping: Flat dict from load_assets_subject_mapping(), keyed by
-            id (act_001, loc_002, prop_003) with entries
+            id (act_001, loc_002, prp_003) with entries
             {"subject_id": str, "name": str, "type": str, "image_url": str}.
 
     Returns:

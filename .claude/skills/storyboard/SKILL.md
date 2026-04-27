@@ -180,7 +180,7 @@ python3 ./.claude/skills/storyboard/scripts/storyboard_batch.py "${PROJECT_DIR}"
 
 **统一引用规范：**
 - 任何角色出现都必须写成 `@act_xxx` token（act_id 取自 `output/script.json` / `actors.json`），禁止用中文名直写
-- 场景写成 `@loc_xxx`，关键道具写成 `@prop_xxx`
+- 场景写成 `@loc_xxx`，关键道具写成 `@prp_xxx`（道具 ID 前缀沿用 asset-gen / props.json 的 `prp_` 缩写）
 - token 的外观/服饰/年龄/材质等静态属性由对应 subject 参考图承载，**严禁在 prompt 文本里复述**
 
 **"角色状态"字段写法：**
@@ -267,7 +267,7 @@ S2 | 00:03-00:06 | 景别/机位
 - 对白：……
 ```
 
-整段 prompt 必须是纯 markdown，禁止再嵌入 fenced JSON 代码块或 `"shot_id"` / `"beats"` 等键值对结构。所有角色/场景/道具引用必须用 `@act_xxx` / `@loc_xxx` / `@prop_xxx` token，禁止内联外观/服饰/材质等静态属性。
+整段 prompt 必须是纯 markdown，禁止再嵌入 fenced JSON 代码块或 `"shot_id"` / `"beats"` 等键值对结构。所有角色/场景/道具引用必须用 `@act_xxx` / `@loc_xxx` / `@prp_xxx` token，禁止内联外观/服饰/材质等静态属性。
 
 ---
 
