@@ -123,13 +123,26 @@ Video submit:
   "capability": "video.generate",
   "output": {"kind": "task"},
   "input": {
-    "prompt": "Slow camera push through a moonlit courtyard.",
+    "prompt": "[图1] 走入 [图2]，[图1] 抬眼望向远处。",
     "duration": 5,
     "ratio": "16:9",
-    "quality": "standard"
+    "quality": "standard",
+    "referenceImages": [
+      { "url": "https://.../act_001.png", "role": "reference_image", "name": "act_001" },
+      { "url": "https://.../loc_002.png", "role": "reference_image", "name": "loc_002" }
+    ],
+    "referenceVideos": [
+      { "url": "https://.../prev_clip_first_frame.mp4", "role": "first_frame", "name": "lsi" }
+    ]
   }
 }
 ```
+
+`[图N]` markers in `prompt` are 1-based indexes into `input.referenceImages[]`.
+The boundary forwards these references into Ark's `content[]` array; Ark binds
+them by index. `referenceVideos[]` accepts a `first_frame` role used by the
+continuity hand-off between consecutive clips. Both arrays are optional —
+omit them for plain text-to-video generation.
 
 Video poll can use the task envelope returned by submit as input to `model poll`.
 
