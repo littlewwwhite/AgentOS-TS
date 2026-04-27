@@ -208,7 +208,7 @@ def call_gemini(contents, models=None, task="asset.character.review"):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='角色专用 Gemini 审图（世界观感知版）')
+    parser = argparse.ArgumentParser(description='角色专用 aos-cli vision.review 审图（世界观感知版）')
     parser.add_argument('--config', required=True, help='审图配置 JSON 字符串')
     parser.add_argument('--mode', default='front', choices=['three_view', 'head_closeup'],
                         help='审核模式: three_view=三视图两阶段审核, head_closeup=头部特写质量审核')
@@ -249,8 +249,8 @@ def main():
         score_result = call_gemini(contents, models=["gemini-3.1-pro-preview"], task="asset.character.head_closeup.review")
         if not score_result:
             import logging
-            logging.warning("Gemini review bypassed (head_closeup): quota exhausted or all models failed")
-            _log('[WARNING] Gemini review bypassed (head_closeup): quota exhausted or all models failed')
+            logging.warning("aos-cli vision review bypassed (head_closeup): quota exhausted or all models failed")
+            _log('[WARNING] aos-cli vision review bypassed (head_closeup): quota exhausted or all models failed')
             score_result = {
                 "approved": True,
                 "summary": "review bypassed: quota exhausted",
@@ -289,8 +289,8 @@ def main():
 
     if not gate_result:
         import logging
-        logging.warning("Gemini review bypassed (three_view gate): quota exhausted or all models failed")
-        _log('[WARNING] Gemini review bypassed (three_view gate): quota exhausted or all models failed')
+        logging.warning("aos-cli vision review bypassed (three_view gate): quota exhausted or all models failed")
+        _log('[WARNING] aos-cli vision review bypassed (three_view gate): quota exhausted or all models failed')
         gate_result = {
             "gate_results": [{"name": c["name"], "pass": True, "failed_items": [], "review_bypassed": True, "bypass_reason": "quota_exhausted"} for c in chars_info],
             "review_bypassed": True,
@@ -325,8 +325,8 @@ def main():
         score_result = call_gemini(score_contents, models=["gemini-3.1-pro-preview"], task="asset.character.three_view.review")
         if not score_result:
             import logging
-            logging.warning("Gemini review bypassed (three_view quality): quota exhausted or all models failed")
-            _log('[WARNING] Gemini review bypassed (three_view quality): quota exhausted or all models failed')
+            logging.warning("aos-cli vision review bypassed (three_view quality): quota exhausted or all models failed")
+            _log('[WARNING] aos-cli vision review bypassed (three_view quality): quota exhausted or all models failed')
             score_result = {
                 "approved": True,
                 "summary": "review bypassed: quota exhausted",

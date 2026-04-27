@@ -36,6 +36,10 @@ MIGRATED_SCRIPT_PATHS = [
 
 MIGRATED_USER_FACING_PATHS = [
     ".claude/skills/asset-gen/references/troubleshooting.md",
+    ".claude/skills/asset-gen/scripts/generate_characters.py",
+    ".claude/skills/asset-gen/scripts/generate_props.py",
+    ".claude/skills/asset-gen/scripts/generate_scenes.py",
+    ".claude/skills/asset-gen/scripts/review_char.py",
     ".claude/skills/asset-gen/scripts/style_generate.py",
     ".claude/skills/asset-gen/scripts/generate_prompts_from_script.py",
     ".claude/skills/music-matcher/scripts/run_music_pipeline.py",
@@ -61,6 +65,10 @@ FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS = (
     "Gemini 世界观视觉分析",
     "使用 Gemini",
     "调用 Gemini",
+    "调用 Gemini 重写",
+    "Gemini 重写失败",
+    "Gemini review bypassed",
+    "角色专用 Gemini 审图",
     "Gemini 场景分组失败",
     "Gemini config not taking effect",
     "Gemini video analysis",
