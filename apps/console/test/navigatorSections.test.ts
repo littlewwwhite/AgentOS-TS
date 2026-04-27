@@ -70,4 +70,28 @@ describe("buildNavigatorSections", () => {
     expect(JSON.stringify(sections)).not.toContain("配乐");
     expect(JSON.stringify(sections)).not.toContain("字幕");
   });
+
+  test("tags each section with cross_episode or per_episode group", () => {
+    const sections = buildNavigatorSections({
+      hasSource: true,
+      hasCatalog: true,
+      hasScript: true,
+      hasAssets: true,
+      hasStoryboard: true,
+      episodeIds: ["ep001"],
+    });
+
+    const groups = Object.fromEntries(
+      sections.map((section) => [section.key, section.group]),
+    );
+    expect(groups).toEqual({
+      overview: "cross_episode",
+      inputs: "cross_episode",
+      catalog: "cross_episode",
+      script: "cross_episode",
+      assets: "cross_episode",
+      storyboard: "per_episode",
+      episodes: "per_episode",
+    });
+  });
 });
