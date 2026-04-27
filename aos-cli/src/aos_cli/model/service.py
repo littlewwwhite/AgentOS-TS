@@ -174,6 +174,7 @@ _RUN_DISPATCH: dict[str, _Dispatch] = {
     "generate":         _Dispatch(_handle_generate,       _resolve_gemini_provider,        "gemini"),
     "vision.analyze":   _Dispatch(_handle_vision,         _resolve_gemini_provider,        "gemini"),
     "vision.review":    _Dispatch(_handle_vision,         _resolve_gemini_provider,        "gemini"),
+    "video.analyze":    _Dispatch(_handle_vision,         _resolve_gemini_provider,        "gemini"),
     "audio.transcribe": _Dispatch(_handle_audio,          _resolve_gemini_provider,        "gemini"),
     "embed":            _Dispatch(_handle_embed,          _resolve_gemini_embed_provider,  "gemini"),
     "image.generate":   _Dispatch(_handle_image_generate, _resolve_openai_image_provider,  "openai_compatible"),

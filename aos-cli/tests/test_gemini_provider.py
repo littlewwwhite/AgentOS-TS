@@ -194,6 +194,34 @@ def test_gemini_provider_builds_audio_parts(tmp_path):
     assert parts[1]["inline_data"]["mime_type"] == "audio/mpeg"
 
 
+def test_gemini_provider_builds_video_parts(tmp_path):
+    video_path = tmp_path / "clip.mp4"
+    video_path.write_bytes(b"mp4")
+    transport = FakeTransport(
+        {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [{"text": json.dumps({"shots": []})}],
+                    },
+                }
+            ]
+        }
+    )
+    provider = GeminiProvider("test", "https://example.com/gemini", "gemini-test", transport)
+
+    result = provider.generate_multimodal(
+        system=None,
+        content={"prompt": "analyze", "videos": [video_path.as_uri()]},
+        options={"responseMimeType": "application/json"},
+    )
+
+    parts = transport.last_body["contents"][0]["parts"]
+    assert json.loads(result.text) == {"shots": []}
+    assert parts[0]["text"] == "analyze"
+    assert parts[1]["inline_data"]["mime_type"] == "video/mp4"
+
+
 def test_gemini_provider_rejects_large_inline_media(tmp_path):
     video_path = tmp_path / "large.mp4"
     video_path.write_bytes(b"0")

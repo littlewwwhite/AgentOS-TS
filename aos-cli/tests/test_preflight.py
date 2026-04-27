@@ -152,6 +152,7 @@ def test_preflight_success_modes_are_explicit(monkeypatch):
     assert checks["generate"]["probeMode"] == "provider"
     assert checks["vision.analyze"]["probeMode"] == "env"
     assert checks["vision.review"]["probeMode"] == "env"
+    assert checks["video.analyze"]["probeMode"] == "env"
     assert checks["audio.transcribe"]["probeMode"] == "env"
     assert checks["embed"]["probeMode"] == "env"
     assert checks["image.generate"]["probeMode"] == "env"

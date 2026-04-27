@@ -227,6 +227,18 @@ def test_parse_request_accepts_registered_video_generate_task_result():
     assert parse_request(request)["output"]["kind"] == "task_result"
 
 
+def test_parse_request_accepts_registered_video_analyze_json():
+    request = {
+        "apiVersion": "aos-cli.model/v1",
+        "task": "video.clip.analysis",
+        "capability": "video.analyze",
+        "output": {"kind": "json"},
+        "input": {"content": {"prompt": "compare variants", "videos": ["file:///tmp/clip.mp4"]}},
+    }
+
+    assert parse_request(request)["capability"] == "video.analyze"
+
+
 def test_success_response_has_stable_shape():
     response = success_response(
         task="storyboard.scene",

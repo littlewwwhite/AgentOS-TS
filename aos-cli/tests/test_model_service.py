@@ -228,6 +228,43 @@ def test_build_default_model_service_fakes_vision_review(monkeypatch):
     assert response["output"] == {"kind": "json", "data": {"ok": True, "task": "asset.review"}}
 
 
+def test_service_returns_video_analyze_json_output():
+    provider = FakeProvider('{"overall":{"recommendation":"use"},"shots":[]}')
+    response = ModelService(provider_factory=lambda request, dispatch=None: provider).run(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video.clip.analysis",
+            "capability": "video.analyze",
+            "output": {"kind": "json"},
+            "input": {"content": {"prompt": "compare variants", "videos": ["file:///tmp/clip.mp4"]}},
+        }
+    )
+
+    assert response["ok"] is True
+    assert response["output"] == {
+        "kind": "json",
+        "data": {"overall": {"recommendation": "use"}, "shots": []},
+    }
+
+
+def test_build_default_model_service_fakes_video_analyze(monkeypatch):
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
+
+    response = build_default_model_service().run(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video.clip.analysis",
+            "capability": "video.analyze",
+            "output": {"kind": "json"},
+            "input": {"content": {"prompt": "compare", "videos": ["file:///tmp/clip.mp4"]}},
+        }
+    )
+
+    assert response["ok"] is True
+    assert response["provider"] == "gemini"
+    assert response["output"] == {"kind": "json", "data": {"ok": True, "task": "video.clip.analysis"}}
+
+
 def test_service_returns_audio_transcript_json():
     response = ModelService(provider_factory=lambda request, dispatch=None: FakeProvider('{"segments":[]}')).run(
         {

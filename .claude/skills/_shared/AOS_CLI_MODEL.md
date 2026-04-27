@@ -16,7 +16,8 @@ Use these commands by capability:
 | Video generation submit | `video.generate` with `output.kind=task` | `model submit` |
 | Video generation poll | `video.generate` with `output.kind=task_result` | `model poll` |
 | Image+text review | `vision.review` with `output.kind=json` | `model run` |
-| Video analysis | `vision.analyze` with `output.kind=json` | `model run` |
+| Image+text analysis | `vision.analyze` with `output.kind=json` | `model run` |
+| Video analysis | `video.analyze` with `output.kind=json` | `model run` |
 | Audio transcription | `audio.transcribe` with `output.kind=json` | `model run` |
 | Request-only validation | Any registered capability | `model validate` |
 | Runtime readiness | Registered capabilities | `model preflight --json` |
@@ -188,7 +189,7 @@ Recommended migration order:
 3. Video submit/poll in `video-gen`.
 4. Multimodal video analysis, ASR, and music matching only after confirming the current `aos-cli` protocol covers the required input/output shape.
 
-Asset image review is migrated through `vision.review`. Post-production video analysis, music matching, and subtitle transcription remain deferred until their skill scripts are migrated to the corresponding first-class capabilities. Do not force these through generic `generate` if doing so would hide domain-specific input/output semantics.
+Asset image review is migrated through `vision.review`. `video-editing/scripts/phase1_analyze.py` is migrated through `video.analyze`. Remaining post-production assembled-video review, music matching, and subtitle transcription paths stay deferred until their skill scripts are migrated to the corresponding first-class capabilities. Do not force these through generic `generate` if doing so would hide domain-specific input/output semantics.
 
 ## Deferred Paths Registry
 
@@ -199,11 +200,10 @@ The following skill scripts are formally classified as deferred multimodal paths
 | 1 | `video-gen/scripts/analyzer.py` | Video upload + multimodal analysis via Gemini Files API |
 | 2 | `video-gen/scripts/config_loader.py` | Provider config loader for deferred multimodal scripts |
 | 3 | `video-gen/scripts/frame_extractor.py` | Frame description via Gemini multimodal |
-| 4 | `video-editing/scripts/phase1_analyze.py` | Multi-variant video review with Gemini multimodal |
-| 5 | `video-editing/scripts/phase2_assemble.py` | Iterative assembled-video review via Gemini multimodal |
-| 6 | `music-matcher/scripts/analyze_video.py` | Video upload + V2T analysis via Gemini Files API |
-| 7 | `music-matcher/scripts/batch_analyze.py` | Batch wrapper around analyze_video.py |
-| 8 | `subtitle-maker/scripts/phase2_transcribe.py` | Video upload + ASR via Gemini Files API |
+| 4 | `video-editing/scripts/phase2_assemble.py` | Iterative assembled-video review via Gemini multimodal |
+| 5 | `music-matcher/scripts/analyze_video.py` | Video upload + V2T analysis via Gemini Files API |
+| 6 | `music-matcher/scripts/batch_analyze.py` | Batch wrapper around analyze_video.py |
+| 7 | `subtitle-maker/scripts/phase2_transcribe.py` | Video upload + ASR via Gemini Files API |
 
 One non-script artifact also carries the canonical marker via a `_boundary_note` JSON field:
 

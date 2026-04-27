@@ -1,6 +1,6 @@
 ---
 name: video-editing
-description: "AI 驱动的漫剧视频剪辑：多变体选优、Gemini 循环剪辑引擎、Premiere XML 工程生成。三阶段流水线自动完成从素材分析到成片输出。Applicable to: 视频剪辑, 剪辑视频, 自动剪辑, 漫剧剪辑, video editing, 变体选优, 多变体选优, 素材拼接, 生成XML, 导出Premiere, 循环质检, 拼接视频, 合并视频, 剪辑引擎"
+description: "AI 驱动的漫剧视频剪辑：多变体选优、循环剪辑引擎、Premiere XML 工程生成。三阶段流水线自动完成从素材分析到成片输出。Applicable to: 视频剪辑, 剪辑视频, 自动剪辑, 漫剧剪辑, video editing, 变体选优, 多变体选优, 素材拼接, 生成XML, 导出Premiere, 循环质检, 拼接视频, 合并视频, 剪辑引擎"
 argument-hint: "[ep编号，如 ep001]"
 ---
 
@@ -8,14 +8,14 @@ argument-hint: "[ep编号，如 ep001]"
 
 三阶段流水线：对 AI 生成的多变体视频素材进行分析、选优、剪辑，输出 Premiere 工程文件和成片视频。
 
-> Model boundary note: this skill remains deferred on direct Gemini multimodal calls because the current `aos-cli model` protocol does not yet fully cover this skill's required media upload/processing lifecycle and output shape. Do not add new provider surfaces here; migrate this skill only after the `aos-cli` protocol explicitly supports the needed multimodal contract.
+> Model boundary note: Phase 1 video analysis is migrated to `aos-cli model` `video.analyze`; Phase 2 assembled-video review remains a deferred multimodal path until it is migrated to the same first-class boundary.
 
 > **路径约定**：文档内引用 skill 自带文件时，直接使用 `references/`、`assets/`、`scripts/` 等相对路径；命令示例统一使用仓库根相对路径。`${PROJECT_DIR}` 含义保持不变。
 
 ```
 ${PROJECT_DIR}/output/ep{NNN}/scn*/clip*/*.mp4  (多变体素材)
         ↓
-  Phase 1: PySceneDetect + Gemini 多变体对比 → analysis.json
+  Phase 1: PySceneDetect + aos-cli video.analyze 多变体对比 → analysis.json
         ↓
   Phase 2: 剪辑引擎（切点调整/跳过镜头/过渡效果/变体替换）→ edit_decision.json
         ↓
@@ -43,7 +43,7 @@ ${PROJECT_DIR}/output/ep{NNN}/ep{NNN}.mp4 + ep{NNN}.xml  (最终交付)
 - **分阶段脚本（备用）**：`scripts/phase1_analyze.py`, `scripts/phase2_assemble.py`, `scripts/phase3_merge.py`
 - **切镜工具**：`scripts/detect_scenes.py` — 独立 PySceneDetect 切镜检测
 - **Prompt 模块**：`assets/phase1_clip_scoring.py`, `assets/phase2_loop_analysis.py`
-- **默认配置**：`assets/default.env` — Gemini 模型、压缩参数、循环阈值等
+- **默认配置**：`assets/default.env` — model 参数、压缩参数、循环阈值等
 
 ## 依赖
 
@@ -52,11 +52,13 @@ ${PROJECT_DIR}/output/ep{NNN}/ep{NNN}.mp4 + ep{NNN}.xml  (最终交付)
 pip install google-genai python-dotenv "scenedetect[opencv]" av
 ```
 
+`google-genai` is still required by Phase 2 until `scripts/phase2_assemble.py` is migrated.
+
 ### 系统工具
 - `ffmpeg` + `ffprobe`（视频拼接和分析）
 
 ### 环境变量
-- `GEMINI_API_KEY` — 必须设置。用于 ChatFire Gemini 代理，值填写 ChatFire key，可写在项目根目录 `.env` 文件中。
+- `GEMINI_API_KEY` — Phase 2 暂时仍必需。Phase 1 已通过 `aos-cli model` 边界调用 `video.analyze`。
 
 ## Workflow
 

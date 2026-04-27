@@ -41,6 +41,11 @@ CAPABILITIES: dict[str, Capability] = {
         output_kinds=("json",),
         providers=("gemini",),
     ),
+    "video.analyze": Capability(
+        name="video.analyze",
+        output_kinds=("json",),
+        providers=("gemini",),
+    ),
     "audio.transcribe": Capability(
         name="audio.transcribe",
         output_kinds=("json",),
