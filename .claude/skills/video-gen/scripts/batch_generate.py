@@ -31,7 +31,6 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Force unbuffered output so logs appear in real time
 sys.stdout.reconfigure(line_buffering=True)
@@ -48,7 +47,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from batch_generate_runtime import _process_scene_clips
+from batch_generate_runtime import _process_scene_clips, process_scenes_parallel
 from production_types import ClipIntent
 from video_api import DEFAULT_MODEL_CODE, get_subject_reference_for_model
 from path_manager import VideoReviewPaths, prepare_runtime_storyboard_export
@@ -757,25 +756,24 @@ def run_batch_generate(
         print(f"  不同场景并行处理，lsi 边生成边写入")
         print(f"{'='*60}")
 
-        with ThreadPoolExecutor(max_workers=max(1, len(scenes_clip_states))) as executor:
-            scene_futures = {
-                executor.submit(
-                    _process_scene_clips,
-                    scene_id, clips, episode, paths, model_code,
-                    quality, ratio, poll_interval, timeout, gemini_api_key,
-                    get_gemini_config(), data, str(runtime_json_path), json_lock, skip_review,
-                ): scene_id
-                for scene_id, clips in scenes_clip_states.items()
-            }
-            for future in as_completed(scene_futures):
-                s_id = scene_futures[future]
-                try:
-                    future.result()
-                    print(f"  [SCENE] {s_id} 所有 clip 处理完成")
-                except Exception as e:
-                    print(f"  [SCENE] {s_id} 处理异常: {e}", file=sys.stderr)
-                    import traceback
-                    traceback.print_exc()
+        def process_scene(scene_id, clips):
+            _process_scene_clips(
+                scene_id, clips, episode, paths, model_code,
+                quality, ratio, poll_interval, timeout, gemini_api_key,
+                get_gemini_config(), data, str(runtime_json_path), json_lock, skip_review,
+            )
+
+        def report_scene_error(scene_id, err):
+            print(f"  [SCENE] {scene_id} 处理异常: {err}", file=sys.stderr)
+            import traceback
+            traceback.print_exception(type(err), err, err.__traceback__)
+
+        process_scenes_parallel(
+            scenes_clip_states,
+            process_scene=process_scene,
+            on_scene_complete=lambda scene_id: print(f"  [SCENE] {scene_id} 所有 clip 处理完成"),
+            on_scene_error=report_scene_error,
+        )
 
         # Build results from clip_states
         for clip in clip_states:

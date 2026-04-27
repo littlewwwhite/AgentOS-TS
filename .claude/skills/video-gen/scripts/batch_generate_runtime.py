@@ -579,6 +579,34 @@ def _extract_and_upload_frame(
     return None, None, None
 
 
+def process_scenes_parallel(
+    scenes_clip_states: Dict[str, list],
+    process_scene,
+    on_scene_complete=None,
+    on_scene_error=None,
+) -> None:
+    """Run independent scenes concurrently while each scene owns its clip ordering."""
+    if not scenes_clip_states:
+        return
+
+    with ThreadPoolExecutor(max_workers=max(1, len(scenes_clip_states))) as executor:
+        scene_futures = {
+            executor.submit(process_scene, scene_id, clips): scene_id
+            for scene_id, clips in scenes_clip_states.items()
+        }
+        for future in as_completed(scene_futures):
+            scene_id = scene_futures[future]
+            try:
+                future.result()
+                if on_scene_complete:
+                    on_scene_complete(scene_id)
+            except Exception as err:
+                if on_scene_error:
+                    on_scene_error(scene_id, err)
+                else:
+                    raise
+
+
 def _process_scene_clips(
     scene_id: str,
     scene_clip_states: list,
