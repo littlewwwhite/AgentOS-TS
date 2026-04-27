@@ -41,4 +41,15 @@ describe("buildEpisodeSubStages", () => {
     const sb = rows.find((row) => row.stage === "STORYBOARD")!;
     expect(sb.path).toBe("output/storyboard/draft/ep003_storyboard.json");
   });
+
+  test("handles partial state where storyboard is done but video missing", () => {
+    const ep: EpisodeState = {
+      storyboard: { status: "completed", artifact: "output/storyboard/approved/ep004_storyboard.json" },
+    };
+    const rows = buildEpisodeSubStages("ep004", ep);
+    expect(rows.map((row) => ({ stage: row.stage, status: row.status }))).toEqual([
+      { stage: "STORYBOARD", status: "completed" },
+      { stage: "VIDEO", status: "not_started" },
+    ]);
+  });
 });

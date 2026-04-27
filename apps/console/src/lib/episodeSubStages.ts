@@ -3,16 +3,19 @@
 // pos: pure mapper used by EpisodeNode to render its expanded children
 
 import type { EpisodeState, StageStatus } from "../types";
+import type { StageName } from "./workflowModel";
+
+export type EpisodeSubStageName = Extract<StageName, "STORYBOARD" | "VIDEO">;
 
 export interface EpisodeSubStageRow {
-  stage: "STORYBOARD" | "VIDEO";
+  stage: EpisodeSubStageName;
   label: string;
   status: StageStatus;
   path: string;
   title: string;
 }
 
-const PER_EPISODE_MVP_STAGES = ["STORYBOARD", "VIDEO"] as const;
+const PER_EPISODE_MVP_STAGES: ReadonlyArray<EpisodeSubStageName> = ["STORYBOARD", "VIDEO"];
 
 export function buildEpisodeSubStages(
   epId: string,
@@ -24,6 +27,7 @@ export function buildEpisodeSubStages(
         stage,
         label: "故事板",
         status: ep?.storyboard?.status ?? "not_started",
+        // canonical pipeline path — matches output/storyboard/{draft,approved}/ep*.json
         path: ep?.storyboard?.artifact ?? `output/storyboard/draft/${epId}_storyboard.json`,
         title: `${epId}/故事板`,
       };
