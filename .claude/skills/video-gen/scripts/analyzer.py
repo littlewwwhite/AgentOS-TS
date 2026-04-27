@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# input: video file bytes + reviewer prompts (reference_consistency, prompt_compliance)
+# output: per-clip review JSON consumed by gemini_adapter / evaluator
+# pos: deferred multimodal video review path pending aos-cli model protocol expansion
 """
 Simplified Video Analyzer
 简化视频分析器 - 只检查参考一致性和提示词符合度
+
+Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
+This module uploads video bytes via the Gemini Files API and calls multimodal
+generate_content. The current aos-cli model v1 protocol does not yet define a
+video-file generate contract, so this path remains intentionally on the direct
+SDK. Do NOT add new callers; new code must go through aos-cli model.
 """
 
 import os
