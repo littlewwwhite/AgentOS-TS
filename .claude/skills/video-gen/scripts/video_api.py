@@ -29,7 +29,6 @@ _vm_cfg = get_video_model_config()
 _gen_cfg = get_generation_config()
 
 ACTIVE_VIDEO_PROVIDER = _vm_cfg.get("provider", "volcengine_ark")
-PROVIDERS = _vm_cfg.get("providers", {})
 VIDEO_MODEL_CONFIG = {
     name: {
         "provider": cfg.get("provider", ACTIVE_VIDEO_PROVIDER),
@@ -59,10 +58,6 @@ def get_provider_for_model(model_code: str = None) -> str:
         if cfg["model_code"] == model_code:
             return cfg.get("provider", DEFAULT_PROVIDER)
     return DEFAULT_PROVIDER
-
-
-def _provider_config(provider: str) -> Dict:
-    return PROVIDERS.get(provider, {})
 
 
 def _parse_duration_seconds(duration: Any) -> int:

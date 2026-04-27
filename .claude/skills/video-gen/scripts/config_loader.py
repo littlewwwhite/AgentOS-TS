@@ -36,12 +36,6 @@ _BUILTIN_DEFAULTS: Dict[str, Any] = {
                 "subject_reference": False,
             },
         },
-        "providers": {
-            "volcengine_ark": {
-                "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-                "api_key_env": "ARK_API_KEY",
-            },
-        },
     },
     "generation": {
         "min_attempts": 1,
@@ -74,6 +68,9 @@ _config_cache: Dict[str, Any] = {}
 
 def _apply_env_overrides(data: Dict[str, Any]) -> Dict[str, Any]:
     """Apply non-secret environment overrides after loading file config."""
+    video_model_cfg = data.setdefault("video_model", {})
+    video_model_cfg.pop("providers", None)
+
     gemini_cfg = data.setdefault("gemini", {})
     for provider_key in ("api_key", "api_key_env", "api_key_note", "base_url"):
         gemini_cfg.pop(provider_key, None)

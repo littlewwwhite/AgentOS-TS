@@ -9,12 +9,6 @@
         "model_group_code": "",
         "subject_reference": false
       }
-    },
-    "providers": {
-      "volcengine_ark": {
-        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-        "api_key_env": "ARK_API_KEY"
-      }
     }
   },
   "generation": {

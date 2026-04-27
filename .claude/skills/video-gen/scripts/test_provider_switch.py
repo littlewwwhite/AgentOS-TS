@@ -65,6 +65,7 @@ class ProviderSwitchTest(unittest.TestCase):
         self.assertEqual(defaults["models"]["seedance2"]["provider"], "volcengine_ark")
         self.assertEqual(defaults["models"]["seedance2"]["model_code"], "ep-20260303234827-tfnzm")
         self.assertNotIn("kling_omni", defaults["models"])
+        self.assertNotIn("providers", defaults)
 
     def test_asset_config_uses_seedance2_test_model_code(self):
         config_path = Path(__file__).resolve().parent.parent / "assets" / "config.json"
@@ -73,6 +74,40 @@ class ProviderSwitchTest(unittest.TestCase):
         model = config["video_model"]["models"]["seedance2"]
         self.assertEqual(model["provider"], "volcengine_ark")
         self.assertEqual(model["model_code"], "ep-20260303234827-tfnzm")
+        self.assertNotIn("providers", config["video_model"])
+
+    def test_loaded_video_config_does_not_project_provider_credentials(self):
+        import config_loader
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "video_model": {
+                            "provider": "volcengine_ark",
+                            "active_model": "seedance2",
+                            "models": {
+                                "seedance2": {
+                                    "provider": "volcengine_ark",
+                                    "model_code": "ep-test",
+                                }
+                            },
+                            "providers": {
+                                "volcengine_ark": {
+                                    "base_url": "https://ark.example.test",
+                                    "api_key_env": "ARK_API_KEY",
+                                }
+                            },
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            os.environ["STORYBOARD_CONFIG"] = str(config_path)
+            config_loader._config_cache.clear()
+
+            self.assertNotIn("providers", config_loader.get_video_model_config())
 
     def test_poll_multiple_tasks_maps_aos_cli_artifacts_to_video_fields(self):
         import video_api
