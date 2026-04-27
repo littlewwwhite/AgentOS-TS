@@ -132,6 +132,7 @@ Illustrative registered capability shape:
 | `generate` | `text`, `json` | `run` | `gemini` |
 | `image.generate` | `artifact` | `run` | `openai_compatible` |
 | `vision.analyze` | `json` | `run` | `gemini` |
+| `vision.review` | `json` | `run` | `gemini` |
 | `audio.transcribe` | `json` | `run` | `gemini` |
 | `embed` | `vector` | `run` | `gemini` |
 | `video.generate` | `task`, `task_result` | `submit` / `poll` | `ark` |

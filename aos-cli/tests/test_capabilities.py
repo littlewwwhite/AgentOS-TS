@@ -53,6 +53,14 @@ def test_capabilities_declares_vision_analyze_json():
     assert vision["providers"] == ["gemini"]
 
 
+def test_capabilities_declares_vision_review_json():
+    payload = capabilities_payload()
+    review = next(item for item in payload["capabilities"] if item["name"] == "vision.review")
+
+    assert review["outputKinds"] == ["json"]
+    assert review["providers"] == ["gemini"]
+
+
 def test_capabilities_declares_audio_transcribe_json():
     payload = capabilities_payload()
     audio = next(item for item in payload["capabilities"] if item["name"] == "audio.transcribe")

@@ -36,6 +36,11 @@ CAPABILITIES: dict[str, Capability] = {
         output_kinds=("json",),
         providers=("gemini",),
     ),
+    "vision.review": Capability(
+        name="vision.review",
+        output_kinds=("json",),
+        providers=("gemini",),
+    ),
     "audio.transcribe": Capability(
         name="audio.transcribe",
         output_kinds=("json",),

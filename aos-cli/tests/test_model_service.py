@@ -188,6 +188,46 @@ def test_service_returns_vision_json_output():
     assert response["output"] == {"kind": "json", "data": {"approved": True}}
 
 
+def test_service_returns_vision_review_json_output():
+    provider = FakeProvider('{"approved":true,"issues":[]}')
+    response = ModelService(provider_factory=lambda request, dispatch=None: provider).run(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "asset.review",
+            "capability": "vision.review",
+            "output": {"kind": "json"},
+            "input": {
+                "content": {
+                    "prompt": "review this asset",
+                    "images": ["file:///tmp/asset.png"],
+                    "rubric": {"style": "match project bible"},
+                }
+            },
+        }
+    )
+
+    assert response["ok"] is True
+    assert response["output"] == {"kind": "json", "data": {"approved": True, "issues": []}}
+
+
+def test_build_default_model_service_fakes_vision_review(monkeypatch):
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
+
+    response = build_default_model_service().run(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "asset.review",
+            "capability": "vision.review",
+            "output": {"kind": "json"},
+            "input": {"content": {"prompt": "review", "images": ["file:///tmp/asset.png"]}},
+        }
+    )
+
+    assert response["ok"] is True
+    assert response["provider"] == "gemini"
+    assert response["output"] == {"kind": "json", "data": {"ok": True, "task": "asset.review"}}
+
+
 def test_service_returns_audio_transcript_json():
     response = ModelService(provider_factory=lambda request, dispatch=None: FakeProvider('{"segments":[]}')).run(
         {

@@ -173,6 +173,7 @@ def _resolve_ark_video_provider(request: dict) -> ArkVideoProvider:
 _RUN_DISPATCH: dict[str, _Dispatch] = {
     "generate":         _Dispatch(_handle_generate,       _resolve_gemini_provider,        "gemini"),
     "vision.analyze":   _Dispatch(_handle_vision,         _resolve_gemini_provider,        "gemini"),
+    "vision.review":    _Dispatch(_handle_vision,         _resolve_gemini_provider,        "gemini"),
     "audio.transcribe": _Dispatch(_handle_audio,          _resolve_gemini_provider,        "gemini"),
     "embed":            _Dispatch(_handle_embed,          _resolve_gemini_embed_provider,  "gemini"),
     "image.generate":   _Dispatch(_handle_image_generate, _resolve_openai_image_provider,  "openai_compatible"),
@@ -296,6 +297,9 @@ class _FakeProvider:
         else:
             text = "fake response"
         return type("Result", (), {"text": text, "model": "fake-model", "usage": {}})()
+
+    def generate_multimodal(self, *, system, content, options):
+        return self.generate_text(system=system, content=content, options=options)
 
     def generate_image(self, *, prompt, options):
         policy = self.request.get("artifactPolicy") or {}
