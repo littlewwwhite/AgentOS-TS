@@ -95,6 +95,28 @@ def _normalize_reference_images(reference_images: Optional[List[Dict]]) -> List[
     return normalized
 
 
+def _normalize_reference_videos(
+    reference_videos: Optional[List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """Normalize boundary contract for Ark referenceVideos[].
+
+    Each entry must carry a public http(s) URL (Ark cannot fetch local paths).
+    Role defaults to ``reference_video`` when omitted, matching the provider
+    side of the envelope.
+    """
+    normalized: List[Dict[str, Any]] = []
+    for video in reference_videos or []:
+        url = video.get("url")
+        if not url:
+            continue
+        entry: Dict[str, Any] = {"url": _public_url(url), "role": video.get("role") or "reference_video"}
+        name = video.get("name")
+        if name:
+            entry["name"] = name
+        normalized.append(entry)
+    return normalized
+
+
 def submit_video_generation(
     *,
     prompt: str,
@@ -105,6 +127,7 @@ def submit_video_generation(
     task: str,
     reference_images: Optional[List[Dict[str, Any]]] = None,
     first_frame_url: Optional[str] = None,
+    reference_videos: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Submit a video generation request through the aos-cli model boundary."""
 
@@ -138,6 +161,9 @@ def submit_video_generation(
         )
     if merged_refs:
         input_payload["referenceImages"] = merged_refs
+    normalized_videos = _normalize_reference_videos(reference_videos)
+    if normalized_videos:
+        input_payload["referenceVideos"] = normalized_videos
 
     request: Dict[str, Any] = {
         "apiVersion": "aos-cli.model/v1",
@@ -180,9 +206,11 @@ def submit_video(
     quality: str = "720",
     ratio: str = "16:9",
     first_frame_url: Optional[str] = None,
+    reference_videos: Optional[List[Dict]] = None,
 ) -> Dict[str, Any]:
     try:
         normalized_refs = _normalize_reference_images(reference_images)
+        normalized_videos = _normalize_reference_videos(reference_videos)
         envelope = submit_video_generation(
             prompt=prompt,
             duration=duration,
@@ -192,6 +220,7 @@ def submit_video(
             task="video.generate",
             reference_images=normalized_refs or None,
             first_frame_url=first_frame_url,
+            reference_videos=normalized_videos or None,
         )
         output = envelope.get("output", {}) or {}
         return {
