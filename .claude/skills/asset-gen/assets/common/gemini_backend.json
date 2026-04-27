@@ -1,21 +1,11 @@
 {
   "_model_boundary_note": "Legacy-named asset-gen model config. Scripts use aos-cli model; image+text reviews use vision.review.",
-  "mode": "official",
   "model": "gemini-3.1-flash-lite-preview",
-  "proxy": {
-    "api_key": "",
-    "api_key_env": "GEMINI_API_KEY",
-    "base_url": "https://api.chatfire.cn/gemini"
-  },
   "review": {
     "models": [
       "gemini-3.1-flash-lite-preview"
     ],
     "retry_attempts": 2,
     "retry_sleep_seconds": 3
-  },
-  "official": {
-    "api_key": "",
-    "api_key_env": "GEMINI_API_KEY"
   }
 }

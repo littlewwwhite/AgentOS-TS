@@ -35,6 +35,7 @@ MIGRATED_SCRIPT_PATHS = [
 ]
 
 MIGRATED_USER_FACING_PATHS = [
+    ".claude/skills/asset-gen/references/troubleshooting.md",
     ".claude/skills/asset-gen/scripts/style_generate.py",
     ".claude/skills/asset-gen/scripts/generate_prompts_from_script.py",
     ".claude/skills/music-matcher/scripts/run_music_pipeline.py",
@@ -61,11 +62,16 @@ FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS = (
     "使用 Gemini",
     "调用 Gemini",
     "Gemini 场景分组失败",
+    "Gemini config not taking effect",
     "Gemini video analysis",
     "Gemini ASR",
 )
 
 DEFERRED_MARKER = "Model boundary note: " + "deferred multimodal"
+
+MIGRATED_ASSET_CONFIG_PATHS = [
+    ".claude/skills/asset-gen/assets/common/gemini_backend.json",
+]
 
 
 def _matches_prefix(name: str, prefixes: tuple[str, ...]) -> bool:
@@ -121,6 +127,22 @@ class DirectProviderGuardrailTests(unittest.TestCase):
             if DEFERRED_MARKER not in text:
                 continue
             violations.append(str(path.relative_to(REPO_ROOT)))
+        self.assertEqual(violations, [])
+
+    def test_migrated_asset_configs_do_not_expose_provider_credentials(self) -> None:
+        credential_snippets = (
+            '"api_key"',
+            '"api_key_env"',
+            '"base_url"',
+            "GEMINI_API_KEY",
+        )
+        violations: list[str] = []
+        for relative_path in MIGRATED_ASSET_CONFIG_PATHS:
+            source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+            for snippet in credential_snippets:
+                if snippet in source:
+                    violations.append(f"{relative_path}: {snippet}")
+
         self.assertEqual(violations, [])
 
 
