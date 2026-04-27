@@ -5,6 +5,7 @@ node_modules/
 
 .agentos/
 .worktrees/
+.claude/worktrees/
 
 dist/
 .next/
