@@ -361,6 +361,35 @@ def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
     else:
         print(f"[WARN] locations.json not found: {locations_file}", file=sys.stderr)
 
+    # Load props from props/props.json
+    props_file = assets_path / "props" / "props.json"
+    if props_file.exists():
+        with open(props_file, 'r', encoding='utf-8') as f:
+            props_data = json.load(f)
+        prop_count = 0
+        for prop_id, prop_data in props_data.items():
+            subject_id = prop_data.get("subject_id", "")
+            image_url = (
+                prop_data.get("three_view_url")
+                or prop_data.get("main_url")
+                or prop_data.get("image_url", "")
+            )
+            name = prop_data.get("name", prop_id)
+            if subject_id or image_url:
+                mapping[prop_id] = {
+                    "subject_id": subject_id,
+                    "name": name,
+                    "type": "prop",
+                    "image_url": image_url,
+                }
+                prop_count += 1
+            else:
+                print(f"  [WARN] Prop '{prop_id}' ({name}) has no subject_id or image_url, skipping",
+                      file=sys.stderr)
+        print(f"[ASSETS] Loaded {prop_count} props from {props_file}")
+    else:
+        print(f"[INFO] props.json not found: {props_file} (props/* tokens will pass through unresolved)")
+
     return mapping
 
 
