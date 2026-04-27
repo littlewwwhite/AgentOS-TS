@@ -719,16 +719,19 @@ def run_batch_generate(
             subject_ids = extract_subject_ids(ls['full_prompts'])
             if reference_images:
                 print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (image-reference mode)")
-            # JSON 中已有 lsi.url（上一 clip 最后镜头首帧），同时作为参考图加入
-            lsi_url = ls.get('lsi_url', '')
+            # JSON 中已有 lsi.url（上一 clip 最后镜头首帧）→ 走独立的 firstFrameUrl 通道。
+            # 不要塞进 reference_images：那是主体绑定通道（[图N] 索引），与续帧正交。
+            clip_first_frame_url: Optional[str] = None
+            lsi_url = (ls.get('lsi_url') or '').strip()
             if lsi_url:
-                reference_images = list(reference_images)
-                reference_images.append({
-                    "url": lsi_url,
-                    "name": "lsi",
-                    "display_name": "上一镜头首帧",
-                })
-                print(f"  [{ls_id}] lsi 参考图已加入 (url={lsi_url[:50]})")
+                if lsi_url.startswith(('http://', 'https://')):
+                    clip_first_frame_url = lsi_url
+                    print(f"  [{ls_id}] lsi 续帧 URL 注入 firstFrameUrl: {lsi_url[:60]}")
+                else:
+                    print(
+                        f"  [{ls_id}] [WARN] lsi.url 非公网 URL，跳过续帧: {lsi_url[:60]}",
+                        file=sys.stderr,
+                    )
 
             prompt = convert_prompt_brackets(prompt_with_indices)
             dur_api = parse_duration(ls.get('duration_seconds', '5'))
@@ -763,6 +766,7 @@ def run_batch_generate(
                 subject_ids=subject_ids,
                 subjects=[],
                 reference_images=list(reference_images or []),
+                first_frame_url=clip_first_frame_url,
                 location_num=location_num,
                 clip_num=clip_num,
             )
@@ -775,6 +779,7 @@ def run_batch_generate(
                 'prompt_version': 0,
                 'subjects': [],
                 'reference_images': reference_images,
+                'first_frame_url': clip_first_frame_url,
                 'prompt': prompt,
                 'dur_api': dur_api,
                 'location_num': location_num,

@@ -181,6 +181,7 @@ def _run_generation_rounds(
             subject_ids=[],
             subjects=list(clip.get("subjects") or []),
             reference_images=list(clip.get("reference_images") or []),
+            first_frame_url=clip.get("first_frame_url"),
             location_num=clip["location_num"],
             clip_num=clip["clip_num"],
         )
