@@ -155,7 +155,7 @@ def transcribe_with_aos_cli(media_path: str, video_stem: str, prompt: str, langu
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Phase 2: Gemini ASR 转录")
+    parser = argparse.ArgumentParser(description="Phase 2: aos-cli audio.transcribe 转录")
     parser.add_argument("video_path", help="视频文件路径")
     parser.add_argument("--glossary", default=None, help="字幕指南 glossary.json 路径")
     parser.add_argument("--ep-dir", default=None, help="剧集输出目录（如 output/ep001），中间产物放 _tmp/ 下")
