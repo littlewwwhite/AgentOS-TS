@@ -37,7 +37,8 @@ class TestSubmitVideoBoundary(unittest.TestCase):
     def tearDown(self):
         self.video_api.submit_envelope = self._orig
 
-    def test_first_frame_url_appended_as_reference_image_with_first_frame_role(self):
+    def test_reference_only_mode_emits_subject_refs_no_first_frame(self):
+        """Subject-binding mode: refs all role=reference_image, no first_frame."""
         self.video_api.submit_video_generation(
             prompt="[图1] in [图2]",
             duration=5,
@@ -49,17 +50,14 @@ class TestSubmitVideoBoundary(unittest.TestCase):
                 {"url": "https://x/act.png", "role": "reference_image", "name": "act_001"},
                 {"url": "https://x/loc.png", "role": "reference_image", "name": "loc_001"},
             ],
-            first_frame_url="https://x/lsi.png",
+            first_frame_url=None,
         )
         envelope = self._captured["envelope"]
         input_payload = envelope["input"]
         self.assertNotIn("firstFrameUrl", input_payload)
         refs = input_payload["referenceImages"]
-        self.assertEqual(len(refs), 3)
-        self.assertEqual(refs[0]["role"], "reference_image")
-        self.assertEqual(refs[1]["role"], "reference_image")
-        self.assertEqual(refs[2]["role"], "first_frame")
-        self.assertEqual(refs[2]["url"], "https://x/lsi.png")
+        self.assertEqual(len(refs), 2)
+        self.assertTrue(all(r["role"] == "reference_image" for r in refs))
 
     def test_data_uri_first_frame_passes_through(self):
         data_uri = "data:image/jpeg;base64,/9j/4AAQSk"
@@ -100,6 +98,27 @@ class TestSubmitVideoBoundary(unittest.TestCase):
         refs = input_payload["referenceImages"]
         self.assertEqual(len(refs), 1)
         self.assertEqual(refs[0]["role"], "reference_image")
+
+    def test_mutex_subject_refs_and_first_frame_rejected(self):
+        """Ark Seedance 2.0 rejects mixing reference_image + first/last frame.
+
+        The boundary must fail-fast so callers see this constraint without
+        needing to hit Ark and parse an opaque InvalidParameter response.
+        """
+        with self.assertRaises(ValueError) as ctx:
+            self.video_api.submit_video_generation(
+                prompt="[图1] 凝视前方",
+                duration=5,
+                ratio="16:9",
+                quality="720p",
+                project_dir=".",
+                task="video.test",
+                reference_images=[
+                    {"url": "https://x/act.png", "role": "reference_image", "name": "act_001"},
+                ],
+                first_frame_url="https://x/lsi.png",
+            )
+        self.assertIn("cannot mix", str(ctx.exception))
 
     def test_relative_first_frame_url_rejected(self):
         with self.assertRaises(RuntimeError):

@@ -114,6 +114,19 @@ def submit_video_generation(
         "ratio": ratio,
         "quality": quality,
     }
+    has_subject_refs = any(
+        (img.get("role") == "reference_image") for img in (reference_images or [])
+    )
+    if has_subject_refs and first_frame_url:
+        # Ark Seedance 2.0 rejects content[] mixing reference_image + first/last
+        # frame items: "first/last frame content cannot be mixed with reference
+        # media content". Per-clip mode is mutex; the upstream preprocess must
+        # pick one route. Fail fast at the boundary so the violation surfaces
+        # here instead of as an opaque Ark InvalidParameter at submit time.
+        raise ValueError(
+            "Ark video.generate cannot mix reference_image refs with first_frame_url; "
+            "drop one before calling submit_video_generation"
+        )
     merged_refs: List[Dict[str, Any]] = list(reference_images or [])
     if first_frame_url:
         merged_refs.append(
