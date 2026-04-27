@@ -265,6 +265,35 @@ def test_build_default_model_service_fakes_video_analyze(monkeypatch):
     assert response["output"] == {"kind": "json", "data": {"ok": True, "task": "video.clip.analysis"}}
 
 
+def test_build_default_model_service_fakes_music_matcher_video_segments(monkeypatch):
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
+
+    response = build_default_model_service().run(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "music-matcher.analyze-video",
+            "capability": "video.analyze",
+            "output": {"kind": "json"},
+            "input": {"content": {"prompt": "split music segments", "videos": ["file:///tmp/clip.mp4"]}},
+        }
+    )
+
+    assert response["ok"] is True
+    assert response["provider"] == "gemini"
+    assert response["output"]["kind"] == "json"
+    assert response["output"]["data"] == {
+        "segments": [
+            {
+                "segment_id": 1,
+                "start": "00:00",
+                "end": "00:05",
+                "needs_music": True,
+                "情绪": "fake mood",
+            }
+        ]
+    }
+
+
 def test_build_default_model_service_fakes_audio_transcribe_segments(monkeypatch):
     monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
 

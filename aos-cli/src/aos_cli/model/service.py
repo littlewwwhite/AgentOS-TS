@@ -353,6 +353,18 @@ def _fake_json_payload(request: dict) -> dict:
                 }
             ]
         }
+    if request.get("capability") == "video.analyze" and str(request.get("task", "")).startswith("music-matcher."):
+        return {
+            "segments": [
+                {
+                    "segment_id": 1,
+                    "start": "00:00",
+                    "end": "00:05",
+                    "needs_music": True,
+                    "情绪": "fake mood",
+                }
+            ]
+        }
     return {"ok": True, "task": request["task"]}
 
 

@@ -1,15 +1,11 @@
 """
-批量视频分析：扫描目录下所有视频，并发调 Gemini 分析，输出 segments JSON
+批量视频分析：扫描目录下所有视频，并发调 aos-cli model 分析，输出 segments JSON
 用法：python batch_analyze.py <视频目录> [--workers 3] [--recursive]
 输出：output/segments-<视频名>.json（无时间戳，支持断点续传）
 
-Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-This is a thin batch wrapper around analyze_video.py and inherits the same
-deferred status: video upload + multimodal analysis is not covered by aos-cli
-model v1, so the underlying SDK calls remain in place pending protocol expansion.
+Model boundary note: migrated to aos-cli model video.analyze.
 """
 
-import os
 import sys
 import json
 import time
@@ -21,8 +17,9 @@ from dotenv import load_dotenv
 SCRIPT_DIR = Path(__file__).parent
 sys.path.insert(0, str(SCRIPT_DIR))
 from analyze_video import (
-    compress_video, upload_video, analyze_with_gemini, parse_time,
-    SKILL_DIR, DEFAULT_ENV, GEMINI_API_KEY, GEMINI_BASE_URL,
+    analyze_with_aos_cli,
+    SKILL_DIR,
+    DEFAULT_ENV,
 )
 
 # 配置加载（analyze_video 导入时已加载，这里确保一致）
@@ -72,26 +69,12 @@ def analyze_single(video_path: Path, idx: int, total: int) -> dict:
 
     print(f"[{idx}/{total}] 正在分析 {video_path.name}...")
     try:
-        from google import genai as google_genai
-        from google.genai import types as genai_types
-        client = google_genai.Client(
-            api_key=GEMINI_API_KEY,
-            http_options=genai_types.HttpOptions(base_url=GEMINI_BASE_URL),
+        segments = analyze_with_aos_cli(
+            str(video_path),
+            stem,
+            output_dir=OUTPUT_DIR,
+            cwd=Path.cwd(),
         )
-
-        compressed = compress_video(str(video_path))
-        upload_path = compressed or str(video_path)
-        video_file = upload_video(upload_path, client)
-        if compressed:
-            Path(compressed).unlink(missing_ok=True)
-
-        segments = analyze_with_gemini(video_file, stem, client)
-
-        # 计算 duration_seconds
-        for seg in segments:
-            start_sec = parse_time(seg["start"])
-            end_sec = parse_time(seg["end"])
-            seg["duration_seconds"] = round(end_sec - start_sec, 2)
 
         # 保存（固定命名，无时间戳）
         OUTPUT_DIR.mkdir(exist_ok=True)
@@ -114,10 +97,6 @@ def main():
     parser.add_argument("--workers", type=int, default=3, help="并发数（默认3）")
     parser.add_argument("-r", "--recursive", action="store_true", help="递归扫描子目录")
     args = parser.parse_args()
-
-    if not GEMINI_API_KEY:
-        print("请设置 GEMINI_API_KEY 环境变量（值使用 ChatFire key）")
-        sys.exit(1)
 
     videos = scan_videos(args.directory, recursive=args.recursive)
     if not videos:

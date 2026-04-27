@@ -1,23 +1,22 @@
 """
-视频分析：调用 Gemini 分析视频，输出片段 JSON
+视频分析：调用 aos-cli model 分析视频，输出片段 JSON
 用法：python analyze_video.py <视频文件路径>
-输出：output/gemini-v2t-<视频名>-<时间戳>.json
+输出：output/segments-<视频名>-<时间戳>.json
 
-Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-This path uploads video files to Gemini via the Files API and runs video-to-text
-analysis. aos-cli model v1 has no contract for video upload/processing, so this
-remains on the direct SDK pending protocol expansion.
+Model boundary note: migrated to aos-cli model video.analyze.
 """
 
-import os
-import sys
 import json
-import time
-import subprocess
+import os
 import shutil
+import subprocess
+import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
 from dotenv import load_dotenv
 
 # 配置加载优先级：环境变量 > CWD/.env > skill 内置 default.env
@@ -34,15 +33,19 @@ load_dotenv(override=False)
 PROMPT_PATH = SKILL_DIR / "assets" / "video_analysis.txt"
 OUTPUT_DIR = Path.cwd() / "output"
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://api.chatfire.cn/gemini")
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
+if str(_SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(_SHARED_DIR))
 
-# Gemini 参数
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
-GEMINI_TEMPERATURE = float(os.getenv("GEMINI_TEMPERATURE", "1.0"))
-GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low")
-_res = os.getenv("GEMINI_MEDIA_RESOLUTION", "medium")
-GEMINI_MEDIA_RESOLUTION = f"MEDIA_RESOLUTION_{_res.upper()}"
+from aos_cli_model import aos_cli_model_run
+
+
+# aos-cli model 参数
+VIDEO_ANALYZE_MODEL = os.getenv("VIDEO_ANALYZE_MODEL", "gemini-3.1-pro-preview")
+VIDEO_ANALYZE_TEMPERATURE = float(os.getenv("VIDEO_ANALYZE_TEMPERATURE", "1.0"))
+VIDEO_ANALYZE_THINKING_LEVEL = os.getenv("VIDEO_ANALYZE_THINKING_LEVEL", "low")
+_res = os.getenv("VIDEO_ANALYZE_MEDIA_RESOLUTION", "medium")
+VIDEO_ANALYZE_MEDIA_RESOLUTION = f"MEDIA_RESOLUTION_{_res.upper()}"
 
 # 视频压缩参数
 COMPRESS_ENABLED = os.getenv("COMPRESS_BEFORE_UPLOAD", "true").lower() in ("true", "1", "yes")
@@ -108,61 +111,146 @@ def compress_video(video_path: str) -> str | None:
     return out_path
 
 
-def upload_video(video_path: str, client):
-    """上传本地视频到 Gemini Files API"""
-    print(f"正在上传视频: {video_path}")
-    video_file = client.files.upload(file=video_path)
-
-    # 等待文件处理完成
-    print("等待 Gemini 处理视频...")
-    while video_file.state.name == "PROCESSING":
-        time.sleep(3)
-        video_file = client.files.get(name=video_file.name)
-        print(f"  状态: {video_file.state.name}")
-
-    if video_file.state.name != "ACTIVE":
-        raise RuntimeError(f"视频处理失败，状态: {video_file.state.name}")
-
-    print(f"✓ 视频上传完成: {video_file.name}")
-    return video_file
-
-
-def analyze_with_gemini(video_file, video_stem: str, client) -> list[dict]:
-    """调用 Gemini 分析视频，返回片段列表，并将原始输出保存到 output/"""
-    from google.genai import types
-
+def analyze_with_aos_cli(
+    video_path: str,
+    video_stem: str,
+    *,
+    output_dir: Path = OUTPUT_DIR,
+    cwd: Path | None = None,
+) -> list[dict[str, Any]]:
+    """调用 aos-cli video.analyze 分析视频，返回带 duration_seconds 的片段列表。"""
     prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    compressed = compress_video(video_path)
+    analysis_path = Path(compressed or video_path)
+    try:
+        result = _run_video_analyze(
+            analysis_path,
+            prompt,
+            video_stem=video_stem,
+            cwd=cwd or Path.cwd(),
+            output_dir=output_dir,
+        )
+    finally:
+        if compressed:
+            Path(compressed).unlink(missing_ok=True)
 
-    config = types.GenerateContentConfig(
-        temperature=GEMINI_TEMPERATURE,
-        thinking_config=types.ThinkingConfig(thinking_level=GEMINI_THINKING_LEVEL),
-        media_resolution=GEMINI_MEDIA_RESOLUTION,
-    )
-
-    print(f"正在调用 Gemini 分析视频（模型: {GEMINI_MODEL}，thinking: {GEMINI_THINKING_LEVEL}，resolution: {GEMINI_MEDIA_RESOLUTION}）...")
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[video_file, prompt],
-        config=config,
-    )
-
-    raw = response.text.strip()
-
-    # 保存原始输出到 output/
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%m%d%H%M")
-    save_path = OUTPUT_DIR / f"gemini-v2t-{video_stem}-{ts}.json"
-    save_path.write_text(raw, encoding="utf-8")
-    print(f"✓ Gemini 原始输出已保存: {save_path.name}")
-
-    # 清理可能的 markdown 代码块包裹
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1]
-        raw = raw.rsplit("```", 1)[0]
-
-    segments = json.loads(raw)
-    print(f"✓ Gemini 识别出 {len(segments)} 个片段")
+    segments = _segments_from_response(result)
+    _add_duration_seconds(segments)
+    print(f"✓ aos-cli video.analyze 识别出 {len(segments)} 个片段")
     return segments
+
+
+def _run_video_analyze(
+    video_path: Path,
+    prompt: str,
+    *,
+    video_stem: str,
+    cwd: Path,
+    output_dir: Path,
+) -> object:
+    request = _build_request(video_path, prompt)
+    with tempfile.TemporaryDirectory(prefix="music-matcher-analyze-aos-cli-") as tmp:
+        tmp_dir = Path(tmp)
+        request_path = tmp_dir / "request.json"
+        response_path = tmp_dir / "response.json"
+        request_path.write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        print(
+            "正在调用 aos-cli video.analyze 分析视频"
+            f"（模型: {VIDEO_ANALYZE_MODEL}，thinking: {VIDEO_ANALYZE_THINKING_LEVEL}，"
+            f"resolution: {VIDEO_ANALYZE_MEDIA_RESOLUTION}）..."
+        )
+        completed = aos_cli_model_run(request_path, response_path, cwd=cwd)
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr or f"aos-cli failed with exit code {completed.returncode}")
+        if not response_path.exists():
+            raise RuntimeError("aos-cli did not write a video analysis response envelope")
+
+        output_dir.mkdir(exist_ok=True)
+        ts = datetime.now().strftime("%m%d%H%M")
+        raw_path = output_dir / f"aos-cli-video-analyze-raw-{video_stem}-{ts}.json"
+        raw_path.write_text(response_path.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"✓ aos-cli 原始响应已保存: {raw_path.name}")
+
+        return _read_json_output(response_path)
+
+
+def _build_request(video_path: Path, prompt: str) -> dict[str, Any]:
+    if not video_path.exists():
+        raise FileNotFoundError(f"找不到视频文件: {video_path}")
+    return {
+        "apiVersion": "aos-cli.model/v1",
+        "task": "music-matcher.analyze-video",
+        "capability": "video.analyze",
+        "modelPolicy": {"model": VIDEO_ANALYZE_MODEL},
+        "input": {"content": {"prompt": prompt, "videos": [video_path.resolve().as_uri()]}},
+        "output": {"kind": "json"},
+        "options": {
+            "temperature": VIDEO_ANALYZE_TEMPERATURE,
+            "thinkingLevel": VIDEO_ANALYZE_THINKING_LEVEL,
+            "mediaResolution": VIDEO_ANALYZE_MEDIA_RESOLUTION,
+        },
+    }
+
+
+def _read_json_output(response_path: Path) -> object:
+    try:
+        response = json.loads(response_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid aos-cli video analysis response envelope: {response_path}") from exc
+
+    if not response.get("ok"):
+        error = response.get("error") or {}
+        raise RuntimeError(error.get("message") or "aos-cli video analysis failed")
+
+    output = response.get("output") or {}
+    if output.get("kind") != "json":
+        raise RuntimeError(f"aos-cli response output.kind mismatch: expected json, got {output.get('kind')}")
+    if "data" in output:
+        return output["data"]
+    if "text" in output:
+        return _parse_json_text(str(output["text"]))
+    raise RuntimeError("aos-cli video analysis response missing output.data")
+
+
+def _parse_json_text(raw: str) -> object:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1]
+        text = text.rsplit("```", 1)[0]
+    return json.loads(text)
+
+
+def _segments_from_response(data: object) -> list[dict[str, Any]]:
+    if isinstance(data, list):
+        segments = data
+    elif isinstance(data, dict) and isinstance(data.get("segments"), list):
+        segments = data["segments"]
+    else:
+        raise RuntimeError("aos-cli music analysis output must be a segment list or {'segments': [...]}")
+
+    normalized: list[dict[str, Any]] = []
+    for item in segments:
+        if not isinstance(item, dict):
+            raise RuntimeError("aos-cli music analysis segments must be objects")
+        normalized.append(dict(item))
+    return normalized
+
+
+def _add_duration_seconds(segments: list[dict[str, Any]]) -> None:
+    for seg in segments:
+        start_sec = parse_time(str(seg["start"]))
+        end_sec = parse_time(str(seg["end"]))
+        seg["duration_seconds"] = round(end_sec - start_sec, 2)
+
+
+def save_timestamped_segments(segments: list[dict[str, Any]], video_stem: str, output_dir: Path = OUTPUT_DIR) -> Path:
+    output_dir.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%m%d%H%M")
+    output_path = output_dir / f"segments-{video_stem}-{ts}.json"
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(segments, f, ensure_ascii=False, indent=2)
+    return output_path
 
 
 def main():
@@ -176,30 +264,7 @@ def main():
 
     video_stem = Path(video_path).stem
 
-    if not GEMINI_API_KEY:
-        raise EnvironmentError("请在 .env 中设置 GEMINI_API_KEY（值使用 ChatFire key）")
-
-    # 1. 初始化 Gemini 客户端并上传视频
-    from google import genai as google_genai
-    from google.genai import types as genai_types
-    client = google_genai.Client(
-        api_key=GEMINI_API_KEY,
-        http_options=genai_types.HttpOptions(base_url=GEMINI_BASE_URL),
-    )
-
-    compressed = compress_video(video_path)
-    upload_path = compressed or video_path
-    video_file = upload_video(upload_path, client)
-    if compressed:
-        Path(compressed).unlink(missing_ok=True)
-
-    segments = analyze_with_gemini(video_file, video_stem, client)
-
-    # 2. 为每个片段计算 duration_seconds
-    for seg in segments:
-        start_sec = parse_time(seg["start"])
-        end_sec = parse_time(seg["end"])
-        seg["duration_seconds"] = round(end_sec - start_sec, 2)
+    segments = analyze_with_aos_cli(video_path, video_stem, output_dir=OUTPUT_DIR, cwd=Path.cwd())
 
     # 3. 打印分段结果
     print("\n--- 分段结果 ---")
@@ -210,12 +275,8 @@ def main():
         if seg.get("needs_music"):
             print(f"    情绪: {seg.get('情绪', '')}")
 
-    # 4. 保存最终 JSON（与 Gemini 原始输出分开，包含 duration_seconds）
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%m%d%H%M")
-    output_path = OUTPUT_DIR / f"segments-{video_stem}-{ts}.json"
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(segments, f, ensure_ascii=False, indent=2)
+    # 4. 保存最终 JSON（包含 duration_seconds）
+    output_path = save_timestamped_segments(segments, video_stem, OUTPUT_DIR)
 
     music_count = sum(1 for s in segments if s.get("needs_music"))
     print(f"\n✓ 已保存 {len(segments)} 个片段（{music_count} 个需要配乐）到: {output_path}")
