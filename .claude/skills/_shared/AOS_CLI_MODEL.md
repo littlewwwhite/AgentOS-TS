@@ -129,20 +129,25 @@ Video submit:
     "quality": "standard",
     "referenceImages": [
       { "url": "https://.../act_001.png", "role": "reference_image", "name": "act_001" },
-      { "url": "https://.../loc_002.png", "role": "reference_image", "name": "loc_002" }
-    ],
-    "referenceVideos": [
-      { "url": "https://.../prev_clip_first_frame.mp4", "role": "first_frame", "name": "lsi" }
+      { "url": "https://.../loc_002.png", "role": "reference_image", "name": "loc_002" },
+      { "url": "data:image/jpeg;base64,...", "role": "first_frame", "name": "lsi" }
     ]
   }
 }
 ```
 
-`[图N]` markers in `prompt` are 1-based indexes into `input.referenceImages[]`.
-The boundary forwards these references into Ark's `content[]` array; Ark binds
-them by index. `referenceVideos[]` accepts a `first_frame` role used by the
-continuity hand-off between consecutive clips. Both arrays are optional —
-omit them for plain text-to-video generation.
+`[图N]` markers in `prompt` are 1-based indexes into `input.referenceImages[]`
+entries with `role: "reference_image"`; Ark binds them by index. The boundary
+forwards each entry into Ark's `content[]` array, preserving its `role`.
+
+Continuity between consecutive clips is expressed as an extra
+`referenceImages[]` entry with `role: "first_frame"` carrying the previous
+clip's last-shot first frame. The `url` may be either a public http(s) URL or
+a `data:image/jpeg;base64,...` URI for inline injection — base64 lets the
+caller skip an external bucket. The first-frame entry is **not** indexed by
+`[图N]`, so it never collides with subject-binding refs.
+
+`referenceImages[]` is optional — omit it for plain text-to-video generation.
 
 Video poll can use the task envelope returned by submit as input to `model poll`.
 
