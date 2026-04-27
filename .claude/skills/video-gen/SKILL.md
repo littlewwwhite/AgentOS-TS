@@ -138,6 +138,17 @@ python3 ./.claude/skills/video-gen/scripts/batch_generate.py storyboard.json --o
 
 ## I/O Path Conventions
 
+### Subject reference resolution
+
+Storyboard prompts use `@act_xxx` / `@loc_xxx` / `@prop_xxx` tokens (legacy
+`{act_xxx}` form is also accepted). Before submission,
+`scripts/subject_resolver.resolve_subject_tokens()` rewrites them to `[图N]`
+markers and assembles the matching `referenceImages[]` entry list from
+`output/actors/actors.json`, `output/locations/locations.json`,
+`output/props/props.json`. Tokens with no resolvable image stay as raw text —
+the model receives them unchanged and no reference image is attached for that
+slot. See `_shared/AOS_CLI_MODEL.md` for the wire shape.
+
 All paths are relative to `${PROJECT_DIR}` (injected at runtime by orchestrator).
 
 ```
