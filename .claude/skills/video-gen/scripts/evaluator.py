@@ -10,9 +10,9 @@ import json
 from typing import Dict, List, Tuple, Optional
 from pathlib import Path
 
-from config_loader import get_gemini_review_config
+from config_loader import get_clip_review_config
 
-_thresholds = get_gemini_review_config().get("thresholds", {})
+_thresholds = get_clip_review_config().get("thresholds", {})
 
 # 配置UTF-8输出（Windows兼容）
 if sys.platform == 'win32':

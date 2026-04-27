@@ -33,7 +33,7 @@ class ProviderSwitchTest(unittest.TestCase):
                 json.dumps(
                     {
                         "video_model": {"active_model": "seedance2", "models": {}},
-                        "gemini": {"api_key": "", "base_url": "https://example.test"},
+                        "clip_review": {"api_key": "", "base_url": "https://example.test"},
                     }
                 ),
                 encoding="utf-8",
@@ -43,19 +43,21 @@ class ProviderSwitchTest(unittest.TestCase):
             os.environ["GEMINI_BASE_URL"] = "https://api.chatfire.cn/gemini"
             config_loader._config_cache.clear()
 
-            self.assertNotIn("api_key", config_loader.get_gemini_config())
-            self.assertNotIn("api_key_env", config_loader.get_gemini_config())
-            self.assertNotIn("base_url", config_loader.get_gemini_config())
+            self.assertNotIn("api_key", config_loader.get_clip_review_config())
+            self.assertNotIn("api_key_env", config_loader.get_clip_review_config())
+            self.assertNotIn("base_url", config_loader.get_clip_review_config())
             self.assertNotIn("sk-", json.dumps(config_loader._BUILTIN_DEFAULTS))
 
     def test_video_config_defaults_keep_only_review_policy_fields(self):
         import config_loader
 
-        gemini = config_loader._BUILTIN_DEFAULTS["gemini"]
-        self.assertNotIn("base_url", gemini)
-        self.assertNotIn("api_key", gemini)
-        self.assertNotIn("api_key_env", gemini)
-        self.assertEqual(gemini["review_model"], "gemini-3.1-pro-preview")
+        clip_review = config_loader._BUILTIN_DEFAULTS["clip_review"]
+        self.assertNotIn("base_url", clip_review)
+        self.assertNotIn("api_key", clip_review)
+        self.assertNotIn("api_key_env", clip_review)
+        self.assertEqual(clip_review["model"], "gemini-3.1-pro-preview")
+        self.assertNotIn("review_model", clip_review)
+        self.assertNotIn("color_removal_model", clip_review)
 
     def test_video_config_defaults_use_ark_only(self):
         import config_loader

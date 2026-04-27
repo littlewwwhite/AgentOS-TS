@@ -66,11 +66,11 @@ class FrameExtractorAosCliBoundaryTest(unittest.TestCase):
                 return subprocess.CompletedProcess(["aos-cli"], 0, "", "")
 
             with patch.object(frame_extractor, "aos_cli_model_run", side_effect=fake_run):
-                result = frame_extractor.describe_frame_with_gemini(
+                result = frame_extractor.describe_frame_with_aos_cli(
                     img_path=str(image_path),
                     last_shot_prompt="角色在走廊交谈",
                     character_names=["李明", "王芳"],
-                    gemini_cfg={"model": "gemini-3.1-pro-preview"},
+                    config={"model": "gemini-3.1-pro-preview"},
                 )
 
         request = captured["request"]
@@ -90,11 +90,11 @@ class FrameExtractorAosCliBoundaryTest(unittest.TestCase):
     def test_describe_frame_reports_missing_file_before_aos_cli(self) -> None:
         frame_extractor = self.import_module()
         with patch.object(frame_extractor, "aos_cli_model_run") as fake_run:
-            result = frame_extractor.describe_frame_with_gemini(
+            result = frame_extractor.describe_frame_with_aos_cli(
                 img_path="/missing/last-frame.png",
                 last_shot_prompt="prompt",
                 character_names=[],
-                gemini_cfg={},
+                config={},
             )
 
         self.assertIsNone(result)

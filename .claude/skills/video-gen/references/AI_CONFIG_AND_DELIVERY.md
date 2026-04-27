@@ -45,9 +45,9 @@ selection, authentication, and multimodal upload handling behind aos-cli.
 }
 ```
 
-The historical `frame_extractor.describe_frame_with_gemini` compatibility
-entrypoint now routes continuity frame description through `aos-cli model`
-`vision.review`; it no longer calls a provider SDK directly.
+Continuity frame description goes through `frame_extractor.describe_frame_with_aos_cli`,
+which routes the call to `aos-cli model` `vision.review` and never imports a
+provider SDK directly.
 
 ## Delivery JSON Format
 

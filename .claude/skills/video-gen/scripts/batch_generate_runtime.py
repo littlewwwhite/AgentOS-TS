@@ -20,12 +20,12 @@ from typing import Dict, List, Optional, Tuple
 
 from config_loader import (
     get_generation_config,
-    get_gemini_config,
+    get_clip_review_config,
     get_video_model_config,
 )
 from evaluator import evaluate_from_gemini_analysis, is_video_qualified
 from frame_extractor import (
-    describe_frame_with_gemini,
+    describe_frame_with_aos_cli,
     extract_last_shot_first_frame_blurred,
 )
 from production_types import ClipIntent, ContinuityContext
@@ -506,7 +506,7 @@ def _extract_and_upload_frame(
     scn_label: str,
     clip_group: list,
     paths,
-    gemini_cfg: Optional[dict],
+    clip_review_cfg: Optional[dict],
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """Extract, describe, and upload the last-shot first frame for continuity."""
     if not (video_path and os.path.exists(video_path)):
@@ -531,7 +531,7 @@ def _extract_and_upload_frame(
 
     first_frame_text: Optional[str] = None
     raw_path = frame_path.replace(".png", "_raw.png")
-    if gemini_cfg and os.path.exists(raw_path):
+    if clip_review_cfg and os.path.exists(raw_path):
         character_names = []
         clip0 = clip_group[0]
         if clip0.get("subjects"):
@@ -543,11 +543,11 @@ def _extract_and_upload_frame(
                 ref.get("display_name") or ref.get("name", "")
                 for ref in clip0["reference_images"]
             ]
-        first_frame_text = describe_frame_with_gemini(
+        first_frame_text = describe_frame_with_aos_cli(
             img_path=raw_path,
             last_shot_prompt=clip0.get("prompt", ""),
             character_names=character_names,
-            gemini_cfg=gemini_cfg,
+            config=clip_review_cfg,
         )
 
     cos_key = upload_frame_to_cos(png_path)
@@ -606,7 +606,7 @@ def _process_scene_clips(
     poll_interval: int,
     timeout: int,
     gemini_api_key: Optional[str],
-    gemini_cfg: Optional[dict] = None,
+    clip_review_cfg: Optional[dict] = None,
     data: Optional[dict] = None,
     json_path: Optional[str] = None,
     json_lock=None,
@@ -670,7 +670,7 @@ def _process_scene_clips(
                 scn_label=scn_label,
                 clip_group=clip_group,
                 paths=paths,
-                gemini_cfg=None,
+                clip_review_cfg=None,
             )
         first_frame_url = next_frame_url
 

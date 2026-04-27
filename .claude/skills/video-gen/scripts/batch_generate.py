@@ -54,7 +54,7 @@ from batch_generate_runtime import _process_scene_clips, process_scenes_parallel
 from production_types import ClipIntent
 from video_api import DEFAULT_MODEL_CODE, get_subject_reference_for_model
 from path_manager import VideoReviewPaths, prepare_runtime_storyboard_export
-from config_loader import get_generation_config, get_gemini_config
+from config_loader import get_generation_config, get_clip_review_config
 from pipeline_state import ensure_state, update_episode, update_stage
 
 # ============================================================
@@ -807,7 +807,7 @@ def run_batch_generate(
             _process_scene_clips(
                 scene_id, clips, episode, paths, model_code,
                 quality, ratio, poll_interval, timeout, gemini_api_key,
-                get_gemini_config(), data, str(runtime_json_path), json_lock, skip_review,
+                get_clip_review_config(), data, str(runtime_json_path), json_lock, skip_review,
             )
 
         def report_scene_error(scene_id, err):

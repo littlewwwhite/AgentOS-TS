@@ -246,11 +246,7 @@ def _build_frame_description_prompt(
 def _frame_description_model(config: dict | None) -> str:
     if not config:
         return DEFAULT_FRAME_DESCRIPTION_MODEL
-    return (
-        config.get("model")
-        or config.get("review_model")
-        or DEFAULT_FRAME_DESCRIPTION_MODEL
-    )
+    return config.get("model") or DEFAULT_FRAME_DESCRIPTION_MODEL
 
 
 def _read_frame_description_response(response_path: Path) -> str:
@@ -332,21 +328,6 @@ def describe_frame_with_aos_cli(
     except Exception as e:
         print(f"[WARN] aos-cli 画面描述失败: {e}", file=sys.stderr)
         return None
-
-
-def describe_frame_with_gemini(
-    img_path: str,
-    last_shot_prompt: str,
-    character_names: List[str],
-    gemini_cfg: dict,
-) -> Optional[str]:
-    """Compatibility wrapper for the historical frame-description function name."""
-    return describe_frame_with_aos_cli(
-        img_path=img_path,
-        last_shot_prompt=last_shot_prompt,
-        character_names=character_names,
-        config=gemini_cfg,
-    )
 
 
 # ============================================================

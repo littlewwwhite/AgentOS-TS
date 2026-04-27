@@ -9,10 +9,9 @@ config_loader.py — video-gen 统一配置加载器
 从 assets/config.json 加载配置，支持环境变量 STORYBOARD_CONFIG 覆盖路径。
 找不到文件时返回内置默认值（向后兼容）。
 
-The legacy-named `gemini` config section is compatibility for review thresholds
-and model selection only. Migrated review and frame-description paths route
-through aos-cli model and must not read provider secrets directly.
-Do not introduce new consumers of `get_gemini_config`.
+The `clip_review` config section selects the model used for generated-clip
+review (frame description and video analysis) plus the business thresholds
+that gate pass/fail. Provider routing and secrets are owned by aos-cli.
 """
 
 import json
@@ -47,10 +46,8 @@ _BUILTIN_DEFAULTS: Dict[str, Any] = {
         "poll_interval": 10,
         "max_consecutive_errors": 10,
     },
-    "gemini": {
+    "clip_review": {
         "model": "gemini-3.1-pro-preview",
-        "review_model": "gemini-3.1-pro-preview",
-        "color_removal_model": "gemini-3.1-pro-preview",
         "max_workers": 2,
         "thresholds": {
             "reference_consistency_min": 6,
@@ -71,9 +68,9 @@ def _apply_env_overrides(data: Dict[str, Any]) -> Dict[str, Any]:
     video_model_cfg = data.setdefault("video_model", {})
     video_model_cfg.pop("providers", None)
 
-    gemini_cfg = data.setdefault("gemini", {})
+    clip_review_cfg = data.setdefault("clip_review", {})
     for provider_key in ("api_key", "api_key_env", "api_key_note", "base_url"):
-        gemini_cfg.pop(provider_key, None)
+        clip_review_cfg.pop(provider_key, None)
     return data
 
 
@@ -109,14 +106,9 @@ def get_generation_config() -> Dict[str, Any]:
     return get_config().get("generation", _BUILTIN_DEFAULTS["generation"])
 
 
-def get_gemini_review_config() -> Dict[str, Any]:
-    """返回 gemini 配置段（兼容旧的 gemini_review 调用）。"""
-    return get_config().get("gemini", _BUILTIN_DEFAULTS["gemini"])
-
-
-def get_gemini_config() -> Dict[str, Any]:
-    """返回 gemini 配置段。"""
-    return get_config().get("gemini", _BUILTIN_DEFAULTS["gemini"])
+def get_clip_review_config() -> Dict[str, Any]:
+    """Return the clip_review config section (review model + thresholds)."""
+    return get_config().get("clip_review", _BUILTIN_DEFAULTS["clip_review"])
 
 
 def get_prompt_generation_config() -> Dict[str, Any]:
