@@ -3,6 +3,8 @@
 """
 review_char.py - 角色专用 Gemini 审图脚本（世界观感知版）
 
+Model boundary note: this image+text review path remains deferred until `aos-cli model` defines an explicit multimodal review contract for the required media upload/processing lifecycle and review I/O shape.
+
 三种审查类型：
   front      - 审查正视图（头身比 + 剧本符合度 + 无道具强制检查）
   views      - 审查侧/背视图与正视图的一致性
@@ -66,7 +68,7 @@ _log_prefix = ""
 def _log(msg):
     print(f"{_log_prefix}{msg}", file=sys.stderr)
 
-from common_gemini_client import create_client, load_image_part, extract_response_text
+from gemini_multimodal_legacy import create_client, load_image_part, extract_response_text
 
 # ── 加载统一审核配置 ──────────────────────────────────────────────────────────
 from common_config import get_review_config

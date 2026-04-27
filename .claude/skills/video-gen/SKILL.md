@@ -15,23 +15,21 @@ allowed-tools:
 
 ## 前置检查（每次执行前按序完成）
 
-### 步骤 0: Ark / ChatFire 环境依赖检查
+### 步骤 0: aos-cli model 与 ffmpeg 依赖检查
+
+视频生成调用统一通过 `aos-cli model`：
+
+- Submit 使用 `video.generate` + `output.kind=task`，走 `model submit`。
+- Poll 使用 `video.generate` + `output.kind=task_result`，走 `model poll`。
+- 运行时就绪检查：`uv run --project aos-cli aos-cli model preflight --json`。
 
 ```bash
-python3 - <<'PY'
-import os, sys
-missing = [k for k in ("ARK_API_KEY", "GEMINI_API_KEY") if not os.environ.get(k)]
-if missing:
-    print("missing env: " + ", ".join(missing), file=sys.stderr)
-    sys.exit(1)
-print("video-gen env ok")
-PY
+uv run --project aos-cli aos-cli model preflight --json >/dev/null
 command -v ffmpeg >/dev/null
 ```
 
-- 缺少 `ARK_API_KEY` → Seedance2 视频生成不可运行
-- 缺少 `GEMINI_API_KEY` → 视频评审（ChatFire Gemini 代理）不可运行；该变量值应填写 ChatFire key
-- `ffmpeg` 缺失 → 按输出提示安装
+- `aos-cli model preflight` 失败 → 按 aos-cli 输出修复 provider/key 配置后再继续
+- `ffmpeg` 缺失 → 按系统提示安装
 
 前置检查全部通过后，进入 Mode Selection。
 
@@ -211,7 +209,7 @@ Recovery order:
 | `generate_episode_json.py` | Export approved storyboard canonical to VIDEO runtime storyboard |
 | `batch_generate.py` | Core: batch video gen + review loop; scene-parallel, clip-serial |
 | `frame_extractor.py` | Last-shot first-frame extraction + face blur (ffmpeg + PIL) |
-| `video_api.py` | Provider adapter for Volcengine Ark Seedance 2 |
+| `video_api.py` | Video model boundary adapter (aos-cli model submit/poll) |
 | `analyzer.py` / `evaluator.py` | Gemini 2-role analyzer + 2-dimension scoring |
 | `config_loader.py` | Config loader (reads `assets/config.json`) |
 
@@ -221,7 +219,7 @@ Recovery order:
 video-gen
     ├─ Input: ${PROJECT_DIR}/output/storyboard/approved/ep###_storyboard.json
     ├─ Output: ${PROJECT_DIR}/output/ep###/*.mp4
-    ├─ Depends: ARK_API_KEY (default video gen auth)
+    ├─ Depends: aos-cli model (video.generate submit/poll)
     └─ Built-in: Gemini video review
 ```
 

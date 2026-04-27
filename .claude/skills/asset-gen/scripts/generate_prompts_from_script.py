@@ -35,7 +35,7 @@ if sys.platform == 'win32':
         import io
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
-from common_gemini_client import generate_content_with_retry
+from common_gemini_client import generate_content_with_retry, generate_json_with_retry
 
 # ── 加载生成配置 ───────────────────────────────────────────────────────────────
 from common_config import get_config
@@ -342,11 +342,7 @@ def analyze_actor_profiles_with_gemini(script_data, workspace_path):
 3. 只返回 JSON，不要任何额外说明"""
 
     try:
-        text = generate_content_with_retry(prompt, "角色属性分析")
-        if text.startswith("```"):
-            parts = text.split("\n")
-            text = "\n".join(parts[1:-1] if parts[-1].strip() == "```" else parts[1:])
-        result = json.loads(text)
+        result = generate_json_with_retry(prompt, "角色属性分析")
         Path(workspace_path).mkdir(parents=True, exist_ok=True)
         with open(analysis_path, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
@@ -536,12 +532,7 @@ def determine_scene_groups_with_gemini(locations, script_config):
 要求：覆盖列表中所有场景，不得遗漏。"""
 
     try:
-        text = generate_content_with_retry(prompt, "场景分组")
-        # 去除可能的 markdown 代码块
-        if text.startswith("```"):
-            lines = text.split("\n")
-            text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-        result = json.loads(text)
+        result = generate_json_with_retry(prompt, "场景分组")
         log(f"✓ 场景分组完成，共 {len(result)} 个场景")
         return result
     except Exception as e:

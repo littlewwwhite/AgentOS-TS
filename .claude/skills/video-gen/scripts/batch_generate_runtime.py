@@ -241,6 +241,7 @@ def _run_generation_rounds(
                     "version": version,
                     "provider": submit_result.get("provider"),
                     "model_code": submit_result.get("model_code") or model_code,
+                    "task_envelope": submit_result.get("task_envelope"),
                 }
             )
         else:
@@ -267,6 +268,7 @@ def _run_generation_rounds(
             "output_path": item["output_path"],
             "provider": item.get("provider"),
             "model_code": item.get("model_code"),
+            "task_envelope": item.get("task_envelope"),
         }
         for item in submitted
     ]

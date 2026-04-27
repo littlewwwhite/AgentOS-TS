@@ -362,10 +362,10 @@ def _poller_thread(pending_q, inbox_q, stop_event, temp_dir):
         resp = check_task_once(ticket['api_task_id'])
         api_status = resp.get('status', 'UNKNOWN')
 
-        if api_status in ('SUCCESS', 'FAIL', 'FAILED', 'ERROR'):
+        if api_status in ('succeeded', 'FAIL', 'FAILED', 'ERROR'):
             log(f"  [轮询] prompt_id={ticket.get('prompt_id', 'N/A')[:8]}..., api_task_id={ticket.get('api_task_id', 'N/A')}, api_status={api_status}")
 
-        if api_status == 'SUCCESS':
+        if api_status == 'succeeded':
             result_urls = resp.get('result_urls', [])
             display_urls = resp.get('display_urls', [])
             img_path = None
@@ -1081,7 +1081,15 @@ def generate_characters(chars_json, project_dir, workspace=None, scripts_dir=Non
         ss = actor_state[state_id]
         ts = task_state[prompt_id]
         _thread_local.asset_prefix = f"【{ss['actor_name']}】"
-        params = {"quality": "2K", "ratio": "16:9", "generate_num": "1"}
+        safe_actor_name = sanitize_dirname(ss['actor_name'])
+        params = {
+            "quality": "2K",
+            "ratio": "16:9",
+            "generate_num": "1",
+            "local_dir": str(Path(temp_dir) / safe_actor_name),
+            "role": "character.three_view",
+            "task": "asset.character.three_view",
+        }
         tmp_prompt = ts['prompt']
         if ss.get('iref_url'):
             params["iref"] = [ss['iref_url']]
@@ -1090,7 +1098,12 @@ def generate_characters(chars_json, project_dir, workspace=None, scripts_dir=Non
         log(f"  [提交] {ss['actor_name']} / {prompt_id[:8]} tmp_prompt: {tmp_prompt} params: {params}...")
         # submit_image_task has 3 internal retries; InsufficientCreditsError propagates immediately.
         try:
-            api_task_id = submit_image_task(tmp_prompt, params)
+            api_task_id = submit_image_task(
+                "",
+                tmp_prompt,
+                params=params,
+                project_dir=project_dir,
+            )
         except InsufficientCreditsError as e:
             log(f"  ❌ 积分不足，停止所有提交: {e}")
             _credits_exhausted.set()
@@ -1141,14 +1154,27 @@ def generate_characters(chars_json, project_dir, workspace=None, scripts_dir=Non
         ss = actor_state[state_id]
         ts = task_state[prompt_id]
         _thread_local.asset_prefix = f"【{ss['actor_name']}】"
+        safe_actor_name = sanitize_dirname(ss['actor_name'])
         front_url = ss['url_dict'].get('front', '')
-        params = {"quality": "2K", "ratio": "1:1", "generate_num": "1"}
+        params = {
+            "quality": "2K",
+            "ratio": "1:1",
+            "generate_num": "1",
+            "local_dir": str(Path(temp_dir) / safe_actor_name),
+            "role": "character.head_closeup",
+            "task": "asset.character.head_closeup",
+        }
         if front_url:
             params["iref"] = [front_url]
 
         log(f"  [提交头部特写] {ss['actor_name']} prompt: {ts['prompt']}, iref: {front_url}")
         try:
-            api_task_id = submit_image_task(ts['prompt'], params)
+            api_task_id = submit_image_task(
+                "",
+                ts['prompt'],
+                params=params,
+                project_dir=project_dir,
+            )
         except InsufficientCreditsError as e:
             log(f"  ❌ 积分不足，停止所有提交: {e}")
             _credits_exhausted.set()

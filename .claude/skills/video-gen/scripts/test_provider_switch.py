@@ -75,60 +75,43 @@ class ProviderSwitchTest(unittest.TestCase):
         self.assertEqual(model["provider"], "volcengine_ark")
         self.assertEqual(model["model_code"], "ep-20260303234827-tfnzm")
 
-    def test_ark_payload_maps_refs_and_continuity(self):
+    def test_poll_multiple_tasks_maps_aos_cli_artifacts_to_video_fields(self):
         import video_api
 
-        body = video_api.build_ark_video_task_body(
-            model_code="ep-20260303234827-tfnzm",
-            prompt="女孩走向镜头",
-            reference_images=[
-                {"url": "https://cdn.example.com/actor.png", "name": "act_001"},
-                {"url": "https://cdn.example.com/prev.png", "name": "lsi"},
-            ],
-            reference_videos=[{"url": "https://cdn.example.com/prev.mp4"}],
-            duration="8",
-            quality="720",
-            ratio="9:16",
-            first_frame_url="https://cdn.example.com/prev.png",
-            need_audio=True,
-        )
-
-        self.assertEqual(body["model"], "ep-20260303234827-tfnzm")
-        self.assertEqual(body["duration"], 8)
-        self.assertEqual(body["resolution"], "720p")
-        self.assertEqual(body["ratio"], "9:16")
-        self.assertTrue(body["generate_audio"])
-        self.assertTrue(body["return_last_frame"])
-
-        roles = [item.get("role") for item in body["content"] if item["type"] != "text"]
-        self.assertEqual(roles.count("first_frame"), 1)
-        self.assertEqual(roles.count("reference_image"), 1)
-        self.assertEqual(roles.count("reference_video"), 1)
-        self.assertTrue(
-            any(
-                item.get("role") == "first_frame"
-                and item["image_url"]["url"].startswith("https://")
-                for item in body["content"]
-            )
-        )
-
-    def test_ark_poll_result_keeps_video_and_last_frame_urls(self):
-        import video_api
-
-        ark_response = {
-            "id": "cgt-test",
-            "status": "succeeded",
-            "content": {
-                "video_url": "https://cdn.example.com/out.mp4",
-                "last_frame_url": "https://cdn.example.com/last.png",
-            },
+        envelope_seed = {
+            "ok": True,
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video.generate",
+            "capability": "video.generate",
+            "output": {"kind": "task", "taskId": "task-poll-1"},
+            "warnings": [],
         }
 
-        with patch.object(video_api, "poll_ark_video_task", return_value=ark_response), \
+        result_envelope = {
+            "ok": True,
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video.generate",
+            "capability": "video.generate",
+            "output": {
+                "kind": "task_result",
+                "status": "SUCCESS",
+                "artifacts": [
+                    {
+                        "kind": "video",
+                        "uri": "https://cdn.example.com/out.mp4",
+                        "lastFrameUrl": "https://cdn.example.com/last.png",
+                    }
+                ],
+            },
+            "warnings": [],
+        }
+
+        with patch.object(video_api, "poll_video_generation", return_value=result_envelope), \
              patch.object(video_api, "download_video", return_value="/tmp/out.mp4"):
             results = video_api.poll_multiple_tasks(
                 tasks=[{
-                    "task_id": "cgt-test",
+                    "task_id": "task-poll-1",
+                    "task_envelope": envelope_seed,
                     "output_path": "/tmp/out.mp4",
                     "provider": "volcengine_ark",
                     "model_code": "ep-20260303234827-tfnzm",
@@ -141,6 +124,96 @@ class ProviderSwitchTest(unittest.TestCase):
         self.assertEqual(results[0]["video_url"], "https://cdn.example.com/out.mp4")
         self.assertEqual(results[0]["last_frame_url"], "https://cdn.example.com/last.png")
         self.assertEqual(results[0]["video_path"], "/tmp/out.mp4")
+
+
+def test_video_submit_uses_aos_cli_task_boundary(tmp_path, monkeypatch):
+    import video_api
+
+    calls = []
+
+    def fake_submit(request_path, task_path, *, cwd=None):
+        calls.append((request_path, task_path, cwd))
+        request = json.loads(request_path.read_text(encoding="utf-8"))
+        assert request["apiVersion"] == "aos-cli.model/v1"
+        assert request["capability"] == "video.generate"
+        assert request["output"]["kind"] == "task"
+        task_path.write_text(
+            json.dumps(
+                {
+                    "ok": True,
+                    "apiVersion": "aos-cli.model/v1",
+                    "task": "video.ep001.scn001.clip001",
+                    "capability": "video.generate",
+                    "output": {"kind": "task", "taskId": "task-1"},
+                    "provider": "ark",
+                    "model": "fake-video-model",
+                    "warnings": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return type("Completed", (), {"returncode": 0, "stderr": ""})()
+
+    monkeypatch.setattr(video_api, "aos_cli_model_submit", fake_submit)
+
+    result = video_api.submit_video_generation(
+        prompt="Slow camera push.",
+        duration=5,
+        ratio="16:9",
+        quality="standard",
+        project_dir=tmp_path,
+        task="video.ep001.scn001.clip001",
+    )
+
+    assert calls
+    assert result["output"]["taskId"] == "task-1"
+
+
+def test_video_poll_uses_aos_cli_task_result_boundary(tmp_path, monkeypatch):
+    import video_api
+
+    def fake_poll(task_path, result_path, *, cwd=None):
+        result_path.write_text(
+            json.dumps(
+                {
+                    "ok": True,
+                    "apiVersion": "aos-cli.model/v1",
+                    "task": "video.ep001.scn001.clip001",
+                    "capability": "video.generate",
+                    "output": {
+                        "kind": "task_result",
+                        "status": "SUCCESS",
+                        "artifacts": [
+                            {
+                                "kind": "video",
+                                "uri": "https://example.test/video.mp4",
+                                "lastFrameUrl": "https://example.test/last.png",
+                            }
+                        ],
+                    },
+                    "warnings": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return type("Completed", (), {"returncode": 0, "stderr": ""})()
+
+    monkeypatch.setattr(video_api, "aos_cli_model_poll", fake_poll)
+
+    result = video_api.poll_video_generation(
+        task_envelope={
+            "ok": True,
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video.ep001.scn001.clip001",
+            "capability": "video.generate",
+            "output": {"kind": "task", "taskId": "task-1"},
+            "warnings": [],
+        },
+        project_dir=tmp_path,
+    )
+
+    assert result["output"]["status"] == "SUCCESS"
+    assert result["output"]["artifacts"][0]["lastFrameUrl"] == "https://example.test/last.png"
 
 
 if __name__ == "__main__":

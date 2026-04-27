@@ -13,6 +13,8 @@ argument-hint: "[视频文件路径或目录]"
 输入一个视频文件，自动完成：Gemini 视频分析 → MCP 向量匹配选曲 → FFmpeg 合成配乐视频。
 支持单视频和批量目录两种模式。
 
+> Model boundary note: this skill remains deferred on direct Gemini multimodal calls because the current `aos-cli model` protocol does not yet fully cover this skill's required media upload/processing lifecycle and output shape. Do not add new provider surfaces here; migrate this skill only after the `aos-cli` protocol explicitly supports the needed multimodal contract.
+
 ## Resources
 
 - **视频分析脚本**：`scripts/analyze_video.py` — 压缩视频 + Gemini 分析 → segments JSON

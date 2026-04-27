@@ -8,6 +8,8 @@ argument-hint: "[ep编号，如 ep001]"
 
 三阶段流水线：对 AI 生成的多变体视频素材进行分析、选优、剪辑，输出 Premiere 工程文件和成片视频。
 
+> Model boundary note: this skill remains deferred on direct Gemini multimodal calls because the current `aos-cli model` protocol does not yet fully cover this skill's required media upload/processing lifecycle and output shape. Do not add new provider surfaces here; migrate this skill only after the `aos-cli` protocol explicitly supports the needed multimodal contract.
+
 > **路径约定**：文档内引用 skill 自带文件时，直接使用 `references/`、`assets/`、`scripts/` 等相对路径；命令示例统一使用仓库根相对路径。`${PROJECT_DIR}` 含义保持不变。
 
 ```
