@@ -1,53 +1,39 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # input: video file bytes + reviewer prompts (reference_consistency, prompt_compliance)
-# output: per-clip review JSON consumed by gemini_adapter / evaluator
-# pos: deferred multimodal video review path pending aos-cli model protocol expansion
+# output: per-clip review JSON consumed by video review adapter / evaluator
+# pos: aos-cli video.analyze review boundary for generated video clips
 """
 Simplified Video Analyzer
-简化视频分析器 - 只检查参考一致性和提示词符合度
-
-Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-This module uploads video bytes via the Gemini Files API and calls multimodal
-generate_content. The current aos-cli model v1 protocol does not yet define a
-video-file generate contract, so this path remains intentionally on the direct
-SDK. Do NOT add new callers; new code must go through aos-cli model.
+Model boundary note: migrated to aos-cli model video.analyze.
 """
 
 import os
 import sys
 import json
 import time
+import tempfile
 from pathlib import Path
-from typing import List, Dict, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, List, Dict, Optional
 
 # 配置UTF-8输出
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
 
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:
-    print("请先安装依赖: pip install google-genai")
-    exit(1)
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
+if str(_SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(_SHARED_DIR))
 
-from config_loader import get_gemini_review_config, get_gemini_config
-
-_review_cfg = get_gemini_review_config()
-_gemini_cfg = get_gemini_config()
-GEMINI_BASE_URL = _gemini_cfg.get("base_url", "https://api.chatfire.cn/gemini")
-GEMINI_API_KEY = _gemini_cfg.get("api_key", "")
-GEMINI_REVIEW_MODEL = _gemini_cfg.get("review_model", "gemini-3.1-pro-preview")
+from aos_cli_model import aos_cli_model_run
 
 
-def _make_client(api_key: str = None):
-    """创建带 base_url 的 genai.Client"""
-    _api_key = api_key or GEMINI_API_KEY
-    http_options = types.HttpOptions(base_url=GEMINI_BASE_URL) if GEMINI_BASE_URL else None
-    return genai.Client(api_key=_api_key, http_options=http_options)
+DEFAULT_REVIEW_MODEL = (
+    os.environ.get("VIDEO_GEN_REVIEW_MODEL")
+    or os.environ.get("VIDEO_ANALYZE_MODEL")
+    or os.environ.get("GEMINI_MODEL")
+    or "gemini-3.1-pro-preview"
+)
 
 
 # ============ 两个评审角色定义 ============
@@ -111,100 +97,6 @@ REVIEWERS = [
 ]
 
 
-def upload_video_once(video_path: str, api_key: str = None):
-    """上传视频（只上传一次）"""
-    print(f"[UPLOAD] 上传视频: {video_path}")
-    client = _make_client(api_key)
-    video_file = client.files.upload(file=video_path)
-
-    print("[WAIT] 等待视频处理...")
-    while video_file.state.name == "PROCESSING":
-        time.sleep(5)
-        video_file = client.files.get(name=video_file.name)
-
-    if video_file.state.name != "ACTIVE":
-        raise RuntimeError(f"视频处理失败: {video_file.state.name}")
-
-    print(f"[OK] 视频处理完成")
-    return video_file
-
-
-def analyze_single_reviewer(
-    video_file,
-    reviewer: Dict,
-    original_prompt: str,
-    expected_duration: float,
-    api_key: str = None,
-    model: str = None
-):
-    """单个评审角色分析"""
-    if model is None:
-        model = GEMINI_REVIEW_MODEL
-    print(f"[{reviewer['role']}] 开始分析...")
-
-    client = _make_client(api_key)
-
-    # 构建 prompt
-    prompt_text = reviewer['prompt_template'].format(
-        prompt=original_prompt,
-        expected_duration=expected_duration
-    )
-
-    # 发送请求
-    try:
-        response = client.models.generate_content(
-            model=model,
-            contents=[
-                types.Part.from_uri(
-                    file_uri=video_file.uri,
-                    mime_type=video_file.mime_type
-                ),
-                prompt_text
-            ]
-        )
-
-        result_text = response.text
-        print(f"[{reviewer['role']}] 分析完成")
-
-        # 尝试解析 JSON
-        try:
-            # 提取 JSON 部分
-            if "```json" in result_text:
-                json_start = result_text.find("```json") + 7
-                json_end = result_text.find("```", json_start)
-                result_text = result_text[json_start:json_end].strip()
-            elif "```" in result_text:
-                json_start = result_text.find("```") + 3
-                json_end = result_text.find("```", json_start)
-                result_text = result_text[json_start:json_end].strip()
-
-            result_json = json.loads(result_text)
-            return {
-                "reviewer": reviewer['name'],
-                "role": reviewer['role'],
-                "success": True,
-                "result": result_json
-            }
-        except json.JSONDecodeError as e:
-            print(f"[{reviewer['role']}] JSON 解析失败: {e}")
-            return {
-                "reviewer": reviewer['name'],
-                "role": reviewer['role'],
-                "success": False,
-                "error": str(e),
-                "raw_text": response.text
-            }
-
-    except Exception as e:
-        print(f"[{reviewer['role']}] 分析失败: {e}")
-        return {
-            "reviewer": reviewer['name'],
-            "role": reviewer['role'],
-            "success": False,
-            "error": str(e)
-        }
-
-
 def merge_results(results: List[Dict]) -> Dict:
     """合并评审结果"""
     merged = {
@@ -227,6 +119,99 @@ def merge_results(results: List[Dict]) -> Dict:
     return merged
 
 
+def call_video_review_analyze(
+    video_path: str | Path,
+    segment_id: str,
+    expected_duration: float,
+    original_prompt: str,
+    *,
+    model: str | None = None,
+    cwd: Path | None = None,
+) -> dict[str, Any]:
+    path = Path(video_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Missing video input: {path}")
+
+    request = {
+        "apiVersion": "aos-cli.model/v1",
+        "task": f"video-gen.review.{segment_id}",
+        "capability": "video.analyze",
+        "modelPolicy": {"model": model or DEFAULT_REVIEW_MODEL},
+        "input": {
+            "content": {
+                "prompt": _build_review_prompt(original_prompt, expected_duration),
+                "videos": [path.resolve().as_uri()],
+            }
+        },
+        "output": {"kind": "json"},
+        "options": {"expectedDuration": expected_duration},
+    }
+
+    with tempfile.TemporaryDirectory(prefix="video-gen-review-aos-cli-") as tmp:
+        tmp_dir = Path(tmp)
+        request_path = tmp_dir / "request.json"
+        response_path = tmp_dir / "response.json"
+        request_path.write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
+        completed = aos_cli_model_run(request_path, response_path, cwd=cwd or Path.cwd())
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr or f"aos-cli failed with exit code {completed.returncode}")
+        if not response_path.exists():
+            raise RuntimeError("aos-cli did not write a video review response envelope")
+        return _read_json_output(response_path)
+
+
+def _build_review_prompt(original_prompt: str, expected_duration: float) -> str:
+    reviewer_prompts = [
+        reviewer["prompt_template"].format(
+            prompt=original_prompt,
+            expected_duration=expected_duration,
+        )
+        for reviewer in REVIEWERS
+    ]
+    return "\n\n".join(
+        [
+            f"Expected duration: {expected_duration} seconds.",
+            "Return one JSON object containing both top-level keys: reference_consistency and prompt_compliance.",
+            *reviewer_prompts,
+        ]
+    )
+
+
+def _read_json_output(response_path: Path) -> dict[str, Any]:
+    try:
+        response = json.loads(response_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid aos-cli video review response envelope: {response_path}") from exc
+
+    if not response.get("ok"):
+        error = response.get("error") or {}
+        raise RuntimeError(error.get("message") or "aos-cli video review failed")
+
+    output = response.get("output") or {}
+    if output.get("kind") != "json":
+        raise RuntimeError(f"aos-cli response output.kind mismatch: expected json, got {output.get('kind')}")
+    if "data" in output:
+        data = output["data"]
+        if not isinstance(data, dict):
+            raise RuntimeError("aos-cli video review output.data must be an object")
+        return data
+    if "text" in output:
+        return _parse_json_text(str(output["text"]))
+    raise RuntimeError("aos-cli video review response missing output.data")
+
+
+def _parse_json_text(raw: str) -> dict[str, Any]:
+    text = raw.strip()
+    if "```json" in text:
+        text = text.split("```json", 1)[1].split("```", 1)[0].strip()
+    elif "```" in text:
+        text = text.split("```", 1)[1].split("```", 1)[0].strip()
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise RuntimeError("aos-cli video review JSON text must decode to an object")
+    return data
+
+
 def analyze_video_parallel(
     video_path: str,
     segment_id: str,
@@ -246,7 +231,7 @@ def analyze_video_parallel(
         expected_duration: 期望时长（秒）
         original_prompt: 原始提示词
         actor_references: 角色参考图片路径列表（暂未使用）
-        api_key: Gemini API Key
+        api_key: Deprecated compatibility parameter. aos-cli reads provider config.
         model: 使用的模型
         max_workers: 最大并行数
 
@@ -254,56 +239,29 @@ def analyze_video_parallel(
         Dict: 合并后的评审结果
     """
 
-    if api_key is None:
-        api_key = GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("未找到 Gemini API Key（请设置 GEMINI_API_KEY，值使用 ChatFire key）")
-
     if model is None:
-        model = GEMINI_REVIEW_MODEL
-    if max_workers is None:
-        max_workers = _review_cfg.get("max_workers", 2)
+        model = DEFAULT_REVIEW_MODEL
 
     print("="*60)
-    print("[REVIEW] 简化评审（参考一致性 + 提示词符合度）")
+    print("[REVIEW] aos-cli video.analyze 评审（参考一致性 + 提示词符合度）")
     print("="*60)
     print(f"视频: {video_path}")
     print(f"片段: {segment_id}")
-    print(f"评审角色: {len(REVIEWERS)} 个")
+    print("评审角色: 2 个")
 
-    # 1. 上传视频（只上传一次）
-    video_file = upload_video_once(video_path, api_key)
-
-    # 2. 并行分析
-    print(f"\n[REVIEW] 启动 {len(REVIEWERS)} 个并行评审...")
+    print("\n[REVIEW] 调用 aos-cli model video.analyze...")
     start_time = time.time()
-
-    results = []
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        for reviewer in REVIEWERS:
-            future = executor.submit(
-                analyze_single_reviewer,
-                video_file,
-                reviewer,
-                original_prompt,
-                expected_duration,
-                api_key,
-                model
-            )
-            futures.append(future)
-
-        for future in as_completed(futures):
-            result = future.result()
-            results.append(result)
-
+    merged_result = call_video_review_analyze(
+        video_path,
+        segment_id,
+        expected_duration,
+        original_prompt,
+        model=model,
+    )
     end_time = time.time()
     elapsed = end_time - start_time
 
     print(f"\n[DONE] 评审完成，耗时: {elapsed:.2f} 秒")
-
-    # 3. 合并结果
-    merged_result = merge_results(results)
 
     # 4. 构建最终输出
     return {
@@ -312,7 +270,14 @@ def analyze_video_parallel(
         "expected_duration": expected_duration,
         "elapsed_time": elapsed,
         "parallel_results": merged_result,
-        "raw_results": results
+        "raw_results": [
+            {
+                "reviewer": "aos_cli_video_analyze",
+                "role": "aos-cli video.analyze",
+                "success": True,
+                "result": merged_result,
+            }
+        ]
     }
 
 
@@ -325,8 +290,7 @@ if __name__ == "__main__":
     parser.add_argument("expected_duration", type=float, help="期望时长（秒）")
     parser.add_argument("--prompt", help="原始提示词")
     parser.add_argument("--prompt-file", help="提示词文件路径")
-    parser.add_argument("--api-key", help="Gemini API Key")
-    parser.add_argument("--model", default=_review_cfg.get("model", "gemini-2.5-flash"), help="模型名称")
+    parser.add_argument("--model", default=DEFAULT_REVIEW_MODEL, help="模型名称")
     parser.add_argument("--output", help="输出文件路径")
 
     args = parser.parse_args()
@@ -344,7 +308,6 @@ if __name__ == "__main__":
         segment_id=args.segment_id,
         expected_duration=args.expected_duration,
         original_prompt=prompt,
-        api_key=args.api_key,
         model=args.model
     )
 

@@ -3,9 +3,6 @@
 """
 review_scene.py - 场景统一审图脚本（主图 + 参考表）
 
-Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-This image+text review path remains deferred until `aos-cli model` defines an explicit multimodal review contract for the required media upload/processing lifecycle and review I/O shape.
-
 支持两种审核模式：
   1. main  - 场景主图审核（世界观合规性 + 提示词匹配度 + 技术质量）
   2. ref   - 场景参考表审核（风格继承一致性 + 多视角布局 + 污染元素）
@@ -30,12 +27,12 @@ config.json 格式：
   "issues": [{"name": "名称", "severity": "high/medium", "reason": "描述"}]
 }
 """
-import sys, os, json, time, argparse
+import sys, os, json, argparse
 
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
-from gemini_multimodal_legacy import create_client, load_image_part, extract_response_text
+from common_vision_review import call_vision_review, load_image_part
 
 # ── 加载统一审核配置 ──────────────────────────────────────────────────────────
 from common_config import get_review_config
@@ -71,7 +68,7 @@ def build_ref_scene_prompt(worldview_type, anti_contamination, style_note, total
     )
 
 
-def review_main_scenes(config, client):
+def review_main_scenes(config):
     """审核主场景图"""
     scenes_info = config.get('scenes', [])
     worldview_type = config.get('worldview_type', '通用')
@@ -111,10 +108,10 @@ def review_main_scenes(config, client):
 
     contents.append(_RC["review_prompts"]["closing"])
 
-    return call_gemini(client, contents, models=["gemini-3.1-pro-preview"])
+    return call_gemini(contents, task="asset.scene.main.review")
 
 
-def review_ref_scenes(config, client):
+def review_ref_scenes(config):
     """审核场景参考表"""
     refs_info = config.get('refs', [])
     worldview_type = config.get('worldview_type', '通用')
@@ -160,41 +157,22 @@ def review_ref_scenes(config, client):
 
     contents.append(_RC["review_prompts"]["closing"])
 
-    return call_gemini(client, contents, models=["gemini-3.1-pro-preview"])
+    return call_gemini(contents, task="asset.scene.ref.review")
 
 
-def call_gemini(client, contents, models=None):
-    """调用 Gemini API 进行审图"""
-    models_to_try  = models or _RC["gemini"]["models"]
-    retry_attempts = _RC["gemini"]["retry_attempts"]
-    result = None
-
-    for model in models_to_try:
-        for attempt in range(retry_attempts):
-            try:
-                print(f'尝试 {model} (第{attempt+1}次)...', file=sys.stderr)
-                response = client.models.generate_content(model=model, contents=contents)
-                raw = extract_response_text(response)
-
-                # 提取 JSON
-                if '```json' in raw:
-                    raw = raw.split('```json')[1].split('```')[0].strip()
-                elif '```' in raw:
-                    raw = raw.split('```')[1].split('```')[0].strip()
-
-                result = json.loads(raw)
-                print(f'{model} 审查完成', file=sys.stderr)
-                break
-            except Exception as e:
-                print(f'{model} 第{attempt+1}次失败: {e}', file=sys.stderr)
-                if attempt == 0:
-                    time.sleep(_RC["gemini"]["retry_sleep_seconds"])
-        if result:
-            break
+def call_gemini(contents, models=None, task="asset.scene.review"):
+    """调用 aos-cli vision.review 进行审图"""
+    result = call_vision_review(
+        contents,
+        task=task,
+        models=models or _RC["vision_review"]["models"],
+        max_retries=_RC["vision_review"]["retry_attempts"],
+        retry_sleep_seconds=_RC["vision_review"]["retry_sleep_seconds"],
+    )
 
     if not result:
         print('所有模型均失败，默认通过审查', file=sys.stderr)
-        result = {"approved": True, "summary": "所有 Gemini 模型均失败，默认通过", "issues": []}
+        result = {"approved": True, "summary": "所有 aos-cli vision.review 模型均失败，默认通过", "issues": []}
 
     return result
 
@@ -206,19 +184,13 @@ def main():
                        help='审核模式: main=主图审核, ref=参考表审核')
     args = parser.parse_args()
 
-    try:
-        client = create_client()
-    except ValueError as e:
-        print(f'ERROR: {e}', file=sys.stderr)
-        sys.exit(1)
-
     config = json.loads(args.config)
 
     # 根据模式选择审核函数
     if args.mode == 'main':
-        result = review_main_scenes(config, client)
+        result = review_main_scenes(config)
     else:  # ref
-        result = review_ref_scenes(config, client)
+        result = review_ref_scenes(config)
 
     # 输出结果
     print(f'\n审查结果: {"通过" if result.get("approved") else "未通过"}, config: {config}', file=sys.stderr)

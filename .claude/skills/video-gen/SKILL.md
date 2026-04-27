@@ -52,24 +52,24 @@ command -v ffmpeg >/dev/null
 ### Auto Mode
 
 - Uses `assets/config.json` defaults, **no user confirmation needed**
-- Default: `seedance2`, subject_reference=false, 9:16, 720p
+- Default: `seedance2`, image-reference mode, 9:16, 720p
 - Run: `python3 ./.claude/skills/video-gen/scripts/generate_episode_json.py --episode N --parallel`
 - 前置条件：`output/storyboard/approved/ep{NNN}_storyboard.json` 已存在
 - Add `--no-generate-video` only when user explicitly says "only export runtime storyboard"
 - Scope: 本 skill 在自动模式下只完成 `VIDEO` 阶段，不包含后续 `EDITING` / `MUSIC` / `SUBTITLE`
-- VIDEO 阶段不再从 `script.json` 隐式生成分镜；分镜创作、修改、批准属于 `storyboard` 阶段。video review: Gemini (from `assets/config.json`)
+- VIDEO 阶段不再从 `script.json` 隐式生成分镜；分镜创作、修改、批准属于 `storyboard` 阶段。video review: `aos-cli model` `video.analyze`
 
 ### Manual Mode (4-Step Confirmation)
 
 | Step | Action | Details |
 |------|--------|---------|
 | 1 | Model selection | `seedance2` only |
-| 2 | Reference mode | Seedance image reference? (default: yes) |
+| 2 | Reference mode | Image reference? (default: yes) |
 | 3 | Generation params | Ratio (9:16/16:9/1:1), Quality (720p/1080p) |
 | 4 | Write config & run | Update `assets/config.json` then execute scripts |
 
 - "Only export" → skip video generation, run with `--no-generate-video`
-- Storyboard prompt creation belongs to `storyboard`; this skill only exports approved storyboard and runs video review via Gemini API
+- Storyboard prompt creation belongs to `storyboard`; this skill only exports approved storyboard and runs video review via `aos-cli model` `video.analyze`
 
 ## 跨集并行策略
 
@@ -90,7 +90,7 @@ command -v ffmpeg >/dev/null
 ```
 
 每个 Agent subagent 的 prompt **必须包含**：
-1. 完整的前置检查步骤（Ark / Gemini 环境依赖）
+1. 完整的前置检查步骤（Ark video generation / aos-cli video.analyze 环境依赖）
 2. `${PROJECT_DIR}/output/script.json` 中**本组集**的 episodes 数据
 3. `${PROJECT_DIR}/output/actors/actors.json` 和 `locations/locations.json`（视觉参考映射）
 4. 当前 Mode（Auto/Manual）和生成参数（model、ratio、quality）
@@ -194,13 +194,13 @@ Recovery order:
 
 **Phase 1** — Runtime export only: copy approved storyboard canonical to `output/ep{NNN}/ep{NNN}_storyboard.json` and normalize it for validation. It must not generate storyboard prompts from `script.json`.
 
-**Phase 2** — Batch video gen + review loop: per-clip generate-review cycle (min 1, max 2 attempts), Gemini 2-role parallel analysis (reference consistency + prompt compliance), subject/image reference modes, last-shot first-frame injection (ffmpeg scene detect → face blur → COS upload → inject into next clip's `lsi` field + `complete_prompt`)。这些运行时回写只发生在 `output/ep{NNN}/ep{NNN}_storyboard.json`
+**Phase 2** — Batch video gen + review loop: per-clip generate-review cycle (min 1, max 2 attempts), `aos-cli model` `video.analyze` review (reference consistency + prompt compliance), subject/image reference modes, last-shot first-frame injection (ffmpeg scene detect → face blur → COS upload → inject into next clip's `lsi` field + `complete_prompt`)。这些运行时回写只发生在 `output/ep{NNN}/ep{NNN}_storyboard.json`
 
 ## Supported Models
 
-| Model | Code | Reference Mode | Duration |
-|-------|------|---------------|----------|
-| Seedance 2 | `ep-20260303234827-tfnzm` | Image ref | 3-15s |
+| Model | Reference Mode | Duration |
+|-------|---------------|----------|
+| `seedance2` | Image ref | 3-15s |
 
 ## Scripts
 
@@ -210,7 +210,7 @@ Recovery order:
 | `batch_generate.py` | Core: batch video gen + review loop; scene-parallel, clip-serial |
 | `frame_extractor.py` | Last-shot first-frame extraction + face blur (ffmpeg + PIL) |
 | `video_api.py` | Video model boundary adapter (aos-cli model submit/poll) |
-| `analyzer.py` / `evaluator.py` | Gemini 2-role analyzer + 2-dimension scoring |
+| `analyzer.py` / `evaluator.py` | `aos-cli video.analyze` review + 2-dimension scoring |
 | `config_loader.py` | Config loader (reads `assets/config.json`) |
 
 ## Relationship to Other Skills
@@ -220,7 +220,7 @@ video-gen
     ├─ Input: ${PROJECT_DIR}/output/storyboard/approved/ep###_storyboard.json
     ├─ Output: ${PROJECT_DIR}/output/ep###/*.mp4
     ├─ Depends: aos-cli model (video.generate submit/poll)
-    └─ Built-in: Gemini video review
+    └─ Built-in: aos-cli video.analyze review
 ```
 
 ## References
@@ -230,8 +230,7 @@ video-gen
 | `references/MODE_RULES.md` | Mode selection, resume, prompt-only/video-only precedence |
 | `references/SHOT_VALIDATION_RULES.md` | Lightweight preflight validation rules before expensive generation |
 | `references/STORYBOARD_SCHEMA.md` | STORYBOARD 层与 VIDEO 导出层的双层 JSON 契约说明（含 `shots[]` / `clips[]` 兼容关系） |
-| `references/SENSITIVE_WORDS.md` | Sensitive word replacement table for content moderation |
-| `references/AI_CONFIG_AND_DELIVERY.md` | Provider config, storyboard draft text endpoint, Gemini review, delivery JSON format |
+| `references/AI_CONFIG_AND_DELIVERY.md` | Provider config, storyboard draft text endpoint, video review, delivery JSON format |
 
 ## Version
 

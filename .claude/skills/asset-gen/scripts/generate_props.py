@@ -127,19 +127,19 @@ def _fmt_elapsed(start_time):
 
 
 def build_retry_prompt(original_prompt, reason, label="提示词"):
-    """根据审核失败原因，调用 Gemini 智能重写提示词（删除问题词 + 增加修正词）。"""
+    """根据审核失败原因，通过 aos-cli model 重写提示词（删除问题词 + 增加修正词）。"""
     reason_display = f"{reason[:60]}..." if len(reason) > 60 else reason
-    log(f"  📝 调用 Gemini 重写{label} (原因: {reason_display})")
+    log(f"  📝 调用 aos-cli model 重写{label} (原因: {reason_display})")
     log(f"  📄 原始{label}: {original_prompt}")
-    gemini_prompt = _GC["prompt_templates"]["retry_prompt_rewrite"].format(
+    rewrite_request_prompt = _GC["prompt_templates"]["retry_prompt_rewrite"].format(
         prompt=original_prompt, reason=reason
     )
     try:
-        modified = rewrite_prompt(gemini_prompt)
+        modified = rewrite_prompt(rewrite_request_prompt)
         log(f"  📄 修正后{label}: {modified}")
         return modified
     except Exception as e:
-        log(f"  ⚠ Gemini 重写失败，保持原始{label}: {e}")
+        log(f"  ⚠ aos-cli model 重写失败，保持原始{label}: {e}")
         return original_prompt
 
 

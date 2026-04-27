@@ -150,16 +150,16 @@ def _call_review_subprocess(config, mode, timeout=300):
 
 
 def build_retry_prompt(original_prompt, reason, label="提示词"):
-    log(f"  调用 Gemini 重写{label} (原因: {reason[:60]})")
-    gemini_prompt = _GC["prompt_templates"]["retry_prompt_rewrite"].format(
+    log(f"  调用 aos-cli model 重写{label} (原因: {reason[:60]})")
+    rewrite_request_prompt = _GC["prompt_templates"]["retry_prompt_rewrite"].format(
         prompt=original_prompt, reason=reason
     )
     try:
-        modified = rewrite_prompt(gemini_prompt)
+        modified = rewrite_prompt(rewrite_request_prompt)
         log(f"  修正后{label}: {modified[:80]}...")
         return modified
     except Exception as e:
-        log(f"  Gemini 重写失败，保持原始{label}: {e}")
+        log(f"  aos-cli model 重写失败，保持原始{label}: {e}")
         return original_prompt
 
 

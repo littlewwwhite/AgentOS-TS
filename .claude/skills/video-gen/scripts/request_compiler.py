@@ -5,7 +5,6 @@
 from typing import Dict, List
 
 from production_types import ClipIntent, ContinuityContext, GenerationRequest
-from video_api import get_subject_reference_for_model
 
 
 def _with_continuity_frame(
@@ -38,9 +37,7 @@ def compile_request(
 ) -> GenerationRequest:
     """Compile the shortest default path: prompt + refs + continuity + params."""
 
-    use_subject_reference = get_subject_reference_for_model(model_code)
-    subjects = list(intent.subjects) if use_subject_reference else []
-    reference_images = [] if use_subject_reference else _with_continuity_frame(
+    reference_images = _with_continuity_frame(
         intent.reference_images,
         continuity.first_frame_url,
     )
@@ -52,7 +49,7 @@ def compile_request(
         duration_seconds=intent.duration_seconds,
         quality=quality,
         ratio=ratio,
-        subjects=subjects,
+        subjects=[],
         reference_images=reference_images,
         first_frame_url=continuity.first_frame_url,
         first_frame_text=continuity.first_frame_text,

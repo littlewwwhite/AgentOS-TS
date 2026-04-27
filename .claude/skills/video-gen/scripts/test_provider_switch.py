@@ -24,7 +24,7 @@ class ProviderSwitchTest(unittest.TestCase):
         except Exception:
             pass
 
-    def test_config_loader_uses_gemini_env_key_with_chatfire_base_url(self):
+    def test_config_loader_does_not_project_provider_secrets_into_review_config(self):
         import config_loader
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -33,7 +33,7 @@ class ProviderSwitchTest(unittest.TestCase):
                 json.dumps(
                     {
                         "video_model": {"active_model": "seedance2", "models": {}},
-                        "gemini": {"api_key": "", "base_url": "https://example.test"},
+                        "clip_review": {"api_key": "", "base_url": "https://example.test"},
                     }
                 ),
                 encoding="utf-8",
@@ -43,37 +43,88 @@ class ProviderSwitchTest(unittest.TestCase):
             os.environ["GEMINI_BASE_URL"] = "https://api.chatfire.cn/gemini"
             config_loader._config_cache.clear()
 
-            self.assertEqual(config_loader.get_gemini_config()["api_key"], "env-chatfire-key")
-            self.assertEqual(config_loader.get_gemini_config()["api_key_env"], "GEMINI_API_KEY")
-            self.assertEqual(
-                config_loader.get_gemini_config()["base_url"],
-                "https://api.chatfire.cn/gemini",
-            )
+            self.assertNotIn("api_key", config_loader.get_clip_review_config())
+            self.assertNotIn("api_key_env", config_loader.get_clip_review_config())
+            self.assertNotIn("base_url", config_loader.get_clip_review_config())
             self.assertNotIn("sk-", json.dumps(config_loader._BUILTIN_DEFAULTS))
 
-    def test_video_config_defaults_use_chatfire_gemini_proxy(self):
+    def test_video_config_defaults_keep_only_review_policy_fields(self):
         import config_loader
 
-        gemini = config_loader._BUILTIN_DEFAULTS["gemini"]
-        self.assertEqual(gemini["base_url"], "https://api.chatfire.cn/gemini")
-        self.assertEqual(gemini["api_key_env"], "GEMINI_API_KEY")
+        clip_review = config_loader._BUILTIN_DEFAULTS["clip_review"]
+        self.assertNotIn("base_url", clip_review)
+        self.assertNotIn("api_key", clip_review)
+        self.assertNotIn("api_key_env", clip_review)
+        self.assertEqual(clip_review["model"], "gemini-3.1-pro-preview")
+        self.assertNotIn("review_model", clip_review)
+        self.assertNotIn("color_removal_model", clip_review)
 
-    def test_video_config_defaults_use_ark_only(self):
+    def test_video_config_defaults_only_carry_active_model_and_code(self):
         import config_loader
 
         defaults = config_loader._BUILTIN_DEFAULTS["video_model"]
-        self.assertEqual(defaults["provider"], "volcengine_ark")
-        self.assertEqual(defaults["models"]["seedance2"]["provider"], "volcengine_ark")
+        self.assertEqual(defaults["active_model"], "seedance2")
         self.assertEqual(defaults["models"]["seedance2"]["model_code"], "ep-20260303234827-tfnzm")
+        self.assertNotIn("provider", defaults)
+        self.assertNotIn("provider", defaults["models"]["seedance2"])
+        self.assertNotIn("model_group_code", defaults["models"]["seedance2"])
+        self.assertNotIn("subject_reference", defaults["models"]["seedance2"])
         self.assertNotIn("kling_omni", defaults["models"])
+        self.assertNotIn("providers", defaults)
 
     def test_asset_config_uses_seedance2_test_model_code(self):
         config_path = Path(__file__).resolve().parent.parent / "assets" / "config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
 
         model = config["video_model"]["models"]["seedance2"]
-        self.assertEqual(model["provider"], "volcengine_ark")
         self.assertEqual(model["model_code"], "ep-20260303234827-tfnzm")
+        self.assertNotIn("provider", model)
+        self.assertNotIn("model_group_code", model)
+        self.assertNotIn("subject_reference", model)
+        self.assertNotIn("provider", config["video_model"])
+        self.assertNotIn("providers", config["video_model"])
+
+    def test_loaded_video_config_strips_legacy_provider_routing_fields(self):
+        import config_loader
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "video_model": {
+                            "provider": "volcengine_ark",
+                            "active_model": "seedance2",
+                            "models": {
+                                "seedance2": {
+                                    "provider": "volcengine_ark",
+                                    "model_code": "ep-test",
+                                    "model_group_code": "legacy",
+                                    "subject_reference": True,
+                                }
+                            },
+                            "providers": {
+                                "volcengine_ark": {
+                                    "base_url": "https://ark.example.test",
+                                    "api_key_env": "ARK_API_KEY",
+                                }
+                            },
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            os.environ["STORYBOARD_CONFIG"] = str(config_path)
+            config_loader._config_cache.clear()
+
+            video_cfg = config_loader.get_video_model_config()
+            self.assertNotIn("providers", video_cfg)
+            self.assertNotIn("provider", video_cfg)
+            seedance = video_cfg["models"]["seedance2"]
+            self.assertEqual(seedance["model_code"], "ep-test")
+            self.assertNotIn("provider", seedance)
+            self.assertNotIn("model_group_code", seedance)
+            self.assertNotIn("subject_reference", seedance)
 
     def test_poll_multiple_tasks_maps_aos_cli_artifacts_to_video_fields(self):
         import video_api
@@ -100,6 +151,7 @@ class ProviderSwitchTest(unittest.TestCase):
                         "kind": "video",
                         "uri": "https://cdn.example.com/out.mp4",
                         "lastFrameUrl": "https://cdn.example.com/last.png",
+                        "durationSeconds": 8.0,
                     }
                 ],
             },
@@ -113,7 +165,6 @@ class ProviderSwitchTest(unittest.TestCase):
                     "task_id": "task-poll-1",
                     "task_envelope": envelope_seed,
                     "output_path": "/tmp/out.mp4",
-                    "provider": "volcengine_ark",
                     "model_code": "ep-20260303234827-tfnzm",
                 }],
                 interval=0,
@@ -123,11 +174,13 @@ class ProviderSwitchTest(unittest.TestCase):
         self.assertTrue(results[0]["success"])
         self.assertEqual(results[0]["video_url"], "https://cdn.example.com/out.mp4")
         self.assertEqual(results[0]["last_frame_url"], "https://cdn.example.com/last.png")
+        self.assertEqual(results[0]["actual_duration_seconds"], 8.0)
         self.assertEqual(results[0]["video_path"], "/tmp/out.mp4")
 
 
 def test_video_submit_uses_aos_cli_task_boundary(tmp_path, monkeypatch):
     import video_api
+    import aos_cli_envelope
 
     calls = []
 
@@ -154,7 +207,7 @@ def test_video_submit_uses_aos_cli_task_boundary(tmp_path, monkeypatch):
         )
         return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-    monkeypatch.setattr(video_api, "aos_cli_model_submit", fake_submit)
+    monkeypatch.setattr(aos_cli_envelope, "aos_cli_model_submit", fake_submit)
 
     result = video_api.submit_video_generation(
         prompt="Slow camera push.",
@@ -171,6 +224,7 @@ def test_video_submit_uses_aos_cli_task_boundary(tmp_path, monkeypatch):
 
 def test_video_poll_uses_aos_cli_task_result_boundary(tmp_path, monkeypatch):
     import video_api
+    import aos_cli_envelope
 
     def fake_poll(task_path, result_path, *, cwd=None):
         result_path.write_text(
@@ -198,7 +252,7 @@ def test_video_poll_uses_aos_cli_task_result_boundary(tmp_path, monkeypatch):
         )
         return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-    monkeypatch.setattr(video_api, "aos_cli_model_poll", fake_poll)
+    monkeypatch.setattr(aos_cli_envelope, "aos_cli_model_poll", fake_poll)
 
     result = video_api.poll_video_generation(
         task_envelope={

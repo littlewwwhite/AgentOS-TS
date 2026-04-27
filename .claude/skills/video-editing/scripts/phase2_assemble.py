@@ -1,13 +1,10 @@
 """
-循环剪辑引擎：scn 级组装 + Gemini 质检 + 迭代替换
+循环剪辑引擎：scn 级组装 + aos-cli 质检 + 迭代替换
 
-Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-This phase calls Gemini multimodal review on assembled video sequences. aos-cli
-model v1 has no contract for video review with iterative replacement, so this
-path stays on the direct SDK pending protocol expansion.
+Model boundary note: migrated to aos-cli model video.analyze.
 
 读取 Phase 1 analysis.json → 按 scn 组装最佳序列 → ffmpeg 拼接 →
-Gemini 整体评估 → 循环替换有问题的 shot → 输出 edit_decision.json
+aos-cli video.analyze 整体评估 → 循环替换有问题的 shot → 输出 edit_decision.json
 
 中间产物（临时 mp4、decision）存放于 _tmp/scn{NNN}/，Phase 3 合并后可清理。
 
@@ -28,7 +25,7 @@ Gemini 整体评估 → 循环替换有问题的 shot → 输出 edit_decision.j
   output/ep{NNN}/_tmp/scn{NNN}/edit_decision.json  — scn 级剪辑决策（供 Phase 3 使用）
   output/ep{NNN}/_tmp/scn{NNN}/*_r{N}.mp4         — 循环评估临时视频（可清理）
 
-依赖: pip install google-genai python-dotenv
+依赖: pip install python-dotenv
 """
 
 import argparse
@@ -42,7 +39,6 @@ import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 from pathlib import Path
 
 # 在任何 av/scenedetect import 之前，抑制 C 层 ffmpeg/swscaler 警告
@@ -62,7 +58,10 @@ except Exception:
 import logging
 logging.getLogger("libav").setLevel(logging.ERROR)
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # ── 配置加载（三级优先级：环境变量 > CWD/.env > skill 内置 default.env）──
 
@@ -71,23 +70,27 @@ SKILL_DIR = SCRIPT_DIR.parent
 ASSETS_DIR = SKILL_DIR / "assets"
 DEFAULT_ENV = ASSETS_DIR / "default.env"
 
-if DEFAULT_ENV.exists():
-    load_dotenv(DEFAULT_ENV, override=False)
-load_dotenv(override=False)
+if load_dotenv is not None:
+    if DEFAULT_ENV.exists():
+        load_dotenv(DEFAULT_ENV, override=False)
+    load_dotenv(override=False)
 
 # ── Prompt 模块 ──
 sys.path.insert(0, str(ASSETS_DIR))
 from phase2_loop_analysis import build as build_phase2_prompt
+from common_video_analyze import call_video_analyze
 
 # ── Phase 2 参数 ──
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://api.chatfire.cn/gemini")
-LOOP_GEMINI_MODEL = os.getenv("LOOP_GEMINI_MODEL", "gemini-3.1-flash-preview")
-LOOP_GEMINI_TEMPERATURE = float(os.getenv("LOOP_GEMINI_TEMPERATURE", "1.0"))
-LOOP_GEMINI_THINKING_LEVEL = os.getenv("LOOP_GEMINI_THINKING_LEVEL", "low")
-_res = os.getenv("LOOP_GEMINI_MEDIA_RESOLUTION", "medium")
-LOOP_GEMINI_MEDIA_RESOLUTION = f"MEDIA_RESOLUTION_{_res.upper()}"
+LOOP_VIDEO_ANALYZE_MODEL = (
+    os.getenv("LOOP_VIDEO_ANALYZE_MODEL")
+    or os.getenv("VIDEO_ANALYZE_MODEL")
+    or "gemini-3.1-flash-preview"
+)
+LOOP_VIDEO_ANALYZE_TEMPERATURE = float(os.getenv("LOOP_VIDEO_ANALYZE_TEMPERATURE", "1.0"))
+LOOP_VIDEO_ANALYZE_THINKING_LEVEL = os.getenv("LOOP_VIDEO_ANALYZE_THINKING_LEVEL", "low")
+_res = os.getenv("LOOP_VIDEO_ANALYZE_MEDIA_RESOLUTION", "medium")
+LOOP_VIDEO_ANALYZE_MEDIA_RESOLUTION = f"MEDIA_RESOLUTION_{_res.upper()}"
 
 LOOP_SCORE_THRESHOLD = float(os.getenv("LOOP_SCORE_THRESHOLD", "7.5"))
 LOOP_MAX_ITERATIONS = int(os.getenv("LOOP_MAX_ITERATIONS", "3"))
@@ -563,7 +566,7 @@ def build_scn_video(plan: list[dict], output_path: str) -> tuple[bool, int, int]
     return True, w, h
 
 
-# ═══════════════════════ 3.4 Gemini 评估 ═══════════════════════
+# ═══════════════════════ 3.4 aos-cli 视频评估 ═══════════════════════
 
 
 def compress_video(video_path: str) -> str | None:
@@ -602,91 +605,42 @@ def compress_video(video_path: str) -> str | None:
     return out_path
 
 
-def upload_video(video_path: str, client, max_retries: int = 3) -> object:
-    """上传视频到 Gemini Files API，带重试。"""
-    for attempt in range(1, max_retries + 1):
-        try:
-            tag = f" (重试 {attempt}/{max_retries})" if attempt > 1 else ""
-            print(f"  正在上传视频{tag}: {Path(video_path).name}")
-            video_file = client.files.upload(file=video_path)
-
-            print(f"  等待 Gemini 处理...")
-            while video_file.state.name == "PROCESSING":
-                time.sleep(3)
-                video_file = client.files.get(name=video_file.name)
-
-            if video_file.state.name != "ACTIVE":
-                raise RuntimeError(f"视频处理失败，状态: {video_file.state.name}")
-
-            print(f"  上传完成: {video_file.name}")
-            return video_file
-
-        except Exception as e:
-            if attempt < max_retries:
-                wait = attempt * 3
-                print(f"  上传失败，{wait}s 后重试: {e}")
-                time.sleep(wait)
-            else:
-                raise
-
-
-def evaluate_with_gemini(
+def evaluate_with_aos_cli(
     scn_video_path: str,
     prompt: str,
     scn_label: str,
-    client,
     raw_output_dir: Path | None = None,
 ) -> dict:
-    """上传 scn 视频并调用 Gemini 评估，返回解析后的 JSON。"""
-    from google.genai import types
-
-    # 压缩 + 上传
+    """调用 aos-cli video.analyze 评估 scn 视频，返回解析后的 JSON。"""
     compressed = compress_video(scn_video_path)
-    upload_path = compressed or scn_video_path
+    analyze_path = compressed or scn_video_path
+
     try:
-        video_file = upload_video(upload_path, client)
+        print(
+            f"  调用 aos-cli video.analyze 评估 {scn_label}"
+            f"（模型: {LOOP_VIDEO_ANALYZE_MODEL}, thinking: {LOOP_VIDEO_ANALYZE_THINKING_LEVEL}）"
+        )
+        t0 = time.time()
+        result = call_video_analyze(
+            [analyze_path],
+            prompt,
+            task="video-editing.phase2.loop-review",
+            model=LOOP_VIDEO_ANALYZE_MODEL,
+            options={
+                "temperature": LOOP_VIDEO_ANALYZE_TEMPERATURE,
+                "thinking_level": LOOP_VIDEO_ANALYZE_THINKING_LEVEL,
+                "media_resolution": LOOP_VIDEO_ANALYZE_MEDIA_RESOLUTION,
+                "label": scn_label,
+            },
+            cwd=Path.cwd(),
+            raw_output_dir=raw_output_dir or OUTPUT_DIR,
+        )
+        elapsed = time.time() - t0
+        print(f"  aos-cli video.analyze 响应完成 ({elapsed:.1f}s)")
+        return result
     finally:
         if compressed:
             Path(compressed).unlink(missing_ok=True)
-
-    config = types.GenerateContentConfig(
-        temperature=LOOP_GEMINI_TEMPERATURE,
-        thinking_config=types.ThinkingConfig(thinking_level=LOOP_GEMINI_THINKING_LEVEL),
-        media_resolution=LOOP_GEMINI_MEDIA_RESOLUTION,
-    )
-
-    print(
-        f"  调用 Gemini 评估 {scn_label}"
-        f"（模型: {LOOP_GEMINI_MODEL}, thinking: {LOOP_GEMINI_THINKING_LEVEL}）"
-    )
-    t0 = time.time()
-
-    contents = [video_file, prompt]
-    response = client.models.generate_content(
-        model=LOOP_GEMINI_MODEL,
-        contents=contents,
-        config=config,
-    )
-    elapsed = time.time() - t0
-    print(f"  Gemini 响应完成 ({elapsed:.1f}s)")
-
-    raw = response.text.strip()
-
-    # 保存原始响应
-    save_dir = raw_output_dir or OUTPUT_DIR
-    save_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%m%d%H%M%S")
-    raw_path = save_dir / f"gemini-loop-raw-{ts}.json"
-    raw_path.write_text(raw, encoding="utf-8")
-    print(f"  原始输出已保存: {raw_path}")
-
-    # 清理 markdown 代码块包裹
-    cleaned = raw
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[1]
-        cleaned = cleaned.rsplit("```", 1)[0]
-
-    return json.loads(cleaned)
 
 
 # ═══════════════════════ 3.5 剪辑动作执行器 ═══════════════════════
@@ -832,7 +786,7 @@ def apply_edit_suggestions(
     plan: list[dict],
     tag_library: "TagLibrary",
 ) -> tuple[list[str], list[str]]:
-    """应用 Gemini 的剪辑建议。
+    """应用 aos-cli video.analyze 的剪辑建议。
 
     优先级：trim/skip/transition > reorder > replace_variant
 
@@ -901,7 +855,6 @@ def run_loop_engine(
     tag_library: TagLibrary,
     scn_name: str,
     ep_name: str,
-    client,
     storyboard_scn: dict | None = None,
     output_dir: Path | None = None,
     work_dir: Path | None = None,
@@ -973,17 +926,15 @@ def run_loop_engine(
             action_description=action_desc if iteration > 1 else "",
         )
 
-        # 3. Gemini 评估
+        # 3. aos-cli video.analyze 评估
         try:
-            result = evaluate_with_gemini(
-                video_path, prompt, scn_label, client, raw_output_dir
-            )
+            result = evaluate_with_aos_cli(video_path, prompt, scn_label, raw_output_dir)
         except Exception as e:
-            print(f"  Gemini 评估失败: {e}")
+            print(f"  aos-cli video.analyze 评估失败: {e}")
             iteration_log.append({
                 "round": iteration,
                 "score": best_score,
-                "actions": [f"Gemini 评估失败: {e}，保留上轮最佳"],
+                "actions": [f"aos-cli video.analyze 评估失败: {e}，保留上轮最佳"],
             })
             break
 
@@ -1356,7 +1307,6 @@ def process_single_scn(
     scn_name: str,
     ep_name: str,
     analyses: list[dict],
-    client,
     storyboard_scn: dict | None = None,
     output_dir: Path | None = None,
     skip_existing: bool = False,
@@ -1396,7 +1346,6 @@ def process_single_scn(
         tag_library=tag_library,
         scn_name=scn_name,
         ep_name=ep_name,
-        client=client,
         storyboard_scn=storyboard_scn,
         output_dir=out_dir,
     )
@@ -1528,21 +1477,6 @@ def process_episode(
     for scn, analyses in scn_map.items():
         print(f"  {scn}: {len(analyses)} 个 clip")
 
-    # API Key 检查
-    if not GEMINI_API_KEY:
-        print("错误: 请设置 GEMINI_API_KEY（值使用 ChatFire key，环境变量或 .env 文件）", file=sys.stderr)
-        sys.exit(1)
-
-    from google import genai as google_genai
-    if GEMINI_BASE_URL:
-        from google.genai import types as genai_types
-        client = google_genai.Client(
-            api_key=GEMINI_API_KEY,
-            http_options=genai_types.HttpOptions(base_url=GEMINI_BASE_URL),
-        )
-    else:
-        client = google_genai.Client(api_key=GEMINI_API_KEY)
-
     # Storyboard 处理
     storyboard_path = None
     if storyboard_mode == "auto":
@@ -1576,7 +1510,6 @@ def process_episode(
                     scn_name=scn_name,
                     ep_name=ep_name,
                     analyses=analyses,
-                    client=client,
                     storyboard_scn=storyboard_scns.get(scn_name),
                     output_dir=output_dir,
                     skip_existing=skip_existing,
@@ -1594,7 +1527,6 @@ def process_episode(
                     scn_name=scn_name,
                     ep_name=ep_name,
                     analyses=analyses,
-                    client=client,
                     storyboard_scn=storyboard_scns.get(scn_name),
                     output_dir=output_dir,
                     skip_existing=skip_existing,
@@ -1630,7 +1562,7 @@ def process_episode(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="循环剪辑引擎：scn 级组装 + Gemini 质检 + 迭代替换",
+        description="循环剪辑引擎：scn 级组装 + aos-cli 质检 + 迭代替换",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:

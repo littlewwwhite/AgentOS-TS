@@ -232,7 +232,7 @@ def build(
     Args:
         plan: 当前剪辑方案（shot 列表）
         storyboard_scn: scn 级分镜脚本数据（可选）
-        previous_result: 上一轮 Gemini 评估结果（可选，非首轮时传入）
+        previous_result: 上一轮 video.analyze 评估结果（可选，非首轮时传入）
         round_num: 当前轮次号（1=首轮）
         action_description: 本轮执行的修改描述（非首轮时传入）
 

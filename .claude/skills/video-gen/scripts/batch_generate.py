@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# input: runtime storyboard JSON, approved storyboard JSON, and video generation options
+# output: generated video clips, delivery JSON, generation summary, and video task manifest
+# pos: VIDEO stage batch entrypoint that bridges storyboard artifacts to aos-cli model generation
 """
 Batch Video Generation from ep_storyboard.json
 
@@ -31,7 +34,6 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Force unbuffered output so logs appear in real time
 sys.stdout.reconfigure(line_buffering=True)
@@ -48,11 +50,11 @@ sys.path.insert(0, str(SCRIPT_DIR))
 REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from batch_generate_runtime import _process_scene_clips
+from batch_generate_runtime import _process_scene_clips, process_scenes_parallel
 from production_types import ClipIntent
-from video_api import DEFAULT_MODEL_CODE, get_subject_reference_for_model
+from video_api import DEFAULT_MODEL_CODE
 from path_manager import VideoReviewPaths, prepare_runtime_storyboard_export
-from config_loader import get_generation_config, get_gemini_config
+from config_loader import get_generation_config, get_clip_review_config
 from pipeline_state import ensure_state, update_episode, update_stage
 
 # ============================================================
@@ -362,41 +364,11 @@ def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
     return mapping
 
 
-def map_subject_ids_to_elements(
-    subject_ids: List[str],
-    assets_mapping: Dict[str, Dict],
-) -> List[Dict]:
-    """Map extracted subject IDs to element_id (subject_id) using asset mapping.
-
-    Args:
-        subject_ids: List of subject IDs extracted from {xxx} (e.g., ["act_001", "loc_003"])
-        assets_mapping: Dict from load_assets_subject_mapping()
-
-    Returns:
-        List of subject dicts: [{"element_id": "subject_id_value", "name": "act_001"}]
-        Only includes subjects that were successfully mapped.
-    """
-    mapped = []
-    for sid in subject_ids:
-        if sid in assets_mapping:
-            entry = assets_mapping[sid]
-            mapped.append({
-                "element_id": entry["subject_id"],
-                "name": sid,
-            })
-        else:
-            print(f"  [WARN] Subject ID '{sid}' not found in assets mapping, skipping",
-                  file=sys.stderr)
-    return mapped
-
-
 def map_subject_ids_to_images(
     subject_ids: List[str],
     assets_mapping: Dict[str, Dict],
 ) -> List[Dict]:
     """Map extracted subject IDs to reference image dicts using asset image URLs.
-
-    Used in image reference mode (DEFAULT_SUBJECT_REFERENCE=False).
 
     Args:
         subject_ids: List of subject IDs (e.g., ["act_001", "loc_003"])
@@ -523,6 +495,50 @@ def _clean_clip_data(paths: VideoReviewPaths, episode: int, location_num: int, c
             print(f"  [CLEAN] 已清除 {ws_removed} 个 workspace 任务文件")
 
 
+def _build_video_task_manifest(
+    *,
+    episode: int,
+    source_json: Path,
+    runtime_json_path: Path,
+    results: List[Dict],
+    generated_at: str,
+) -> Dict:
+    tasks = []
+    for result in results:
+        for version in result.get("versions", []):
+            output_path = version.get("output_path") or version.get("video_path")
+            tasks.append(
+                {
+                    "episode": episode,
+                    "scene_id": result.get("scene_id"),
+                    "clip_id": result.get("clip_id"),
+                    "shot_id": result.get("clip_id"),
+                    "prompt_version": result.get("prompt_version", 0) + 1,
+                    "version": version.get("version"),
+                    "success": bool(version.get("success")),
+                    "passed": bool(version.get("passed")),
+                    "requested_duration_seconds": version.get(
+                        "requested_duration_seconds"
+                    ),
+                    "actual_duration_seconds": version.get("actual_duration_seconds"),
+                    "provider_task_id": version.get("provider_task_id")
+                    or version.get("task_id"),
+                    "provider": version.get("provider"),
+                    "model_code": version.get("model_code"),
+                    "output_path": output_path,
+                }
+            )
+
+    return {
+        "schema_version": "video-task-manifest/v1",
+        "episode": episode,
+        "source_json": str(source_json),
+        "runtime_storyboard_json": str(runtime_json_path),
+        "generated_at": generated_at,
+        "tasks": tasks,
+    }
+
+
 # ============================================================
 # Batch Generation Entry Point
 # ============================================================
@@ -612,8 +628,7 @@ def run_batch_generate(
         return []
 
     # 2. Build element mapping from output/ assets
-    use_subject_reference = get_subject_reference_for_model(model_code)
-    print(f"[INFO] 参考模式: {'主体参考' if use_subject_reference else '图片参考'} (model={model_code})")
+    print(f"[INFO] 参考模式: 图片参考 (model={model_code})")
     assets_dir = find_assets_dir(output_root)
     assets_mapping = {}
 
@@ -641,10 +656,7 @@ def run_batch_generate(
             scene_id = ls.get('scene_id', '?')
             pv = ls.get('prompt_version', 0)
             subject_ids = extract_subject_ids(ls['full_prompts'])
-            if use_subject_reference:
-                mapped = map_subject_ids_to_elements(subject_ids, assets_mapping)
-            else:
-                mapped = map_subject_ids_to_images(subject_ids, assets_mapping)
+            mapped = map_subject_ids_to_images(subject_ids, assets_mapping)
             print(f"  [{ls_id}] pv={pv} [DRY-RUN] Skipping")
             results.append({
                 "clip_id": ls_id,
@@ -665,26 +677,19 @@ def run_batch_generate(
             pv = ls.get('prompt_version', 0)
             subject_ids = extract_subject_ids(ls['full_prompts'])
 
-            subjects = None
-            reference_images = None
-            if use_subject_reference:
-                subjects = map_subject_ids_to_elements(subject_ids, assets_mapping)
-                if subjects:
-                    print(f"  [{ls_id}] {len(subjects)}/{len(subject_ids)} subjects mapped (主体参考)")
-            else:
-                reference_images = map_subject_ids_to_images(subject_ids, assets_mapping)
-                if reference_images:
-                    print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (图片参考)")
-                # JSON 中已有 lsi.url（上一 clip 最后镜头首帧），同时作为参考图加入
-                lsi_url = ls.get('lsi_url', '')
-                if lsi_url:
-                    reference_images = list(reference_images or [])
-                    reference_images.append({
-                        "url": lsi_url,
-                        "name": "lsi",
-                        "display_name": "上一镜头首帧",
-                    })
-                    print(f"  [{ls_id}] lsi 参考图已加入 (url={lsi_url[:50]})")
+            reference_images = map_subject_ids_to_images(subject_ids, assets_mapping)
+            if reference_images:
+                print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (图片参考)")
+            # JSON 中已有 lsi.url（上一 clip 最后镜头首帧），同时作为参考图加入
+            lsi_url = ls.get('lsi_url', '')
+            if lsi_url:
+                reference_images = list(reference_images or [])
+                reference_images.append({
+                    "url": lsi_url,
+                    "name": "lsi",
+                    "display_name": "上一镜头首帧",
+                })
+                print(f"  [{ls_id}] lsi 参考图已加入 (url={lsi_url[:50]})")
 
             prompt = convert_prompt_brackets(ls['full_prompts'])
             dur_api = parse_duration(ls.get('duration_seconds', '5'))
@@ -717,7 +722,7 @@ def run_batch_generate(
                 prompt_text=prompt,
                 duration_seconds=dur_api,
                 subject_ids=subject_ids,
-                subjects=list(subjects or []),
+                subjects=[],
                 reference_images=list(reference_images or []),
                 location_num=location_num,
                 clip_num=clip_num,
@@ -729,7 +734,7 @@ def run_batch_generate(
                 'ls_id': ls_id,
                 'scene_id': scene_id,
                 'prompt_version': 0,
-                'subjects': subjects,
+                'subjects': [],
                 'reference_images': reference_images,
                 'prompt': prompt,
                 'dur_api': dur_api,
@@ -757,25 +762,24 @@ def run_batch_generate(
         print(f"  不同场景并行处理，lsi 边生成边写入")
         print(f"{'='*60}")
 
-        with ThreadPoolExecutor(max_workers=max(1, len(scenes_clip_states))) as executor:
-            scene_futures = {
-                executor.submit(
-                    _process_scene_clips,
-                    scene_id, clips, episode, paths, model_code,
-                    quality, ratio, poll_interval, timeout, gemini_api_key,
-                    get_gemini_config(), data, str(runtime_json_path), json_lock, skip_review,
-                ): scene_id
-                for scene_id, clips in scenes_clip_states.items()
-            }
-            for future in as_completed(scene_futures):
-                s_id = scene_futures[future]
-                try:
-                    future.result()
-                    print(f"  [SCENE] {s_id} 所有 clip 处理完成")
-                except Exception as e:
-                    print(f"  [SCENE] {s_id} 处理异常: {e}", file=sys.stderr)
-                    import traceback
-                    traceback.print_exc()
+        def process_scene(scene_id, clips):
+            _process_scene_clips(
+                scene_id, clips, episode, paths, model_code,
+                quality, ratio, poll_interval, timeout, gemini_api_key,
+                get_clip_review_config(), data, str(runtime_json_path), json_lock, skip_review,
+            )
+
+        def report_scene_error(scene_id, err):
+            print(f"  [SCENE] {scene_id} 处理异常: {err}", file=sys.stderr)
+            import traceback
+            traceback.print_exception(type(err), err, err.__traceback__)
+
+        process_scenes_parallel(
+            scenes_clip_states,
+            process_scene=process_scene,
+            on_scene_complete=lambda scene_id: print(f"  [SCENE] {scene_id} 所有 clip 处理完成"),
+            on_scene_error=report_scene_error,
+        )
 
         # Build results from clip_states
         for clip in clip_states:
@@ -833,19 +837,33 @@ def run_batch_generate(
     workspace_dir = project_root / "workspace" / ep_name
     workspace_dir.mkdir(parents=True, exist_ok=True)
     summary_path = workspace_dir / f"ep{episode:03d}_generation_summary.json"
+    task_manifest_path = output_root_path / f"ep{episode:03d}_video_task_manifest.json"
+    generated_at = datetime.now().isoformat()
     summary = {
         "episode": episode,
         "source_json": str(json_path),
         "runtime_storyboard_json": str(runtime_json_path),
+        "video_task_manifest_json": str(task_manifest_path),
         "storyboard_source_kind": storyboard_source_kind,
         "total": total,
         "success": success_count,
         "failed": fail_count,
         "dry_run": dry_run,
         "model_code": model_code,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": generated_at,
         "results": results,
     }
+    task_manifest = _build_video_task_manifest(
+        episode=episode,
+        source_json=Path(json_path),
+        runtime_json_path=runtime_json_path,
+        results=results,
+        generated_at=generated_at,
+    )
+    with open(task_manifest_path, 'w', encoding='utf-8') as f:
+        json.dump(task_manifest, f, ensure_ascii=False, indent=2)
+    print(f"[FILE] Video task manifest: {task_manifest_path}")
+
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     with open(summary_path, 'w', encoding='utf-8') as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
@@ -986,11 +1004,6 @@ def main():
         help=f"Aspect ratio (default: {_gen_cfg.get('default_ratio', '16:9')})"
     )
     parser.add_argument(
-        "--gemini-api-key",
-        default=None,
-        help="Gemini API key"
-    )
-    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume mode: skip clips that already have .mp4 output files"
@@ -998,7 +1011,7 @@ def main():
     parser.add_argument(
         "--skip-review",
         action="store_true",
-        help="Skip Gemini video review, mark all generated clips as passed"
+        help="Skip aos-cli video review, mark all generated clips as passed"
     )
 
     args = parser.parse_args()
@@ -1015,7 +1028,6 @@ def main():
         poll_interval=args.interval,
         dry_run=args.dry_run,
         shot_filter=args.shot,
-        gemini_api_key=args.gemini_api_key,
         resume=args.resume,
         skip_review=args.skip_review,
     )

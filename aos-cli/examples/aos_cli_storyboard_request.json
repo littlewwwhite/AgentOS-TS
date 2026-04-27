@@ -1,0 +1,31 @@
+{
+  "apiVersion": "aos-cli.model/v1",
+  "task": "agentos-ts.storyboard.batch",
+  "capability": "generate",
+  "output": {
+    "kind": "json"
+  },
+  "input": {
+    "system": "You are a storyboard prompt generator. Return only valid JSON.",
+    "content": {
+      "series": "A Leaf Knows Autumn",
+      "visualStyle": "stylized 3D historical fantasy",
+      "scene": {
+        "episode": 1,
+        "scene": 3,
+        "location": "moonlit courtyard",
+        "characters": ["Su Nianhe", "Shen Yanci"],
+        "dramaticBeat": "a restrained reunion under warm lantern light"
+      },
+      "requiredOutput": {
+        "shotPrompts": "array",
+        "dialogueNotes": "array",
+        "continuityWarnings": "array"
+      }
+    }
+  },
+  "options": {
+    "temperature": 0.3,
+    "maxOutputTokens": 1600
+  }
+}

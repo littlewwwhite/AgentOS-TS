@@ -1,6 +1,6 @@
 ---
 name: music-matcher
-description: "基于向量语义匹配的智能视频配乐。输入一个视频文件，自动完成 Gemini 视频分析、向量匹配选曲、FFmpeg 合成，输出配好背景音乐的视频。Applicable to: music-matcher, 配乐, 给视频配乐, 视频配乐, 自动配乐, 智能配乐, 匹配音乐, 背景音乐, BGM, 加背景音乐."
+description: "基于向量语义匹配的智能视频配乐。输入一个视频文件，自动完成 aos-cli 视频分析、向量匹配选曲、FFmpeg 合成，输出配好背景音乐的视频。Applicable to: music-matcher, 配乐, 给视频配乐, 视频配乐, 自动配乐, 智能配乐, 匹配音乐, 背景音乐, BGM, 加背景音乐."
 allowed-tools:
   - mcp__anime-mcp__match_music
   - Bash
@@ -10,19 +10,19 @@ argument-hint: "[视频文件路径或目录]"
 
 # Music Matcher — 智能视频配乐
 
-输入一个视频文件，自动完成：Gemini 视频分析 → MCP 向量匹配选曲 → FFmpeg 合成配乐视频。
+输入一个视频文件，自动完成：aos-cli 视频分析 → MCP 向量匹配选曲 → FFmpeg 合成配乐视频。
 支持单视频和批量目录两种模式。
 
-> Model boundary note: this skill remains deferred on direct Gemini multimodal calls because the current `aos-cli model` protocol does not yet fully cover this skill's required media upload/processing lifecycle and output shape. Do not add new provider surfaces here; migrate this skill only after the `aos-cli` protocol explicitly supports the needed multimodal contract.
+> Model boundary note: video analysis is migrated to `aos-cli model` `video.analyze`; this skill must not call provider SDKs directly for analysis.
 
 ## Resources
 
-- **视频分析脚本**：`scripts/analyze_video.py` — 压缩视频 + Gemini 分析 → segments JSON
+- **视频分析脚本**：`scripts/analyze_video.py` — 压缩视频 + aos-cli video.analyze → segments JSON
 - **合成脚本**：`scripts/compose.py` — 下载音频 + ffmpeg 混音 → 配乐视频（快速预览）
 - **专业交付脚本**：`scripts/compose_pro.py` — 输出成片 MP4 + Premiere XML 工程文件
-- **批量分析脚本**：`scripts/batch_analyze.py` — 并发 Gemini 分析目录下所有视频
+- **批量分析脚本**：`scripts/batch_analyze.py` — 并发 aos-cli video.analyze 分析目录下所有视频
 - **批量合成脚本**：`scripts/batch_compose.py` — 并发 ffmpeg 合成所有配乐视频
-- **Gemini 提示词**：`assets/video_analysis.txt` — 视频分析 prompt
+- **视频分析提示词**：`assets/video_analysis.txt` — 视频分析 prompt
 - **默认配置**：`assets/default.env` — 内置默认参数（无需用户手动创建 .env）
 - **MCP 工具**：`mcp__anime-mcp__match_music` — 向量匹配选曲
 
@@ -34,17 +34,14 @@ argument-hint: "[视频文件路径或目录]"
 |------|---------|------|
 | Python 3.10+ | `python3 --version` | — |
 | ffmpeg / ffprobe | `ffmpeg -version` | `brew install ffmpeg` |
-| google-genai | `pip show google-genai` | `pip install google-genai` |
 | python-dotenv | `pip show python-dotenv` | `pip install python-dotenv` |
-| GEMINI_API_KEY | 环境变量 `echo $GEMINI_API_KEY` | 填写 ChatFire key |
+| aos-cli `video.analyze` | `aos-cli model preflight --json` | 按 aos-cli provider 配置修复 |
 | MCP anime-mcp | Claude Code MCP 设置中已配置 | — |
 
-**GEMINI_API_KEY** 是唯一必需的用户配置，值填写 ChatFire key。脚本会按以下优先级读取配置：
+模型 provider 配置由 `aos-cli model` 统一读取；本 skill 不直接读取 provider key。脚本会按以下优先级读取自身运行参数：
 1. 系统环境变量（最高优先）
 2. 当前目录 `.env` 文件
 3. skill 内置 `assets/default.env`（兜底默认值）
-
-如果环境变量和 CWD 都没有 GEMINI_API_KEY，提示用户设置：`export GEMINI_API_KEY=xxx`
 
 ## Workflow
 
@@ -58,7 +55,7 @@ argument-hint: "[视频文件路径或目录]"
 
 确认：
 1. 文件存在且为视频格式（.mp4/.mov/.avi/.mkv 等）
-2. GEMINI_API_KEY 已配置（环境变量或 .env）
+2. `aos-cli model preflight` 中 `video.analyze` capability 可用
 
 如果用户没给视频路径，先扫描当前目录，再问。
 
@@ -76,8 +73,7 @@ python3 ./.claude/skills/music-matcher/scripts/analyze_video.py <视频文件路
 
 脚本会自动：
 - 大文件(>100MB)先压缩到 720p/12fps
-- 上传到 Gemini Files API
-- 调用 Gemini 分析视频内容
+- 调用 `aos-cli model` 的 `video.analyze` capability 分析视频内容
 - 输出到 `output/segments-<视频名>-<时间戳>.json`
 
 **等待脚本完成**，然后读取生成的 segments JSON 文件。
@@ -153,12 +149,12 @@ output/ep00x/
 
 ## 配置说明
 
-所有参数都有内置默认值（见 `assets/default.env`），用户只需配置 `GEMINI_API_KEY`。
+所有 skill 运行参数都有内置默认值（见 `assets/default.env`）。provider credential、base URL 与真实模型可用性由 `aos-cli model` 统一检查。
 
 **覆盖方式**（任选其一）：
-1. **环境变量**：`export GEMINI_MODEL=gemini-2.5-flash`（推荐）
+1. **环境变量**：`export VIDEO_ANALYZE_MODEL=gemini-2.5-flash`（推荐）
 2. **CWD/.env 文件**：在当前工作目录创建 `.env`
-3. **运行时传参**：`GEMINI_MODEL=gemini-2.5-flash python3 ./.claude/skills/music-matcher/scripts/analyze_video.py ...`
+3. **运行时传参**：`VIDEO_ANALYZE_MODEL=gemini-2.5-flash python3 ./.claude/skills/music-matcher/scripts/analyze_video.py ...`
 
 ## Key Rules
 
@@ -183,7 +179,7 @@ output/ep00x/
 当输入为目录时自动进入批量模式，分三阶段执行。所有脚本使用固定文件名（无时间戳），支持断点续传——已有输出文件的视频自动跳过，中断后重跑即可。
 
 ```bash
-# Phase 1: Concurrent Gemini analysis
+# Phase 1: Concurrent aos-cli video.analyze
 python3 ./.claude/skills/music-matcher/scripts/batch_analyze.py <video_dir> [--workers 3] [--recursive]
 
 # Phase 2: Sequential MCP matching (Claude executes, same as single-video Step 2)

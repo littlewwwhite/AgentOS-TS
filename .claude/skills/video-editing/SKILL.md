@@ -1,6 +1,6 @@
 ---
 name: video-editing
-description: "AI 驱动的漫剧视频剪辑：多变体选优、Gemini 循环剪辑引擎、Premiere XML 工程生成。三阶段流水线自动完成从素材分析到成片输出。Applicable to: 视频剪辑, 剪辑视频, 自动剪辑, 漫剧剪辑, video editing, 变体选优, 多变体选优, 素材拼接, 生成XML, 导出Premiere, 循环质检, 拼接视频, 合并视频, 剪辑引擎"
+description: "AI 驱动的漫剧视频剪辑：多变体选优、循环剪辑引擎、Premiere XML 工程生成。三阶段流水线自动完成从素材分析到成片输出。Applicable to: 视频剪辑, 剪辑视频, 自动剪辑, 漫剧剪辑, video editing, 变体选优, 多变体选优, 素材拼接, 生成XML, 导出Premiere, 循环质检, 拼接视频, 合并视频, 剪辑引擎"
 argument-hint: "[ep编号，如 ep001]"
 ---
 
@@ -8,14 +8,14 @@ argument-hint: "[ep编号，如 ep001]"
 
 三阶段流水线：对 AI 生成的多变体视频素材进行分析、选优、剪辑，输出 Premiere 工程文件和成片视频。
 
-> Model boundary note: this skill remains deferred on direct Gemini multimodal calls because the current `aos-cli model` protocol does not yet fully cover this skill's required media upload/processing lifecycle and output shape. Do not add new provider surfaces here; migrate this skill only after the `aos-cli` protocol explicitly supports the needed multimodal contract.
+> Model boundary note: Phase 1 video analysis and Phase 2 assembled-video review are migrated to `aos-cli model` `video.analyze`; this skill must not call provider SDKs directly for video analysis or review.
 
 > **路径约定**：文档内引用 skill 自带文件时，直接使用 `references/`、`assets/`、`scripts/` 等相对路径；命令示例统一使用仓库根相对路径。`${PROJECT_DIR}` 含义保持不变。
 
 ```
 ${PROJECT_DIR}/output/ep{NNN}/scn*/clip*/*.mp4  (多变体素材)
         ↓
-  Phase 1: PySceneDetect + Gemini 多变体对比 → analysis.json
+  Phase 1: PySceneDetect + aos-cli video.analyze 多变体对比 → analysis.json
         ↓
   Phase 2: 剪辑引擎（切点调整/跳过镜头/过渡效果/变体替换）→ edit_decision.json
         ↓
@@ -43,20 +43,22 @@ ${PROJECT_DIR}/output/ep{NNN}/ep{NNN}.mp4 + ep{NNN}.xml  (最终交付)
 - **分阶段脚本（备用）**：`scripts/phase1_analyze.py`, `scripts/phase2_assemble.py`, `scripts/phase3_merge.py`
 - **切镜工具**：`scripts/detect_scenes.py` — 独立 PySceneDetect 切镜检测
 - **Prompt 模块**：`assets/phase1_clip_scoring.py`, `assets/phase2_loop_analysis.py`
-- **默认配置**：`assets/default.env` — Gemini 模型、压缩参数、循环阈值等
+- **默认配置**：`assets/default.env` — model 参数、压缩参数、循环阈值等
 
 ## 依赖
 
 ### Python 包
 ```bash
-pip install google-genai python-dotenv "scenedetect[opencv]" av
+pip install python-dotenv "scenedetect[opencv]" av
 ```
+
+Model provider configuration is owned by `aos-cli model`; this skill calls `video.analyze` through the shared adapter.
 
 ### 系统工具
 - `ffmpeg` + `ffprobe`（视频拼接和分析）
 
 ### 环境变量
-- `GEMINI_API_KEY` — 必须设置。用于 ChatFire Gemini 代理，值填写 ChatFire key，可写在项目根目录 `.env` 文件中。
+- `VIDEO_ANALYZE_MODEL` / `LOOP_VIDEO_ANALYZE_MODEL` — optional aos-cli model override for Phase 1 / Phase 2 video analysis.
 
 ## Workflow
 
@@ -92,7 +94,7 @@ python3 ./.claude/skills/video-editing/scripts/run_pipeline.py \
 `editing_summary.json` 是本 skill 的局部汇总；跨 skill 恢复时应优先看 `pipeline-state.json`。
 
 **Agent 操作流程**（最多 3 次 tool call）：
-1. `Bash`: 环境检查（依赖 + GEMINI_API_KEY）
+1. `Bash`: 环境检查（依赖 + aos-cli `video.analyze` preflight）
 2. `Bash`: 运行 `run_pipeline.py`（一次完成所有工作）
 3. `Read`: 读 `editing_summary.json` 验证结果
 
@@ -108,11 +110,18 @@ python3 ./.claude/skills/video-editing/scripts/run_pipeline.py \
 
 ```bash
 python3 - <<'PY'
-import os, sys
-if not os.environ.get("GEMINI_API_KEY"):
-    print("missing env: GEMINI_API_KEY", file=sys.stderr)
+import json, subprocess, sys
+proc = subprocess.run(["aos-cli", "model", "preflight", "--json"], capture_output=True, text=True)
+if proc.returncode != 0:
+    print(proc.stderr or proc.stdout, file=sys.stderr)
+    sys.exit(proc.returncode)
+data = json.loads(proc.stdout)
+checks = data.get("checks", data if isinstance(data, list) else [])
+ok = any(item.get("capability") == "video.analyze" and item.get("ok") for item in checks)
+if not ok:
+    print("missing aos-cli capability: video.analyze", file=sys.stderr)
     sys.exit(1)
-print("video-editing env ok")
+print("video-editing aos-cli video.analyze ok")
 PY
 command -v ffmpeg >/dev/null
 ```
@@ -141,7 +150,7 @@ python3 ./.claude/skills/video-editing/scripts/phase1_analyze.py \
 
 **做什么**：
 - PySceneDetect 切镜检测
-- Gemini 多模态分析：逐 shot 对比所有变体，评分质量、脚本匹配度
+- aos-cli video.analyze：逐 shot 对比所有变体，评分质量、脚本匹配度
 - 输出每个 clip 的 `analysis.json`，含推荐混剪方案
 
 **输出位置**：`${PROJECT_DIR}/output/ep{NNN}/_tmp/scn{NNN}/clip{NNN}/analysis.json`
@@ -163,12 +172,12 @@ python3 ./.claude/skills/video-editing/scripts/phase2_assemble.py \
 1. **构建初始方案**：从 Phase 1 的推荐方案提取
 2. **循环剪辑**：
    - ffmpeg 拼接当前方案
-   - Gemini 评估 + 给出剪辑建议（不只是问题）
+   - aos-cli video.analyze 评估 + 给出剪辑建议（不只是问题）
    - 执行剪辑动作（优先 trim/skip/transition，最后才 replace_variant）
    - 重新评估
 3. **终止条件**：评分 ≥ 7.5 OR 达到 3 轮 OR 无可用动作
 
-**Gemini 输出的剪辑建议**：
+**aos-cli video.analyze 输出的剪辑建议**：
 ```json
 {
   "overall_score": 7.5,
@@ -220,7 +229,7 @@ python3 ./.claude/skills/video-editing/scripts/phase3_merge.py \
 | `LOOP_SCORE_THRESHOLD` | 7.5 | 循环终止分数阈值 |
 | `LOOP_MAX_ITERATIONS` | 3 | 最大循环轮次 |
 | `CONCURRENCY` | 4 | scn 级并行数 |
-| `COMPRESS_BEFORE_UPLOAD` | true | 上传 Gemini 前压缩视频 |
+| `COMPRESS_BEFORE_UPLOAD` | true | 调用 aos-cli video.analyze 前压缩视频 |
 | `COMPRESS_CRF` | 28 | 压缩质量 |
 
 ## References
@@ -231,9 +240,9 @@ python3 ./.claude/skills/video-editing/scripts/phase3_merge.py \
 
 ## Troubleshooting
 
-### Gemini API errors
+### aos-cli video.analyze errors
+- **Capability unavailable**: Run `aos-cli model preflight --json` and verify `video.analyze` is available in the current provider configuration.
 - **Rate limit**: Wait 60s and retry. For batch operations, add `--delay 2` between requests.
-- **Invalid API key**: Verify `GEMINI_API_KEY` env var is set to the ChatFire key. Re-export if expired.
 - **Timeout**: Increase timeout with `--timeout 120`. Long videos may need 180s+.
 
 ### FFmpeg errors

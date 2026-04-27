@@ -1,19 +1,9 @@
 {
   "video_model": {
-    "provider": "volcengine_ark",
     "active_model": "seedance2",
     "models": {
       "seedance2": {
-        "provider": "volcengine_ark",
-        "model_code": "ep-20260303234827-tfnzm",
-        "model_group_code": "",
-        "subject_reference": false
-      }
-    },
-    "providers": {
-      "volcengine_ark": {
-        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-        "api_key_env": "ARK_API_KEY"
+        "model_code": "ep-20260303234827-tfnzm"
       }
     }
   },
@@ -27,15 +17,8 @@
     "poll_interval": 10,
     "max_consecutive_errors": 10
   },
-  "gemini": {
-    "_boundary_note": "Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md. These keys are consumed only by analyzer.py and frame_extractor.describe_frame_with_gemini, which remain on the direct Gemini SDK pending aos-cli protocol expansion.",
-    "base_url": "https://api.chatfire.cn/gemini",
-    "api_key": "",
-    "api_key_env": "GEMINI_API_KEY",
-    "api_key_note": "Set GEMINI_API_KEY to the ChatFire key value (used by deferred multimodal review only)",
+  "clip_review": {
     "model": "gemini-3.1-pro-preview",
-    "review_model": "gemini-3.1-pro-preview",
-    "color_removal_model": "gemini-3.1-pro-preview",
     "max_workers": 2,
     "thresholds": {
       "reference_consistency_min": 6,

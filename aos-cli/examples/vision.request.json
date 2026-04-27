@@ -1,0 +1,20 @@
+{
+  "apiVersion": "aos-cli.model/v1",
+  "task": "review.frame",
+  "capability": "vision.analyze",
+  "output": {
+    "kind": "json"
+  },
+  "input": {
+    "system": "Return concise JSON only.",
+    "content": {
+      "prompt": "Review whether this frame matches the requested visual style.",
+      "images": [
+        "file:///tmp/frame.png"
+      ]
+    }
+  },
+  "options": {
+    "responseMimeType": "application/json"
+  }
+}

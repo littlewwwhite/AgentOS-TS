@@ -1,0 +1,16 @@
+{
+  "apiVersion": "aos-cli.model.batch/v1",
+  "concurrency": 2,
+  "jobs": [
+    {
+      "id": "storyboard-scene",
+      "request": "examples/aos_cli_storyboard_request.json",
+      "output": "/tmp/aos-cli-storyboard-scene-response.json"
+    },
+    {
+      "id": "asset-analysis",
+      "request": "examples/json.request.json",
+      "output": "/tmp/aos-cli-asset-analysis-response.json"
+    }
+  ]
+}

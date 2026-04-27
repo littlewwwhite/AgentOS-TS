@@ -1,0 +1,17 @@
+{
+  "apiVersion": "aos-cli.model/v1",
+  "task": "subtitle.transcribe",
+  "capability": "audio.transcribe",
+  "output": {
+    "kind": "json"
+  },
+  "input": {
+    "system": "Return transcript segments as JSON only.",
+    "prompt": "Transcribe this audio into timestamped segments.",
+    "audio": "file:///tmp/audio.mp3",
+    "glossary": []
+  },
+  "options": {
+    "responseMimeType": "application/json"
+  }
+}

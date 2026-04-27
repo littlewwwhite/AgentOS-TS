@@ -38,12 +38,11 @@ Novel → SCRIPT → VISUAL → STORYBOARD → VIDEO → EDITING → MUSIC → S
 | 6 | MUSIC | `music-matcher` | edited videos | scored videos | music tracks applied |
 | 7 | SUBTITLE | `subtitle-maker` | scored videos | final videos with subtitles | final/ directory populated |
 
-`wangwen` / `INSPIRATION` is currently paused and must not be used as the default project entry. The current business entry is a complete script, novel, structured story source, or uploaded source document.
+The pipeline entry is always a complete script, novel, structured story source, or uploaded source document. There is no separate market-research / inspiration stage.
 
 ### Dispatch Rules
 
 - When the user provides a novel, existing script, structured story source, or uploaded source document → invoke `script-adapt` or `script-writer`
-- Do not invoke `wangwen` unless the user explicitly asks to reactivate the paused market-research path.
 - When script.json exists and user says "generate assets/visuals" → invoke `asset-gen`
 - When assets exist and user says "storyboard/shots" → invoke `storyboard`; do not modify `output/script.json`
 - When approved storyboard exists and user says "generate videos" → invoke `video-gen`; VIDEO must not create or rewrite storyboard prompts from `script.json`
@@ -147,7 +146,6 @@ State transition rules:
 
 | Domain | Skills | Responsibilities |
 |--------|--------|-----------------|
-| Researcher | wangwen (paused) | Optional market-research only. Do not use as the default project entry. |
 | Screenwriter | script-adapt, script-writer | Script creation only. Never generate images or videos. |
 | Director | asset-gen, storyboard | Visual design + asset gen + shot planning. Never modify existing script text. |
 | Producer | video-gen, video-editing, music-matcher, subtitle-maker | Execution only. Zero creative decisions — all text from script.json. |

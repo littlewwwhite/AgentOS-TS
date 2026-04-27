@@ -22,6 +22,7 @@ class AosCliAssetImageModelTest(unittest.TestCase):
     def setUp(self) -> None:
         sys.modules.pop("common_image_api", None)
         self.common_image_api = importlib.import_module("common_image_api")
+        self.aos_cli_envelope = importlib.import_module("aos_cli_envelope")
         self.common_image_api._TASKS.clear()
 
     def tearDown(self) -> None:
@@ -67,7 +68,7 @@ class AosCliAssetImageModelTest(unittest.TestCase):
             "task": "asset.character.generate",
         }
 
-        with patch.object(self.common_image_api, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             task_id = self.common_image_api.submit_image_task(
                 "asset-image-model",
                 "A cinematic character concept portrait under moonlight.",
@@ -140,7 +141,7 @@ class AosCliAssetImageModelTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(self.common_image_api, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             task_id = self.common_image_api.submit_image_task("", "prompt", params={}, max_retries=1)
 
         self.assertEqual(
@@ -167,7 +168,7 @@ class AosCliAssetImageModelTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(self.common_image_api, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             with self.assertRaisesRegex(RuntimeError, "output.kind mismatch"):
                 self.common_image_api._post_generation("prompt", {}, "asset-image-model")
 
@@ -179,7 +180,7 @@ class AosCliAssetImageModelTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(self.common_image_api, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             with self.assertRaisesRegex(RuntimeError, "missing output.artifacts"):
                 self.common_image_api._post_generation("prompt", {}, "asset-image-model")
 
@@ -194,7 +195,7 @@ class AosCliAssetImageModelTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(self.common_image_api, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             with self.assertRaisesRegex(RuntimeError, "artifact must be an object"):
                 self.common_image_api._post_generation("prompt", {}, "asset-image-model")
 
@@ -212,7 +213,7 @@ class AosCliAssetImageModelTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(self.common_image_api, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             with self.assertRaisesRegex(self.common_image_api.InsufficientCreditsError, "quota exhausted"):
                 self.common_image_api.submit_image_task("", "prompt", params={}, max_retries=1)
 
@@ -220,7 +221,7 @@ class AosCliAssetImageModelTest(unittest.TestCase):
         def fake_run(request_path, response_path, cwd=None):
             return type("Completed", (), {"returncode": 2, "stderr": "invalid request"})()
 
-        with patch.object(self.common_image_api, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             with self.assertRaisesRegex(RuntimeError, "invalid request"):
                 self.common_image_api._post_generation("prompt", {}, "asset-image-model")
 
@@ -261,7 +262,7 @@ class AosCliAssetImageModelTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir).resolve()
-            with patch.object(self.common_image_api, "aos_cli_model_run", side_effect=fake_run):
+            with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
                 task_id = self.common_image_api.submit_image_task(
                     "ignored-by-boundary",
                     "Moonlit portrait",
@@ -295,7 +296,7 @@ class AosCliAssetImageModelTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(self.common_image_api, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             with patch.object(self.common_image_api.time, "sleep", lambda *_: None):
                 task_id = self.common_image_api.submit_image_task(
                     "asset-image-model",

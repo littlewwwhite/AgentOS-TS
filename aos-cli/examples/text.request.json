@@ -1,0 +1,20 @@
+{
+  "apiVersion": "aos-cli.model/v1",
+  "task": "storyboard.scene.prompt",
+  "capability": "generate",
+  "output": {
+    "kind": "text"
+  },
+  "input": {
+    "system": "You write concise production prompts for visual storytelling.",
+    "content": {
+      "episode": 1,
+      "scene": 3,
+      "goal": "Draft a 3D historical fantasy storyboard prompt for a moonlit courtyard reunion."
+    }
+  },
+  "options": {
+    "temperature": 0.6,
+    "maxOutputTokens": 800
+  }
+}

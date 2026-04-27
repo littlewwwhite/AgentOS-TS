@@ -20,21 +20,19 @@ from typing import Dict, List, Optional, Tuple
 
 from config_loader import (
     get_generation_config,
-    get_gemini_config,
+    get_clip_review_config,
     get_video_model_config,
 )
 from evaluator import evaluate_from_gemini_analysis, is_video_qualified
 from frame_extractor import (
-    describe_frame_with_gemini,
+    describe_frame_with_aos_cli,
     extract_last_shot_first_frame_blurred,
 )
-from gemini_adapter import get_video_analysis
 from production_types import ClipIntent, ContinuityContext
 from request_compiler import compile_request
-from sensitive_precheck import precheck_and_fix
+from analyzer import analyze_video_parallel
 from video_api import (
     _cos_relative_url,
-    get_subject_reference_for_model,
     poll_multiple_tasks,
     submit_video,
     upload_to_cos,
@@ -63,6 +61,10 @@ def _save_clip_result(
     passed,
     analysis_dict,
     review_dict,
+    requested_duration_seconds=None,
+    actual_duration_seconds=None,
+    provider=None,
+    model_code=None,
 ):
     """Update one clip's in-memory review state."""
     clip["versions"].append(
@@ -74,9 +76,15 @@ def _save_clip_result(
             "success": True,
             "passed": passed,
             "video_path": actual_path,
+            "output_path": actual_path,
             "video_url": video_url,
             "last_frame_url": last_frame_url,
             "task_id": task_id,
+            "provider_task_id": task_id,
+            "provider": provider,
+            "model_code": model_code,
+            "requested_duration_seconds": requested_duration_seconds,
+            "actual_duration_seconds": actual_duration_seconds,
             "total_score": review_dict.get("total_score"),
             "analysis": analysis_dict,
             "review": review_dict,
@@ -92,21 +100,16 @@ def _review_single_clip(
     segment_id: str,
     expected_duration: float,
     original_prompt: str,
-    output_dir: str,
-    api_key: Optional[str] = None,
 ) -> Tuple[bool, Dict, Dict]:
-    """Review a single generated clip with Gemini and flatten the result."""
-    print(f"  [REVIEW] Gemini 评审: {segment_id}")
+    """Review a single generated clip through aos-cli video.analyze and flatten the result."""
+    print(f"  [REVIEW] aos-cli video.analyze 评审: {segment_id}")
 
     try:
-        analysis_result, _ = get_video_analysis(
+        analysis_result = analyze_video_parallel(
             video_path=video_path,
             segment_id=segment_id,
             expected_duration=expected_duration,
             original_prompt=original_prompt,
-            output_dir=output_dir,
-            force_reanalyze=True,
-            api_key=api_key,
         )
 
         parallel_results = analysis_result.get("parallel_results", {})
@@ -200,34 +203,16 @@ def _run_generation_rounds(
         )
         paths.init_clip_dir(episode, intent.location_num, intent.clip_num)
 
-        can_submit, safe_prompt, _subs = precheck_and_fix(
-            request.prompt, clip_id=clip["ls_id"]
-        )
         clip["attempts"] += 1
-        if not can_submit:
-            clip["done"] = True
-            clip["versions"].append(
-                {
-                    "version": version,
-                    "attempt": clip["attempts"],
-                    "success": False,
-                    "passed": False,
-                    "message": "Skipped: residual sensitive words after auto-replace",
-                }
-            )
-            continue
 
         submit_result = submit_video(
-            prompt=safe_prompt,
+            prompt=request.prompt,
             model_code=model_code,
-            subjects=request.subjects or None,
             reference_images=request.reference_images or None,
             duration=str(request.duration_seconds),
             quality=request.quality,
             ratio=request.ratio,
             first_frame_url=request.first_frame_url,
-            first_frame_text=None,
-            reference_videos=None,
         )
 
         if submit_result["success"]:
@@ -239,7 +224,6 @@ def _run_generation_rounds(
                     "task_id": task_id,
                     "output_path": str(video_path),
                     "version": version,
-                    "provider": submit_result.get("provider"),
                     "model_code": submit_result.get("model_code") or model_code,
                     "task_envelope": submit_result.get("task_envelope"),
                 }
@@ -316,8 +300,12 @@ def _run_generation_rounds(
                 "version": version,
                 "actual_path": actual_path,
                 "task_id": submitted_item["task_id"],
+                "provider": submitted_item.get("provider"),
+                "model_code": submitted_item.get("model_code"),
                 "video_url": poll_result.get("video_url"),
                 "last_frame_url": poll_result.get("last_frame_url"),
+                "requested_duration_seconds": clip["dur_api"],
+                "actual_duration_seconds": poll_result.get("actual_duration_seconds"),
             }
         )
 
@@ -332,10 +320,10 @@ def _run_generation_rounds(
                     file=sys.stderr,
                 )
 
-    review_requested = bool(gemini_api_key)
+    review_requested = not skip_review
     if skip_review and review_items:
         print(
-            f"    [REVIEW] --skip-review: skipping Gemini review, "
+            f"    [REVIEW] --skip-review: skipping aos-cli video review, "
             f"marking {len(review_items)} clips as passed"
         )
         for item in review_items:
@@ -349,24 +337,21 @@ def _run_generation_rounds(
                 True,
                 {},
                 {"skipped": True, "reason": "skip-review"},
+                item.get("requested_duration_seconds"),
+                item.get("actual_duration_seconds"),
+                item.get("provider"),
+                item.get("model_code"),
             )
     elif review_requested and review_items:
-        print(f"    [REVIEW] 显式启用 Gemini 评审，处理 {len(review_items)} 个视频...")
+        print(f"    [REVIEW] 启用 aos-cli video.analyze 评审，处理 {len(review_items)} 个视频...")
 
         def do_review(item):
             clip = item["clip"]
-            clip_dir = str(
-                paths.get_video_path(
-                    episode, clip["location_num"], clip["clip_num"], 1
-                ).parent
-            )
             return item, _review_single_clip(
                 video_path=item["actual_path"],
                 segment_id=clip["ls_id"],
                 expected_duration=float(clip["dur_api"]),
                 original_prompt=clip["ls"].get("full_prompts", ""),
-                output_dir=clip_dir,
-                api_key=gemini_api_key,
             )
 
         with ThreadPoolExecutor(max_workers=len(review_items)) as executor:
@@ -395,6 +380,10 @@ def _run_generation_rounds(
                     passed,
                     analysis_dict,
                     review_dict,
+                    item.get("requested_duration_seconds"),
+                    item.get("actual_duration_seconds"),
+                    item.get("provider"),
+                    item.get("model_code"),
                 )
                 print(
                     f"    [{item['clip']['ls_id']}] v{item['version']:03d} "
@@ -402,7 +391,7 @@ def _run_generation_rounds(
                 )
     elif review_items:
         print(
-            "    [REVIEW] 默认路径不启用 Gemini 评审，生成成功即通过"
+            "    [REVIEW] 未启用 aos-cli video review，生成成功即通过"
         )
         for item in review_items:
             _save_clip_result(
@@ -415,6 +404,10 @@ def _run_generation_rounds(
                 True,
                 {},
                 {"skipped": True, "reason": "default-path"},
+                item.get("requested_duration_seconds"),
+                item.get("actual_duration_seconds"),
+                item.get("provider"),
+                item.get("model_code"),
             )
 
     for clip in clip_group:
@@ -492,7 +485,7 @@ def _extract_and_upload_frame(
     scn_label: str,
     clip_group: list,
     paths,
-    gemini_cfg: Optional[dict],
+    clip_review_cfg: Optional[dict],
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """Extract, describe, and upload the last-shot first frame for continuity."""
     if not (video_path and os.path.exists(video_path)):
@@ -517,7 +510,7 @@ def _extract_and_upload_frame(
 
     first_frame_text: Optional[str] = None
     raw_path = frame_path.replace(".png", "_raw.png")
-    if gemini_cfg and os.path.exists(raw_path):
+    if clip_review_cfg and os.path.exists(raw_path):
         character_names = []
         clip0 = clip_group[0]
         if clip0.get("subjects"):
@@ -529,11 +522,11 @@ def _extract_and_upload_frame(
                 ref.get("display_name") or ref.get("name", "")
                 for ref in clip0["reference_images"]
             ]
-        first_frame_text = describe_frame_with_gemini(
+        first_frame_text = describe_frame_with_aos_cli(
             img_path=raw_path,
             last_shot_prompt=clip0.get("prompt", ""),
             character_names=character_names,
-            gemini_cfg=gemini_cfg,
+            config=clip_review_cfg,
         )
 
     cos_key = upload_frame_to_cos(png_path)
@@ -553,6 +546,34 @@ def _extract_and_upload_frame(
     return None, None, None
 
 
+def process_scenes_parallel(
+    scenes_clip_states: Dict[str, list],
+    process_scene,
+    on_scene_complete=None,
+    on_scene_error=None,
+) -> None:
+    """Run independent scenes concurrently while each scene owns its clip ordering."""
+    if not scenes_clip_states:
+        return
+
+    with ThreadPoolExecutor(max_workers=max(1, len(scenes_clip_states))) as executor:
+        scene_futures = {
+            executor.submit(process_scene, scene_id, clips): scene_id
+            for scene_id, clips in scenes_clip_states.items()
+        }
+        for future in as_completed(scene_futures):
+            scene_id = scene_futures[future]
+            try:
+                future.result()
+                if on_scene_complete:
+                    on_scene_complete(scene_id)
+            except Exception as err:
+                if on_scene_error:
+                    on_scene_error(scene_id, err)
+                else:
+                    raise
+
+
 def _process_scene_clips(
     scene_id: str,
     scene_clip_states: list,
@@ -564,7 +585,7 @@ def _process_scene_clips(
     poll_interval: int,
     timeout: int,
     gemini_api_key: Optional[str],
-    gemini_cfg: Optional[dict] = None,
+    clip_review_cfg: Optional[dict] = None,
     data: Optional[dict] = None,
     json_path: Optional[str] = None,
     json_lock=None,
@@ -628,7 +649,7 @@ def _process_scene_clips(
                 scn_label=scn_label,
                 clip_group=clip_group,
                 paths=paths,
-                gemini_cfg=None,
+                clip_review_cfg=None,
             )
         first_frame_url = next_frame_url
 

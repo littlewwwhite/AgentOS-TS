@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-review_char.py - 角色专用 Gemini 审图脚本（世界观感知版）
-
-Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-This image+text review path remains deferred until `aos-cli model` defines an explicit multimodal review contract for the required media upload/processing lifecycle and review I/O shape.
+review_char.py - 角色专用审图脚本（世界观感知版）
 
 三种审查类型：
   front      - 审查正视图（头身比 + 剧本符合度 + 无道具强制检查）
@@ -57,7 +54,7 @@ config JSON 格式（通过 --config 参数传递 JSON 字符串）：
 }
 """
 
-import sys, os, json, time, argparse
+import sys, os, json, argparse
 
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
@@ -69,7 +66,7 @@ _log_prefix = ""
 def _log(msg):
     print(f"{_log_prefix}{msg}", file=sys.stderr)
 
-from gemini_multimodal_legacy import create_client, load_image_part, extract_response_text
+from common_vision_review import call_vision_review, load_image_part
 
 # ── 加载统一审核配置 ──────────────────────────────────────────────────────────
 from common_config import get_review_config
@@ -199,50 +196,23 @@ def build_head_closeup_contents(chars_info):
     return contents
 
 
-def call_gemini(client, contents, models=None):
-    """调用 Gemini，依次尝试多个模型，返回解析后的 dict"""
-    models_to_try  = models or _RC["gemini"]["models"]
-    retry_attempts = _RC["gemini"]["retry_attempts"]
-    result = None
-
-    for model in models_to_try:
-        for attempt in range(retry_attempts):
-            try:
-                _log(f'尝试 {model} (第{attempt+1}次)...')
-                response = client.models.generate_content(model=model, contents=contents)
-                raw = extract_response_text(response)
-
-                # 去除可能的 markdown 代码块
-                if '```json' in raw:
-                    raw = raw.split('```json')[1].split('```')[0].strip()
-                elif '```' in raw:
-                    raw = raw.split('```')[1].split('```')[0].strip()
-
-                result = json.loads(raw)
-                _log(f'{model} 审查完成')
-                break
-            except Exception as e:
-                _log(f'{model} 第{attempt+1}次失败: {e}')
-                if attempt == 0:
-                    time.sleep(_RC["gemini"]["retry_sleep_seconds"])
-        if result:
-            break
-
-    return result
+def call_gemini(contents, models=None, task="asset.character.review"):
+    """调用 aos-cli vision.review，依次尝试多个模型，返回解析后的 dict"""
+    return call_vision_review(
+        contents,
+        task=task,
+        models=models or _RC["vision_review"]["models"],
+        max_retries=_RC["vision_review"]["retry_attempts"],
+        retry_sleep_seconds=_RC["vision_review"]["retry_sleep_seconds"],
+    )
 
 
 def main():
-    parser = argparse.ArgumentParser(description='角色专用 Gemini 审图（世界观感知版）')
+    parser = argparse.ArgumentParser(description='角色专用 aos-cli vision.review 审图（世界观感知版）')
     parser.add_argument('--config', required=True, help='审图配置 JSON 字符串')
     parser.add_argument('--mode', default='front', choices=['three_view', 'head_closeup'],
                         help='审核模式: three_view=三视图两阶段审核, head_closeup=头部特写质量审核')
     args = parser.parse_args()
-
-    try:
-        client = create_client()
-    except ValueError as e:
-        _log(f'ERROR: {e}')
-        sys.exit(1)
 
     config = json.loads(args.config)
 
@@ -276,11 +246,11 @@ def main():
     if review_type == 'head_closeup':
         _log('=== 头部特写质量评分 ===')
         contents = build_head_closeup_contents(chars_info)
-        score_result = call_gemini(client, contents, models=["gemini-3.1-pro-preview"])
+        score_result = call_gemini(contents, task="asset.character.head_closeup.review")
         if not score_result:
             import logging
-            logging.warning("Gemini review bypassed (head_closeup): quota exhausted or all models failed")
-            _log('[WARNING] Gemini review bypassed (head_closeup): quota exhausted or all models failed')
+            logging.warning("aos-cli vision review bypassed (head_closeup): quota exhausted or all models failed")
+            _log('[WARNING] aos-cli vision review bypassed (head_closeup): quota exhausted or all models failed')
             score_result = {
                 "approved": True,
                 "summary": "review bypassed: quota exhausted",
@@ -315,12 +285,12 @@ def main():
     # ── three_view 模式：两阶段审核 ──────────────────────────────────────
     _log('=== Layer 1: 结构门控审查 ===')
     gate_contents = build_three_view_gate_contents(chars_info, visual_mode)
-    gate_result = call_gemini(client, gate_contents, models=["gemini-3.1-pro-preview"])
+    gate_result = call_gemini(gate_contents, task="asset.character.three_view_gate.review")
 
     if not gate_result:
         import logging
-        logging.warning("Gemini review bypassed (three_view gate): quota exhausted or all models failed")
-        _log('[WARNING] Gemini review bypassed (three_view gate): quota exhausted or all models failed')
+        logging.warning("aos-cli vision review bypassed (three_view gate): quota exhausted or all models failed")
+        _log('[WARNING] aos-cli vision review bypassed (three_view gate): quota exhausted or all models failed')
         gate_result = {
             "gate_results": [{"name": c["name"], "pass": True, "failed_items": [], "review_bypassed": True, "bypass_reason": "quota_exhausted"} for c in chars_info],
             "review_bypassed": True,
@@ -352,11 +322,11 @@ def main():
     if passed_chars:
         _log('=== Layer 2: 质量评分 ===')
         score_contents = build_three_view_contents(passed_chars, worldview_type, visual_mode, character_style)
-        score_result = call_gemini(client, score_contents, models=["gemini-3.1-pro-preview"])
+        score_result = call_gemini(score_contents, task="asset.character.three_view.review")
         if not score_result:
             import logging
-            logging.warning("Gemini review bypassed (three_view quality): quota exhausted or all models failed")
-            _log('[WARNING] Gemini review bypassed (three_view quality): quota exhausted or all models failed')
+            logging.warning("aos-cli vision review bypassed (three_view quality): quota exhausted or all models failed")
+            _log('[WARNING] aos-cli vision review bypassed (three_view quality): quota exhausted or all models failed')
             score_result = {
                 "approved": True,
                 "summary": "review bypassed: quota exhausted",

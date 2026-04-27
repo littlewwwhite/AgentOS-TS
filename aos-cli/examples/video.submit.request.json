@@ -1,0 +1,20 @@
+{
+  "apiVersion": "aos-cli.model/v1",
+  "task": "video.clip",
+  "capability": "video.generate",
+  "input": {
+    "prompt": "A stylized 3D historical fantasy character turns toward moonlight.",
+    "referenceImages": [
+      {
+        "url": "https://example.com/reference.png",
+        "role": "reference_image"
+      }
+    ],
+    "duration": 6,
+    "ratio": "9:16",
+    "quality": "720p"
+  },
+  "modelPolicy": {
+    "model": "ep-20260303234827-tfnzm"
+  }
+}

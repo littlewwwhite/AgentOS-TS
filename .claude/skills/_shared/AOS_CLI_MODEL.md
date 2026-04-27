@@ -15,6 +15,10 @@ Use these commands by capability:
 | Image generation | `image.generate` with `output.kind=artifact` | `model run` |
 | Video generation submit | `video.generate` with `output.kind=task` | `model submit` |
 | Video generation poll | `video.generate` with `output.kind=task_result` | `model poll` |
+| Image+text review | `vision.review` with `output.kind=json` | `model run` |
+| Image+text analysis | `vision.analyze` with `output.kind=json` | `model run` |
+| Video analysis | `video.analyze` with `output.kind=json` | `model run` |
+| Audio transcription | `audio.transcribe` with `output.kind=json` | `model run` |
 | Request-only validation | Any registered capability | `model validate` |
 | Runtime readiness | Registered capabilities | `model preflight --json` |
 | Capability discovery | Registered capabilities | `model capabilities --json` |
@@ -183,32 +187,12 @@ Recommended migration order:
 1. Text and JSON generation in `storyboard` and `asset-gen` review/prompt scripts.
 2. Image generation in `asset-gen`.
 3. Video submit/poll in `video-gen`.
-4. Multimodal video analysis, ASR, and music matching only after confirming the current `aos-cli` protocol covers the required input/output shape.
+4. Remaining multimodal video review paths only after confirming the current `aos-cli` protocol covers the required input/output shape.
 
-Asset image review, post-production video analysis, music matching, and subtitle transcription remain deferred until `aos-cli model` has explicit protocol coverage for their required multimodal media upload/processing lifecycle or ASR input/output contracts. Do not force these through generic `generate` if doing so would hide domain-specific input/output semantics.
+Asset image review and `video-gen/scripts/frame_extractor.py` frame description are migrated through `vision.review`. `video-editing/scripts/phase1_analyze.py`, `video-editing/scripts/phase2_assemble.py`, `music-matcher/scripts/analyze_video.py`, and `video-gen/scripts/analyzer.py` are migrated through `video.analyze`. `music-matcher/scripts/batch_analyze.py` reuses the same boundary. `subtitle-maker/scripts/phase2_transcribe.py` is migrated through `audio.transcribe`. Do not force future multimodal work through generic `generate` if doing so would hide domain-specific input/output semantics.
 
 ## Deferred Paths Registry
 
-The following skill scripts are formally classified as deferred multimodal paths. Each carries the canonical marker `Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md` in its module docstring (or top-of-file comment), and is enforced by `_shared/test_no_new_direct_provider_calls.py::test_deferred_paths_carry_boundary_note`.
+There are no remaining deferred multimodal skill paths. The former video-gen config deferral was retired after generated-video review and frame description both moved behind `aos-cli model` capabilities and the skill stopped projecting provider secrets into its own config.
 
-| # | Path | Reason for deferral |
-|---|------|---------------------|
-| 1 | `asset-gen/scripts/gemini_multimodal_legacy.py` | Image+text multimodal helper (load_image_part, multimodal client) |
-| 2 | `asset-gen/scripts/review_char.py` | Image+text character review (front/three-view/head-closeup) |
-| 3 | `asset-gen/scripts/review_props.py` | Image+text prop review (main + reference table) |
-| 4 | `asset-gen/scripts/review_scene.py` | Image+text scene review (main + reference table) |
-| 5 | `video-gen/scripts/analyzer.py` | Video upload + multimodal analysis via Gemini Files API |
-| 6 | `video-gen/scripts/config_loader.py` | Provider config loader for deferred multimodal scripts |
-| 7 | `video-gen/scripts/frame_extractor.py` | Frame description via Gemini multimodal |
-| 8 | `video-editing/scripts/phase1_analyze.py` | Multi-variant video review with Gemini multimodal |
-| 9 | `video-editing/scripts/phase2_assemble.py` | Iterative assembled-video review via Gemini multimodal |
-| 10 | `music-matcher/scripts/analyze_video.py` | Video upload + V2T analysis via Gemini Files API |
-| 11 | `music-matcher/scripts/batch_analyze.py` | Batch wrapper around analyze_video.py |
-| 12 | `subtitle-maker/scripts/phase2_transcribe.py` | Video upload + ASR via Gemini Files API |
-
-Two non-script artifacts also carry the canonical marker via a `_boundary_note` JSON field:
-
-- `asset-gen/assets/common/gemini_backend.json`
-- `video-gen/assets/config.json`
-
-Adding a new entry here is the *only* sanctioned way to introduce a direct provider SDK call inside a skill. Any other new direct call will be caught by the import/contract guardrails.
+Adding a new direct provider SDK call inside a skill is not sanctioned. Add or extend an explicit `aos-cli model` capability instead.

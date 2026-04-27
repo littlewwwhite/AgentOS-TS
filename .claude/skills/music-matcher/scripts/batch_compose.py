@@ -8,7 +8,11 @@ import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # 复用 compose.py 和 batch_analyze.py 的核心函数
 SCRIPT_DIR = Path(__file__).parent
@@ -18,9 +22,10 @@ from batch_analyze import scan_videos, VIDEO_EXTENSIONS
 # 配置加载
 SKILL_DIR = SCRIPT_DIR.parent
 DEFAULT_ENV = SKILL_DIR / "assets" / "default.env"
-if DEFAULT_ENV.exists():
-    load_dotenv(DEFAULT_ENV, override=False)
-load_dotenv(override=False)
+if load_dotenv is not None:
+    if DEFAULT_ENV.exists():
+        load_dotenv(DEFAULT_ENV, override=False)
+    load_dotenv(override=False)
 
 
 def compose_single(video_path: Path, results_path: Path, output_path: Path,

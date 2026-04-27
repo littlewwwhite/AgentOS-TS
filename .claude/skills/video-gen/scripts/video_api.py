@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -23,46 +22,15 @@ _SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
 if str(_SHARED_DIR) not in sys.path:
     sys.path.insert(0, str(_SHARED_DIR))
 
-from aos_cli_model import aos_cli_model_poll, aos_cli_model_submit  # noqa: E402
+from aos_cli_envelope import poll_envelope, submit_envelope  # noqa: E402
 
 _vm_cfg = get_video_model_config()
 _gen_cfg = get_generation_config()
 
-ACTIVE_VIDEO_PROVIDER = _vm_cfg.get("provider", "volcengine_ark")
-PROVIDERS = _vm_cfg.get("providers", {})
-VIDEO_MODEL_CONFIG = {
-    name: {
-        "provider": cfg.get("provider", ACTIVE_VIDEO_PROVIDER),
-        "model_code": cfg["model_code"],
-        "model_group_code": cfg.get("model_group_code", ""),
-        "subject_reference": cfg.get("subject_reference", False),
-    }
-    for name, cfg in _vm_cfg.get("models", {}).items()
-}
-ACTIVE_VIDEO_MODEL = _vm_cfg.get("active_model", "seedance2")
-DEFAULT_MODEL_CODE = VIDEO_MODEL_CONFIG[ACTIVE_VIDEO_MODEL]["model_code"]
-DEFAULT_MODEL_GROUP_CODE = VIDEO_MODEL_CONFIG[ACTIVE_VIDEO_MODEL]["model_group_code"]
-DEFAULT_SUBJECT_REFERENCE = VIDEO_MODEL_CONFIG[ACTIVE_VIDEO_MODEL]["subject_reference"]
-DEFAULT_PROVIDER = VIDEO_MODEL_CONFIG[ACTIVE_VIDEO_MODEL].get("provider", ACTIVE_VIDEO_PROVIDER)
-TERMINAL_STATUSES = {"SUCCESS", "FAIL", "FAILED"}
-
-
-def get_subject_reference_for_model(model_code: str) -> bool:
-    for cfg in VIDEO_MODEL_CONFIG.values():
-        if cfg["model_code"] == model_code:
-            return bool(cfg["subject_reference"])
-    return bool(DEFAULT_SUBJECT_REFERENCE)
-
-
-def get_provider_for_model(model_code: str = None) -> str:
-    for cfg in VIDEO_MODEL_CONFIG.values():
-        if cfg["model_code"] == model_code:
-            return cfg.get("provider", DEFAULT_PROVIDER)
-    return DEFAULT_PROVIDER
-
-
-def _provider_config(provider: str) -> Dict:
-    return PROVIDERS.get(provider, {})
+_active_model = _vm_cfg.get("active_model", "seedance2")
+DEFAULT_MODEL_CODE = _vm_cfg.get("models", {}).get(_active_model, {}).get(
+    "model_code", "ep-20260303234827-tfnzm"
+)
 
 
 def _parse_duration_seconds(duration: Any) -> int:
@@ -132,21 +100,7 @@ def submit_video_generation(
     if model:
         request["modelPolicy"] = {"model": model}
 
-    with tempfile.TemporaryDirectory(prefix="video-submit-aos-cli-") as tmp:
-        request_path = Path(tmp) / "request.json"
-        task_path = Path(tmp) / "task.json"
-        request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
-        completed = aos_cli_model_submit(request_path, task_path, cwd=project_dir)
-        if completed.returncode != 0:
-            raise RuntimeError(
-                completed.stderr or f"aos-cli failed with exit code {completed.returncode}"
-            )
-        envelope = json.loads(task_path.read_text(encoding="utf-8"))
-
-    if not envelope.get("ok"):
-        error = envelope.get("error", {}) or {}
-        raise RuntimeError(error.get("message") or "aos-cli video submit failed")
-    return envelope
+    return submit_envelope(request, cwd=project_dir, tmp_prefix="video-submit-aos-cli-")
 
 
 def poll_video_generation(
@@ -156,23 +110,7 @@ def poll_video_generation(
 ) -> Dict[str, Any]:
     """Poll a previously-submitted aos-cli video task for its task_result."""
 
-    with tempfile.TemporaryDirectory(prefix="video-poll-aos-cli-") as tmp:
-        task_path = Path(tmp) / "task.json"
-        result_path = Path(tmp) / "result.json"
-        task_path.write_text(
-            json.dumps(task_envelope, ensure_ascii=False), encoding="utf-8"
-        )
-        completed = aos_cli_model_poll(task_path, result_path, cwd=project_dir)
-        if completed.returncode != 0:
-            raise RuntimeError(
-                completed.stderr or f"aos-cli failed with exit code {completed.returncode}"
-            )
-        envelope = json.loads(result_path.read_text(encoding="utf-8"))
-
-    if not envelope.get("ok"):
-        error = envelope.get("error", {}) or {}
-        raise RuntimeError(error.get("message") or "aos-cli video poll failed")
-    return envelope
+    return poll_envelope(task_envelope, cwd=project_dir, tmp_prefix="video-poll-aos-cli-")
 
 
 def upload_to_cos(file_path: str, scene_type: str = "first_frame") -> Optional[str]:
@@ -182,32 +120,6 @@ def upload_to_cos(file_path: str, scene_type: str = "first_frame") -> Optional[s
 
 def _cos_relative_url(full_url: str) -> str:
     return full_url
-
-
-def build_subject_prompt_params(
-    subjects: List[Dict], duration: str = "5", ratio: str = "16:9", quality: str = "720"
-) -> Dict:
-    raise RuntimeError("subject reference mode is not supported by the active provider")
-
-
-def build_image_reference_params(
-    reference_images: List[Dict],
-    duration: str = "5",
-    ratio: str = "16:9",
-    quality: str = "720",
-    first_frame_url: Optional[str] = None,
-    first_frame_text: Optional[str] = None,
-    reference_videos: List[Dict] = None,
-) -> Dict:
-    return {
-        "reference_images": reference_images or [],
-        "reference_videos": reference_videos or [],
-        "first_frame_url": first_frame_url,
-        "first_frame_text": first_frame_text,
-        "duration": duration,
-        "ratio": ratio,
-        "quality": quality,
-    }
 
 
 def download_video(url: str, output_path: str) -> str:
@@ -222,19 +134,13 @@ def download_video(url: str, output_path: str) -> str:
 def submit_video(
     prompt: str,
     model_code: str = DEFAULT_MODEL_CODE,
-    subjects: List[Dict] = None,
     reference_images: List[Dict] = None,
     duration: str = "5",
     quality: str = "720",
     ratio: str = "16:9",
-    need_audio: bool = True,
     first_frame_url: Optional[str] = None,
-    first_frame_text: Optional[str] = None,
-    reference_videos: List[Dict] = None,
 ) -> Dict[str, Any]:
     try:
-        if subjects:
-            raise RuntimeError("subject references are not supported; use public image/video URLs")
         normalized_refs = _normalize_reference_images(reference_images)
         envelope = submit_video_generation(
             prompt=prompt,
@@ -251,7 +157,6 @@ def submit_video(
             "success": True,
             "task_id": output.get("taskId"),
             "message": "submitted",
-            "provider": envelope.get("provider") or get_provider_for_model(model_code),
             "model_code": envelope.get("model") or model_code,
             "task_envelope": envelope,
         }
@@ -263,22 +168,18 @@ def create_video(
     prompt: str,
     output_path: str,
     model_code: str = DEFAULT_MODEL_CODE,
-    subjects: List[Dict] = None,
     reference_images: List[Dict] = None,
     duration: str = "5",
     quality: str = "720",
     ratio: str = "16:9",
-    need_audio: bool = True,
 ) -> Dict:
     submit_result = submit_video(
         prompt=prompt,
         model_code=model_code,
-        subjects=subjects,
         reference_images=reference_images,
         duration=duration,
         quality=quality,
         ratio=ratio,
-        need_audio=need_audio,
     )
     if not submit_result["success"]:
         return submit_result
@@ -287,7 +188,6 @@ def create_video(
             "task_id": submit_result["task_id"],
             "task_envelope": submit_result.get("task_envelope"),
             "output_path": output_path,
-            "provider": submit_result["provider"],
             "model_code": model_code,
         }],
         interval=_gen_cfg.get("poll_interval", 10),
@@ -299,6 +199,27 @@ def create_video(
 def _extract_video_artifact(envelope: Dict[str, Any]) -> Dict[str, Any]:
     artifacts = envelope.get("output", {}).get("artifacts", []) or []
     return next((a for a in artifacts if a.get("kind") == "video"), {})
+
+
+def _extract_actual_duration_seconds(artifact: Dict[str, Any]) -> Optional[float]:
+    for key in ("actualDurationSeconds", "durationSeconds", "duration"):
+        value = artifact.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    metadata = artifact.get("metadata") or {}
+    for key in ("actualDurationSeconds", "durationSeconds", "duration"):
+        value = metadata.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def poll_multiple_tasks(
@@ -357,6 +278,7 @@ def poll_multiple_tasks(
                         artifact.get("lastFrameUrl")
                         or artifact.get("last_frame_url")
                     )
+                    actual_duration_seconds = _extract_actual_duration_seconds(artifact)
                     video_path = None
                     if video_url and info.get("output_path"):
                         video_path = download_video(video_url, info["output_path"])
@@ -367,6 +289,7 @@ def poll_multiple_tasks(
                         video_path=video_path,
                         result_data=envelope,
                         last_frame_url=last_frame_url,
+                        actual_duration_seconds=actual_duration_seconds,
                     )
                     finished[task_id] = info
                     pending.pop(task_id, None)
@@ -408,4 +331,4 @@ def poll_multiple_tasks(
 
 
 if __name__ == "__main__":
-    print(json.dumps({"default_model": DEFAULT_MODEL_CODE, "provider": DEFAULT_PROVIDER}, ensure_ascii=False))
+    print(json.dumps({"default_model": DEFAULT_MODEL_CODE}, ensure_ascii=False))

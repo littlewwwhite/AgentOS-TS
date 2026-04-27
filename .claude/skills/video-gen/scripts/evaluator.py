@@ -10,9 +10,9 @@ import json
 from typing import Dict, List, Tuple, Optional
 from pathlib import Path
 
-from config_loader import get_gemini_review_config
+from config_loader import get_clip_review_config
 
-_thresholds = get_gemini_review_config().get("thresholds", {})
+_thresholds = get_clip_review_config().get("thresholds", {})
 
 # 配置UTF-8输出（Windows兼容）
 if sys.platform == 'win32':
@@ -32,13 +32,13 @@ def _safe_num(val, default=5):
 
 def evaluate_from_gemini_analysis(analysis: Dict) -> Dict:
     """
-    基于 Gemini 分析结果进行简化评分（2维度）
+    基于 aos-cli video.analyze 结果进行简化评分（2维度）
 
     维度1: 参考一致性（人物 + 场景 + 道具）
     维度2: 提示词符合度
 
     Args:
-        analysis: Gemini 分析结果字典
+        analysis: aos-cli video.analyze 结果字典
 
     Returns:
         Dict: 评审结果
@@ -230,7 +230,7 @@ def main():
     )
     parser.add_argument(
         "analysis_file",
-        help="Gemini 分析结果文件路径（JSON）"
+        help="aos-cli video.analyze 结果文件路径（JSON）"
     )
     parser.add_argument(
         "video_path",

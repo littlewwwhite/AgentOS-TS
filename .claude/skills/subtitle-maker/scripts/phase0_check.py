@@ -8,7 +8,15 @@ import shutil
 import subprocess
 import sys
 import importlib
+import json
 from pathlib import Path
+
+
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
+if str(_SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(_SHARED_DIR))
+
+from aos_cli_model import run_aos_cli
 
 
 RED = "\033[91m"
@@ -40,28 +48,24 @@ def check_ffmpeg_filter(filter_name: str) -> bool:
     return filter_name in result.stdout
 
 
-def check_env_var(name: str) -> bool:
-    import os
-    # 也检查 .env 和 default.env
-    val = os.getenv(name)
-    if val:
-        return True
-    # 尝试加载 dotenv
+def check_aos_cli_capability(capability: str) -> tuple[bool, str]:
+    result = run_aos_cli(["model", "preflight", "--json"], cwd=Path.cwd())
     try:
-        from dotenv import dotenv_values
-        script_dir = Path(__file__).parent
-        skill_dir = script_dir.parent
-        default_env = skill_dir / "assets" / "default.env"
-        cwd_env = Path.cwd() / ".env"
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return False, result.stderr.strip() or "aos-cli model preflight did not return valid JSON"
 
-        for env_file in [cwd_env, default_env]:
-            if env_file.exists():
-                vals = dotenv_values(env_file)
-                if vals.get(name):
-                    return True
-    except ImportError:
-        pass
-    return False
+    checks = payload.get("checks") or []
+    for check in checks:
+        if check.get("capability") != capability:
+            continue
+        if check.get("ok"):
+            provider = check.get("provider", "unknown")
+            probe_mode = check.get("probeMode", "unknown")
+            return True, f"{capability} ready via {provider} ({probe_mode})"
+        error = check.get("error") or {}
+        return False, error.get("message") or f"{capability} preflight failed"
+    return False, f"{capability} is not registered in aos-cli model preflight"
 
 
 def check_cjk_font() -> bool:
@@ -144,23 +148,7 @@ def main():
         all_ok = False
         fixes_needed.append("ffprobe 随 ffmpeg 一起安装")
 
-    # 5. Python 包: google-genai
-    ok = check_python_pkg("google.genai")
-    status = f"{GREEN}OK{RESET}" if ok else f"{RED}FAIL{RESET}"
-    print(f"  [{status}] google-genai")
-    if not ok:
-        if args.fix:
-            print(f"    正在安装 google-genai...")
-            if pip_install("google-genai"):
-                print(f"    {GREEN}已安装{RESET}")
-            else:
-                all_ok = False
-                fixes_needed.append("pip install google-genai")
-        else:
-            all_ok = False
-            fixes_needed.append("pip install google-genai")
-
-    # 6. Python 包: python-dotenv
+    # 5. Python 包: python-dotenv
     ok = check_python_pkg("dotenv")
     status = f"{GREEN}OK{RESET}" if ok else f"{RED}FAIL{RESET}"
     print(f"  [{status}] python-dotenv")
@@ -176,15 +164,15 @@ def main():
             all_ok = False
             fixes_needed.append("pip install python-dotenv")
 
-    # 7. GEMINI_API_KEY
-    ok = check_env_var("GEMINI_API_KEY")
+    # 6. aos-cli audio transcription boundary
+    ok, preflight_message = check_aos_cli_capability("audio.transcribe")
     status = f"{GREEN}OK{RESET}" if ok else f"{RED}FAIL{RESET}"
-    print(f"  [{status}] GEMINI_API_KEY")
+    print(f"  [{status}] aos-cli audio.transcribe")
     if not ok:
         all_ok = False
-        fixes_needed.append("Set GEMINI_API_KEY to your Gemini-compatible API key: export GEMINI_API_KEY=xxx")
+        fixes_needed.append(f"aos-cli audio.transcribe preflight failed: {preflight_message}")
 
-    # 8. 中文字体
+    # 7. 中文字体
     ok = check_cjk_font()
     status = f"{GREEN}OK{RESET}" if ok else f"{YELLOW}WARN{RESET}"
     print(f"  [{status}] 中文字体 (CJK)")

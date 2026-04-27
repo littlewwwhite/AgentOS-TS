@@ -1,0 +1,15 @@
+{
+  "apiVersion": "aos-cli.model/v1",
+  "task": "asset.character.front",
+  "capability": "image.generate",
+  "output": {
+    "kind": "artifact"
+  },
+  "input": {
+    "prompt": "stylized 3D historical fantasy character front view"
+  },
+  "artifactPolicy": {
+    "download": true,
+    "localDir": "/tmp/aos-cli-image"
+  }
+}

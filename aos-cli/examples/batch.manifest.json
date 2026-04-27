@@ -1,0 +1,16 @@
+{
+  "apiVersion": "aos-cli.model.batch/v1",
+  "concurrency": 2,
+  "jobs": [
+    {
+      "id": "text-job",
+      "request": "examples/text.request.json",
+      "output": "/tmp/aos-cli-batch-text.json"
+    },
+    {
+      "id": "json-job",
+      "request": "examples/json.request.json",
+      "output": "/tmp/aos-cli-batch-json.json"
+    }
+  ]
+}

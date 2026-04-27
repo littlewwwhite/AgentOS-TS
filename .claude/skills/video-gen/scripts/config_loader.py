@@ -2,19 +2,16 @@
 # -*- coding: utf-8 -*-
 # input: assets/config.json and local environment variables
 # output: normalized skill runtime configuration dictionaries
-# pos: central config boundary; gemini section feeds deferred multimodal paths only
+# pos: central config boundary for video-gen runtime settings
 """
 config_loader.py — video-gen 统一配置加载器
 
 从 assets/config.json 加载配置，支持环境变量 STORYBOARD_CONFIG 覆盖路径。
 找不到文件时返回内置默认值（向后兼容）。
 
-Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-The `gemini` config section exposed by `get_gemini_config()` and
-`get_gemini_review_config()` exists solely to support the deferred multimodal
-review (`analyzer.py`) and frame description (`frame_extractor.py`) paths.
-Migrated text/JSON/image/video paths route through aos-cli model and do not
-read this section. Do not introduce new consumers of `get_gemini_config`.
+The `clip_review` config section selects the model used for generated-clip
+review (frame description and video analysis) plus the business thresholds
+that gate pass/fail. Provider routing and secrets are owned by aos-cli.
 """
 
 import json
@@ -25,25 +22,13 @@ from typing import Any, Dict
 
 SCRIPT_DIR = Path(__file__).parent
 DEFAULT_CONFIG_PATH = SCRIPT_DIR / ".." / "assets" / "config.json"
-DEFAULT_GEMINI_PROXY_BASE_URL = "https://api.chatfire.cn/gemini"
-
 # 内置默认值（与 assets/config.json 保持一致，用于找不到文件时兜底）
 _BUILTIN_DEFAULTS: Dict[str, Any] = {
     "video_model": {
-        "provider": "volcengine_ark",
         "active_model": "seedance2",
         "models": {
             "seedance2": {
-                "provider": "volcengine_ark",
                 "model_code": "ep-20260303234827-tfnzm",
-                "model_group_code": "",
-                "subject_reference": False,
-            },
-        },
-        "providers": {
-            "volcengine_ark": {
-                "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-                "api_key_env": "ARK_API_KEY",
             },
         },
     },
@@ -57,13 +42,8 @@ _BUILTIN_DEFAULTS: Dict[str, Any] = {
         "poll_interval": 10,
         "max_consecutive_errors": 10,
     },
-    "gemini": {
-        "base_url": DEFAULT_GEMINI_PROXY_BASE_URL,
-        "api_key": "",
-        "api_key_env": "GEMINI_API_KEY",
+    "clip_review": {
         "model": "gemini-3.1-pro-preview",
-        "review_model": "gemini-3.1-pro-preview",
-        "color_removal_model": "gemini-3.1-pro-preview",
         "max_workers": 2,
         "thresholds": {
             "reference_consistency_min": 6,
@@ -80,16 +60,18 @@ _config_cache: Dict[str, Any] = {}
 
 
 def _apply_env_overrides(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply secret-bearing environment overrides after loading file config."""
-    gemini_cfg = data.setdefault("gemini", {})
-    gemini_api_key = os.environ.get("GEMINI_API_KEY")
-    if gemini_api_key:
-        gemini_cfg["api_key"] = gemini_api_key
-        gemini_cfg["api_key_env"] = "GEMINI_API_KEY"
+    """Strip provider routing/secret leftovers; aos-cli owns provider routing."""
+    video_model_cfg = data.setdefault("video_model", {})
+    video_model_cfg.pop("providers", None)
+    video_model_cfg.pop("provider", None)
+    for model_cfg in video_model_cfg.get("models", {}).values():
+        if isinstance(model_cfg, dict):
+            for legacy_key in ("provider", "model_group_code", "subject_reference"):
+                model_cfg.pop(legacy_key, None)
 
-    base_url = os.environ.get("GEMINI_BASE_URL")
-    if base_url:
-        gemini_cfg["base_url"] = base_url
+    clip_review_cfg = data.setdefault("clip_review", {})
+    for provider_key in ("api_key", "api_key_env", "api_key_note", "base_url"):
+        clip_review_cfg.pop(provider_key, None)
     return data
 
 
@@ -125,14 +107,9 @@ def get_generation_config() -> Dict[str, Any]:
     return get_config().get("generation", _BUILTIN_DEFAULTS["generation"])
 
 
-def get_gemini_review_config() -> Dict[str, Any]:
-    """返回 gemini 配置段（兼容旧的 gemini_review 调用）。"""
-    return get_config().get("gemini", _BUILTIN_DEFAULTS["gemini"])
-
-
-def get_gemini_config() -> Dict[str, Any]:
-    """返回 gemini 配置段。"""
-    return get_config().get("gemini", _BUILTIN_DEFAULTS["gemini"])
+def get_clip_review_config() -> Dict[str, Any]:
+    """Return the clip_review config section (review model + thresholds)."""
+    return get_config().get("clip_review", _BUILTIN_DEFAULTS["clip_review"])
 
 
 def get_prompt_generation_config() -> Dict[str, Any]:

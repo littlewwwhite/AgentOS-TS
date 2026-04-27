@@ -21,16 +21,42 @@ frame_extractor.py — 视频末镜头首帧提取与人脸模糊处理
 """
 
 import argparse
+import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
+from typing import Any
 from typing import List, Optional, Tuple
 
 # 配置 UTF-8 输出
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
+
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
+if str(_SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(_SHARED_DIR))
+
+from aos_cli_model import aos_cli_model_run
+
+
+DEFAULT_FRAME_DESCRIPTION_MODEL = (
+    os.environ.get("FRAME_DESCRIPTION_MODEL")
+    or os.environ.get("VISION_REVIEW_MODEL")
+    or "gemini-3.1-pro-preview"
+)
+
+FRAME_DESCRIPTION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "description": {"type": "string"},
+    },
+    "required": ["description"],
+    "additionalProperties": False,
+}
 
 
 # ============================================================
@@ -190,65 +216,16 @@ def blur_faces_only(
 
 
 # ============================================================
-# Gemini 画面描述
+# 画面描述
 # ============================================================
-# Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-# This helper sends image+text to Gemini for a frame description used as the
-# next clip's lsi.prompt. aos-cli model v1 does not yet define an image-input
-# generate contract, so this path stays on the direct SDK. Do NOT add new
-# callers; migrate when protocol coverage lands.
 
-def describe_frame_with_gemini(
-    img_path: str,
+
+def _build_frame_description_prompt(
     last_shot_prompt: str,
     character_names: List[str],
-    gemini_cfg: dict,
-) -> Optional[str]:
-    """用 Gemini 对抽取的原始帧进行画面描述。
-
-    结合最后一个镜头的提示词与人物名称，让模型精确描述画面中各人物的
-    位置和动作，输出结果将写入 lsi.prompt 传给下一 clip 的视频生成。
-
-    Args:
-        img_path:         原始抽帧图片路径（_raw.png）
-        last_shot_prompt: 当前 clip 最后一个镜头的提示词
-        character_names:  场景中出现的人物显示名称列表，如 ["李明", "王芳"]
-        gemini_cfg:       config.json 中 gemini 段的配置字典
-
-    Returns:
-        描述文本（中文），失败返回 None
-    """
-    try:
-        from google import genai
-        from google.genai import types
-        from PIL import Image
-    except ImportError as e:
-        print(f"[WARN] describe_frame_with_gemini 缺少依赖: {e}", file=sys.stderr)
-        return None
-
-    if not os.path.exists(img_path):
-        print(f"[WARN] describe_frame_with_gemini: 图片不存在 {img_path}", file=sys.stderr)
-        return None
-
-    api_key = gemini_cfg.get("api_key", "") or os.getenv("GEMINI_API_KEY", "")
-    base_url = (
-        gemini_cfg.get("base_url", "")
-        or os.getenv("GEMINI_BASE_URL")
-        or "https://api.chatfire.cn/gemini"
-    )
-    model_name = gemini_cfg.get("model", "gemini-3.1-pro-preview")
-
-    if not api_key:
-        print("[WARN] describe_frame_with_gemini: 未配置 GEMINI_API_KEY，跳过", file=sys.stderr)
-        return None
-
-    try:
-        http_options = types.HttpOptions(base_url=base_url) if base_url else None
-        client = genai.Client(api_key=api_key, http_options=http_options)
-
-        chars_text = "、".join(character_names) if character_names else "（无指定人物）"
-
-        prompt = f"""你是一个专业的视频画面分析师。下面是一个视频片段最后一个镜头的截帧画面。
+) -> str:
+    chars_text = "、".join(character_names) if character_names else "（无指定人物）"
+    return f"""你是一个专业的视频画面分析师。下面是一个视频片段最后一个镜头的截帧画面。
 
 该镜头的提示词（描述这个镜头的内容）：
 {last_shot_prompt}
@@ -263,19 +240,93 @@ def describe_frame_with_gemini(
 要求：
 - 描述简洁准确，重点突出人物和动作
 - 字数控制在 150 字以内
-- 只输出描述内容，不要输出其他说明文字"""
+- 只输出 JSON 对象，字段为 description"""
 
-        image = Image.open(img_path)
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[prompt, image],
-        )
-        description = response.text.strip()
-        print(f"  [DESC]  画面描述生成完成 ({len(description)} 字)")
-        return description
 
+def _frame_description_model(config: dict | None) -> str:
+    if not config:
+        return DEFAULT_FRAME_DESCRIPTION_MODEL
+    return config.get("model") or DEFAULT_FRAME_DESCRIPTION_MODEL
+
+
+def _read_frame_description_response(response_path: Path) -> str:
+    try:
+        response = json.loads(response_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid aos-cli frame description response envelope: {response_path}") from exc
+
+    if not response.get("ok"):
+        error = response.get("error") or {}
+        raise RuntimeError(error.get("message") or "aos-cli frame description failed")
+
+    output = response.get("output") or {}
+    if output.get("kind") != "json":
+        raise RuntimeError(f"aos-cli response output.kind mismatch: expected json, got {output.get('kind')}")
+
+    data: Any
+    if "data" in output:
+        data = output["data"]
+    elif "text" in output:
+        data = json.loads(str(output["text"]).strip())
+    else:
+        raise RuntimeError("aos-cli frame description response missing output.data")
+
+    if not isinstance(data, dict):
+        raise RuntimeError("aos-cli frame description output.data must be an object")
+    description = data.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise RuntimeError("aos-cli frame description output missing description")
+    return description.strip()
+
+
+def describe_frame_with_aos_cli(
+    img_path: str,
+    last_shot_prompt: str,
+    character_names: List[str],
+    config: dict | None = None,
+) -> Optional[str]:
+    """Describe a continuity frame through aos-cli vision.review."""
+    path = Path(img_path)
+    if not path.exists():
+        print(f"[WARN] describe_frame_with_aos_cli: 图片不存在 {img_path}", file=sys.stderr)
+        return None
+
+    request = {
+        "apiVersion": "aos-cli.model/v1",
+        "task": "video-gen.frame.describe",
+        "capability": "vision.review",
+        "modelPolicy": {"model": _frame_description_model(config)},
+        "input": {
+            "content": {
+                "prompt": _build_frame_description_prompt(last_shot_prompt, character_names),
+                "images": [path.resolve().as_uri()],
+            }
+        },
+        "output": {"kind": "json", "schema": FRAME_DESCRIPTION_SCHEMA},
+        "options": {"temperature": 0.2},
+    }
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="video-gen-frame-desc-aos-cli-") as tmp:
+            tmp_dir = Path(tmp)
+            request_path = tmp_dir / "request.json"
+            response_path = tmp_dir / "response.json"
+            request_path.write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
+            completed = aos_cli_model_run(request_path, response_path, cwd=Path.cwd())
+            if completed.returncode != 0:
+                print(
+                    f"[WARN] aos-cli 画面描述失败: {completed.stderr or completed.returncode}",
+                    file=sys.stderr,
+                )
+                return None
+            if not response_path.exists():
+                print("[WARN] aos-cli 未写入画面描述响应 envelope", file=sys.stderr)
+                return None
+            description = _read_frame_description_response(response_path)
+            print(f"  [DESC]  画面描述生成完成 ({len(description)} 字)")
+            return description
     except Exception as e:
-        print(f"[WARN] Gemini 画面描述失败: {e}", file=sys.stderr)
+        print(f"[WARN] aos-cli 画面描述失败: {e}", file=sys.stderr)
         return None
 
 

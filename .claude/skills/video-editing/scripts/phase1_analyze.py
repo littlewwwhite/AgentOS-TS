@@ -1,17 +1,16 @@
 """
 视频分镜分析：clip 组对比分析
 
-Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-This phase uploads video bytes to Gemini Files API for multi-variant comparison
-analysis. aos-cli model v1 has no contract for video file upload + multi-clip
-comparison, so this path stays on the direct SDK pending protocol expansion.
+Model boundary note: migrated to aos-cli model video.analyze.
+This phase passes local video references through the repo model boundary for
+multi-variant comparison analysis.
 
-以 clip 目录为最小单位，一次发送同 clip 的所有变体（1-6个）给 Gemini，
+以 clip 目录为最小单位，一次发送同 clip 的所有变体（1-6个）给 aos-cli model，
 实现逐 shot 对比分析，输出供下游剪辑 AI 直接消费的结构化数据。
 
 两步流水线:
   Step 1: PySceneDetect 检测 shot 切点（每个变体独立检测）
-  Step 2: Gemini 多模态分析所有变体 → 逐 shot 对比 JSON
+  Step 2: aos-cli video.analyze 多模态分析所有变体 → 逐 shot 对比 JSON
 
 用法:
   # 单 clip 目录（自动发现内部所有 .mp4 变体）
@@ -30,7 +29,7 @@ comparison, so this path stays on the direct SDK pending protocol expansion.
   {OUTPUT_DIR}/ep{NNN}/_tmp/scn{NNN}/clip{NNN}/analysis.json  — 单 clip 分析
   {OUTPUT_DIR}/ep{NNN}/ep{NNN}_analysis_index.json            — ep 级汇总索引
 
-依赖: pip install google-genai python-dotenv scenedetect av
+依赖: python-dotenv scenedetect av
 """
 
 import argparse
@@ -44,7 +43,6 @@ import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 from pathlib import Path
 
 # 在任何 av/scenedetect import 之前，抑制 C 层 ffmpeg/swscaler 警告
@@ -63,7 +61,10 @@ except Exception:
 # Python 层 libav logger 也抑制（兜底）
 logging.getLogger("libav").setLevel(logging.ERROR)
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # ── 配置加载（三级优先级：环境变量 > CWD/.env > skill 内置 default.env）──
 
@@ -72,24 +73,24 @@ SKILL_DIR = SCRIPT_DIR.parent
 ASSETS_DIR = SKILL_DIR / "assets"
 DEFAULT_ENV = ASSETS_DIR / "default.env"
 
-if DEFAULT_ENV.exists():
-    load_dotenv(DEFAULT_ENV, override=False)
-load_dotenv(override=False)
+if load_dotenv is not None:
+    if DEFAULT_ENV.exists():
+        load_dotenv(DEFAULT_ENV, override=False)
+    load_dotenv(override=False)
 
 # ── Prompt 模块 ──
 # 将 assets/ 加入 sys.path，按阶段 import prompt 模块
 sys.path.insert(0, str(ASSETS_DIR))
 from phase1_clip_scoring import build as build_phase1_prompt
+from common_video_analyze import call_video_analyze
 
-# ── Gemini 参数 ──
+# ── Model 参数 ──
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://api.chatfire.cn/gemini")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
-GEMINI_TEMPERATURE = float(os.getenv("GEMINI_TEMPERATURE", "1.0"))
-GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low")
-_res = os.getenv("GEMINI_MEDIA_RESOLUTION", "medium")
-GEMINI_MEDIA_RESOLUTION = f"MEDIA_RESOLUTION_{_res.upper()}"
+VIDEO_ANALYZE_MODEL = os.getenv("VIDEO_ANALYZE_MODEL", "gemini-3.1-pro-preview")
+VIDEO_ANALYZE_TEMPERATURE = float(os.getenv("VIDEO_ANALYZE_TEMPERATURE", "1.0"))
+VIDEO_ANALYZE_THINKING_LEVEL = os.getenv("VIDEO_ANALYZE_THINKING_LEVEL", "low")
+_res = os.getenv("VIDEO_ANALYZE_MEDIA_RESOLUTION", "medium")
+VIDEO_ANALYZE_MEDIA_RESOLUTION = f"MEDIA_RESOLUTION_{_res.upper()}"
 
 # ── 视频压缩参数 ──
 
@@ -126,7 +127,7 @@ logging.getLogger("libav").setLevel(logging.ERROR)
 
 
 def get_video_meta(video_path: Path) -> dict:
-    """获取视频元信息（duration, fps），不依赖 Gemini。"""
+    """获取视频元信息（duration, fps），不依赖 provider SDK。"""
     from scenedetect import open_video
     try:
         v = open_video(str(video_path), backend="pyav")
@@ -342,7 +343,7 @@ def load_shot_detection(scenes_path: str) -> dict:
     return data
 
 
-# ═══════════════════════ Step 2: Gemini 分析 ═══════════════════════
+# ═══════════════════════ Step 2: aos-cli video.analyze 分析 ═══════════════════════
 
 
 def compress_video(video_path: str) -> str | None:
@@ -391,63 +392,31 @@ def compress_video(video_path: str) -> str | None:
     return out_path
 
 
-def upload_video(video_path: str, client, variant_label: str = "", max_retries: int = 3) -> object:
-    """上传视频到 Gemini Files API，带重试（应对 SSL EOF 等瞬态网络错误）"""
-    tag = f" [{variant_label}]" if variant_label else ""
-
-    for attempt in range(1, max_retries + 1):
-        try:
-            print(f"  正在上传{tag}: {Path(video_path).name}" + (f" (重试 {attempt}/{max_retries})" if attempt > 1 else ""))
-            video_file = client.files.upload(file=video_path)
-
-            print(f"  等待 Gemini 处理{tag}...")
-            while video_file.state.name == "PROCESSING":
-                time.sleep(3)
-                video_file = client.files.get(name=video_file.name)
-
-            if video_file.state.name != "ACTIVE":
-                raise RuntimeError(f"视频处理失败{tag}，状态: {video_file.state.name}")
-
-            print(f"  上传完成{tag}: {video_file.name}")
-            return video_file
-
-        except Exception as e:
-            if attempt < max_retries:
-                wait = attempt * 3
-                print(f"  上传失败{tag}，{wait}s 后重试: {e}")
-                time.sleep(wait)
-            else:
-                raise
-
-
-def _compress_and_upload_one(v: dict, client) -> dict | None:
-    """压缩+上传单个变体，成功返回带 gemini_file 的 dict，失败返回 None。"""
+def _prepare_model_video_one(v: dict) -> dict | None:
+    """压缩单个变体，成功返回带 model_video_path 的 dict，失败返回 None。"""
     label = v["label"]
     path = str(v["path"])
     try:
         compressed = compress_video(path)
-        upload_path = compressed or path
-        gemini_file = upload_video(upload_path, client, variant_label=label)
-        if compressed:
-            Path(compressed).unlink(missing_ok=True)
-        return {**v, "gemini_file": gemini_file}
+        model_video_path = compressed or path
+        return {**v, "model_video_path": model_video_path, "temporary_video_path": compressed}
     except Exception as e:
-        print(f"  警告: 变体 {label} 上传失败，跳过: {e}")
+        print(f"  警告: 变体 {label} 预处理失败，跳过: {e}")
         return None
 
 
-def upload_variants(variants: list[dict], client) -> list[dict]:
-    """并行压缩+上传所有变体。上传失败的变体会被移除并打印警告。"""
+def prepare_variants_for_model(variants: list[dict]) -> list[dict]:
+    """并行压缩所有变体。预处理失败的变体会被移除并打印警告。"""
     workers = min(PHASE1_VARIANT_CONCURRENCY, len(variants))
     if workers <= 1:
         # 单变体走串行，省线程开销
-        results = [_compress_and_upload_one(v, client) for v in variants]
+        results = [_prepare_model_video_one(v) for v in variants]
     else:
-        print(f"  并行上传 {len(variants)} 个变体（workers={workers}）")
+        print(f"  并行预处理 {len(variants)} 个变体（workers={workers}）")
         results = [None] * len(variants)
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
-                pool.submit(_compress_and_upload_one, v, client): i
+                pool.submit(_prepare_model_video_one, v): i
                 for i, v in enumerate(variants)
             }
             for fut in as_completed(futures):
@@ -458,59 +427,43 @@ def upload_variants(variants: list[dict], client) -> list[dict]:
 
 
 
-def analyze_with_gemini(
-    video_files: list,
+def analyze_with_model(
+    video_paths: list[str],
     prompt: str,
     clip_label: str,
-    client,
     raw_output_dir: Path | None = None,
 ) -> dict:
-    """调用 Gemini 分析视频变体组，返回解析后的 JSON。"""
-    from google.genai import types
-
-    config = types.GenerateContentConfig(
-        temperature=GEMINI_TEMPERATURE,
-        thinking_config=types.ThinkingConfig(thinking_level=GEMINI_THINKING_LEVEL),
-        media_resolution=GEMINI_MEDIA_RESOLUTION,
-    )
-
-    n = len(video_files)
+    """调用 aos-cli video.analyze 分析视频变体组，返回解析后的 JSON。"""
+    n = len(video_paths)
     print(
-        f"[Step 2] 调用 Gemini 分析 {clip_label}（{n} 个变体, "
-        f"模型: {GEMINI_MODEL}, thinking: {GEMINI_THINKING_LEVEL}）"
+        f"[Step 2] 调用 aos-cli video.analyze 分析 {clip_label}（{n} 个变体, "
+        f"模型: {VIDEO_ANALYZE_MODEL}, thinking: {VIDEO_ANALYZE_THINKING_LEVEL}）"
     )
     t0 = time.time()
 
-    contents = video_files + [prompt]
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=contents,
-        config=config,
+    analysis = call_video_analyze(
+        video_paths,
+        prompt,
+        task=f"video-editing.phase1.{clip_label}",
+        model=VIDEO_ANALYZE_MODEL,
+        options={
+            "temperature": VIDEO_ANALYZE_TEMPERATURE,
+            "thinkingLevel": VIDEO_ANALYZE_THINKING_LEVEL,
+            "mediaResolution": VIDEO_ANALYZE_MEDIA_RESOLUTION,
+        },
+        cwd=Path.cwd(),
+        raw_output_dir=raw_output_dir,
     )
     elapsed = time.time() - t0
-    print(f"  Gemini 响应完成 ({elapsed:.1f}s)")
+    print(f"  aos-cli video.analyze 响应完成 ({elapsed:.1f}s)")
+    return analysis
 
-    # 检查空响应
-    if response.text is None:
-        raise ValueError("Gemini 返回空响应 (response.text is None)")
 
-    raw = response.text.strip()
-
-    # 保存原始响应到 clip 的输出目录旁（.md 后缀，因为 Gemini 返回 markdown 格式）
-    save_dir = raw_output_dir or OUTPUT_DIR
-    save_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%m%d%H%M")
-    raw_path = save_dir / f"gemini-raw-{ts}.md"
-    raw_path.write_text(raw, encoding="utf-8")
-    print(f"  原始输出已保存: {raw_path}")
-
-    # 清理 markdown 代码块包裹
-    cleaned = raw
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[1]
-        cleaned = cleaned.rsplit("```", 1)[0]
-
-    return json.loads(cleaned)
+def cleanup_prepared_variants(prepared_variants: list[dict]) -> None:
+    for variant in prepared_variants:
+        temporary_path = variant.get("temporary_video_path")
+        if temporary_path:
+            Path(temporary_path).unlink(missing_ok=True)
 
 
 # ═══════════════════════ 分镜脚本工具 ═══════════════════════
@@ -628,11 +581,6 @@ def process_single_clip(clip_dir: Path, args, clip_index: int = 0, total_clips: 
         print(f"  跳过（已有结果）: {clip_label}")
         return {"clip_label": clip_label, "skipped": True}
 
-    # ── API Key 检查 ──
-    if not GEMINI_API_KEY:
-        print("错误: 请设置 GEMINI_API_KEY（值使用 ChatFire key，环境变量或 .env 文件）", file=sys.stderr)
-        return None
-
     # ── Step 1: Shot 切点检测（每个变体独立检测，并行）──
     if args.scenes:
         # 预计算模式：所有变体共享同一份切点（向后兼容）
@@ -680,32 +628,24 @@ def process_single_clip(clip_dir: Path, args, clip_index: int = 0, total_clips: 
         else:
             print("  警告: 无法推断 clip_id，跳过匹配评分（可用 --clip-id 指定）")
 
-    # ── Step 2: 上传变体 + Gemini 分析 ──
-    from google import genai as google_genai
-
-    if GEMINI_BASE_URL:
-        from google.genai import types as genai_types
-        client = google_genai.Client(
-            api_key=GEMINI_API_KEY,
-            http_options=genai_types.HttpOptions(base_url=GEMINI_BASE_URL),
-        )
-    else:
-        client = google_genai.Client(api_key=GEMINI_API_KEY)
-
-    uploaded = upload_variants(variants, client)
-    if not uploaded:
-        print(f"  错误: 所有变体上传失败，跳过 {clip_label}")
+    # ── Step 2: 准备变体 + aos-cli video.analyze 分析 ──
+    prepared = prepare_variants_for_model(variants)
+    if not prepared:
+        print(f"  错误: 所有变体预处理失败，跳过 {clip_label}")
         return None
 
     # 原始响应保存到 clip 输出目录旁
     raw_output_dir = output_path.parent
-    prompt = build_phase1_prompt(uploaded, shot_detections, storyboard_clip)
-    video_files = [v["gemini_file"] for v in uploaded]
-    analysis = analyze_with_gemini(video_files, prompt, clip_label, client, raw_output_dir)
+    try:
+        prompt = build_phase1_prompt(prepared, shot_detections, storyboard_clip)
+        video_paths = [v["model_video_path"] for v in prepared]
+        analysis = analyze_with_model(video_paths, prompt, clip_label, raw_output_dir)
+    finally:
+        cleanup_prepared_variants(prepared)
 
     # ── 组装最终输出 ──
     variants_info = []
-    for v in uploaded:
+    for v in prepared:
         vpath = v["path"]
         meta = get_video_meta(vpath)
         variants_info.append({
@@ -749,7 +689,7 @@ def process_single_clip(clip_dir: Path, args, clip_index: int = 0, total_clips: 
 
     print(f"\n{'─'*40}")
     print(f"分析完成: {clip_label}")
-    print(f"  变体数: {len(uploaded)}")
+    print(f"  变体数: {len(prepared)}")
     print(f"  镜头数: {len(shots)}")
 
     if comparison:
@@ -773,7 +713,7 @@ def process_single_clip(clip_dir: Path, args, clip_index: int = 0, total_clips: 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="视频分镜分析：clip 组对比分析（PySceneDetect + Gemini）",
+        description="视频分镜分析：clip 组对比分析（PySceneDetect + aos-cli video.analyze）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:

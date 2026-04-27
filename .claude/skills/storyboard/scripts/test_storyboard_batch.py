@@ -96,6 +96,8 @@ class StoryboardBatchTest(unittest.TestCase):
         import storyboard_batch
         importlib.reload(storyboard_batch)
 
+        os.environ.pop("STORYBOARD_TEXT_MODEL", None)
+        os.environ.pop("GEMINI_TEXT_MODEL", None)
         self.assertEqual(storyboard_batch.get_default_text_model(), "gemini-3.1-flash-lite")
 
         os.environ["GEMINI_TEXT_MODEL"] = "gemini-3.1-pro-preview"
