@@ -189,7 +189,7 @@ Recommended migration order:
 3. Video submit/poll in `video-gen`.
 4. Multimodal video analysis, ASR, and music matching only after confirming the current `aos-cli` protocol covers the required input/output shape.
 
-Asset image review is migrated through `vision.review`. `video-editing/scripts/phase1_analyze.py` is migrated through `video.analyze`. Remaining post-production assembled-video review, music matching, and subtitle transcription paths stay deferred until their skill scripts are migrated to the corresponding first-class capabilities. Do not force these through generic `generate` if doing so would hide domain-specific input/output semantics.
+Asset image review is migrated through `vision.review`. `video-editing/scripts/phase1_analyze.py` is migrated through `video.analyze`. `subtitle-maker/scripts/phase2_transcribe.py` is migrated through `audio.transcribe`. Remaining post-production assembled-video review and music matching paths stay deferred until their skill scripts are migrated to the corresponding first-class capabilities. Do not force these through generic `generate` if doing so would hide domain-specific input/output semantics.
 
 ## Deferred Paths Registry
 
@@ -203,7 +203,6 @@ The following skill scripts are formally classified as deferred multimodal paths
 | 4 | `video-editing/scripts/phase2_assemble.py` | Iterative assembled-video review via Gemini multimodal |
 | 5 | `music-matcher/scripts/analyze_video.py` | Video upload + V2T analysis via Gemini Files API |
 | 6 | `music-matcher/scripts/batch_analyze.py` | Batch wrapper around analyze_video.py |
-| 7 | `subtitle-maker/scripts/phase2_transcribe.py` | Video upload + ASR via Gemini Files API |
 
 One non-script artifact also carries the canonical marker via a `_boundary_note` JSON field:
 

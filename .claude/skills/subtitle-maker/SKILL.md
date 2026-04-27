@@ -1,24 +1,24 @@
 ---
 name: subtitle-maker
-description: "智能字幕生成：剧本名词提取 → Gemini ASR 转录 → SRT 生成 → 字幕烧录 → XML 字幕轨道。Applicable to: subtitle, 字幕, 加字幕, 生成字幕, ASR, 语音识别, 转录, SRT, 烧录字幕."
+description: "智能字幕生成：剧本名词提取 → aos-cli ASR 转录 → SRT 生成 → 字幕烧录 → XML 字幕轨道。Applicable to: subtitle, 字幕, 加字幕, 生成字幕, ASR, 语音识别, 转录, SRT, 烧录字幕."
 argument-hint: "[视频文件路径] [--episode ep_001]"
 ---
 
 # Subtitle Maker — 智能字幕生成
 
-输入配乐后的视频，自动完成：剧本名词提取 → Gemini ASR 转录（字幕指南辅助） → SRT 生成 → 字幕烧录 MP4 → XML 字幕轨道。
+输入配乐后的视频，自动完成：剧本名词提取 → `aos-cli model` ASR 转录（字幕指南辅助） → SRT 生成 → 字幕烧录 MP4 → XML 字幕轨道。
 
-> Model boundary note: this skill remains deferred on direct Gemini ASR/transcription calls because the current `aos-cli model` protocol does not yet fully cover this skill's required audio/video transcription input/output shape. Do not add new provider surfaces here; migrate this skill only after the `aos-cli` protocol explicitly supports the needed transcription contract.
+> Model boundary note: Phase 2 transcription is migrated to `aos-cli model` `audio.transcribe`; this skill must not call provider SDKs directly for ASR.
 
 ## Resources
 
 - **环境检查脚本**：`scripts/phase0_check.py` — 检查所有依赖，缺失时给出安装指令
 - **名词提取脚本**：`scripts/phase1_glossary.py` — 剧本 → 字幕指南 JSON
-- **ASR 转录脚本**：`scripts/phase2_transcribe.py` — Gemini ASR → 逐句时间戳 JSON
+- **ASR 转录脚本**：`scripts/phase2_transcribe.py` — `aos-cli model audio.transcribe` → 逐句时间戳 JSON
 - **SRT 生成脚本**：`scripts/phase3_srt.py` — ASR JSON → SRT 文件
 - **字幕烧录脚本**：`scripts/phase4_burn.py` — SRT → 烧录字幕的 MP4
 - **XML 字幕轨脚本**：`scripts/phase5_xml.py` — SRT → FCP XML 字幕轨道
-- **ASR 提示词**：`assets/asr_prompt.txt` — Gemini ASR prompt（含 `{glossary_hint}` 占位符）
+- **ASR 提示词**：`assets/asr_prompt.txt` — ASR prompt（含 `{glossary_hint}` 占位符）
 - **默认配置**：`assets/default.env` — 内置默认参数
 - **样式预设**：`assets/styles.json` — 字幕样式预设（横/竖 × 有描边/无描边 = 4 套）
 - **样式加载模块**：`scripts/styles.py` — 共享样式加载（ffprobe 探测视频方向 → 自动选择预设）
@@ -29,19 +29,15 @@ argument-hint: "[视频文件路径] [--episode ep_001]"
 |------|---------|------|
 | Python 3.10+ | `python3 --version` | — |
 | ffmpeg (含 libass) | `ffmpeg -filters \| grep subtitle` | macOS: `brew tap homebrew-ffmpeg/ffmpeg && brew install homebrew-ffmpeg/ffmpeg/ffmpeg`；Linux: `apt install ffmpeg` |
-| google-genai | `pip show google-genai` | `pip install google-genai` |
 | python-dotenv | `pip show python-dotenv` | `pip install python-dotenv` |
-| GEMINI_API_KEY | `echo $GEMINI_API_KEY` | 填写 ChatFire key |
+| aos-cli `audio.transcribe` | Phase 0 脚本输出 | 按 aos-cli provider 配置修复 |
 | 中文字体 (Noto Sans CJK) | `fc-list :lang=zh` | macOS 自带；Linux: `apt install fonts-noto-cjk` |
 
 > **macOS 用户注意**：`brew install ffmpeg`（homebrew/core）是精简版，**不含 libass**，subtitles 滤镜不可用。必须用 `homebrew-ffmpeg/ffmpeg` tap 安装完整版。
 
 可用 Phase 0 脚本一键检查：`python3 ./.claude/skills/subtitle-maker/scripts/phase0_check.py`
 
-**GEMINI_API_KEY** 是唯一必需的用户配置，值填写 ChatFire key。配置优先级同 music-matcher：
-1. 系统环境变量
-2. CWD `.env`
-3. skill 内置 `assets/default.env`
+ASR provider 配置由 `aos-cli model` 统一读取；本 skill 只检查 `audio.transcribe` capability 是否可用，不直接读取 provider key。
 
 ## 工作顺序（ASR 用原始视频 → 配乐 + 字幕合并）
 
@@ -76,7 +72,7 @@ argument-hint: "[视频文件路径] [--episode ep_001]"
 
 确认：
 1. 视频文件存在
-2. GEMINI_API_KEY 已配置
+2. `aos-cli model` 的 `audio.transcribe` preflight 通过
 3. 上游剧本 `${PROJECT_DIR}/output/script.json` 存在（Phase 1 需要）
 
 ### Phase 0：环境检查
@@ -87,7 +83,7 @@ argument-hint: "[视频文件路径] [--episode ep_001]"
 python3 ./.claude/skills/subtitle-maker/scripts/phase0_check.py
 ```
 
-检查项：Python 版本、ffmpeg + subtitles 滤镜（libass）、google-genai、python-dotenv、GEMINI_API_KEY、中文字体。
+检查项：Python 版本、ffmpeg + subtitles 滤镜（libass）、python-dotenv、`aos-cli audio.transcribe`、中文字体。
 
 如有缺失，脚本会输出具体的安装命令。加 `--fix` 可自动安装 Python 包：
 
@@ -107,9 +103,9 @@ python3 ./.claude/skills/subtitle-maker/scripts/phase1_glossary.py ${PROJECT_DIR
 
 输出：`output/ep001/_tmp/glossary.json`（中间产物）
 
-### Phase 2：Gemini ASR 转录
+### Phase 2：aos-cli ASR 转录
 
-上传**原始剪辑视频**（无 BGM）到 Gemini，带字幕指南提示词进行语音识别。
+将**原始剪辑视频**（无 BGM）交给 `aos-cli model audio.transcribe`，带字幕指南提示词进行语音识别。
 
 ```bash
 python3 ./.claude/skills/subtitle-maker/scripts/phase2_transcribe.py ${PROJECT_DIR}/output/ep001/ep001.mp4 --glossary output/ep001/_tmp/glossary.json --ep-dir output/ep001
@@ -122,7 +118,7 @@ python3 ./.claude/skills/subtitle-maker/scripts/phase2_transcribe.py ${PROJECT_D
 - 压缩视频（480p + 128kbps 音频，侧重语音质量）
 - 读取 glossary，注入 ASR prompt 的 `{glossary_hint}` 占位符
 - 根据语言选择对应的 ASR 指令（中文简体/日语/韩语/英语）
-- 上传到 Gemini Files API + 调用 ASR
+- 调用 `aos-cli model audio.transcribe`
 - 输出 `output/ep001/_tmp/asr.json`（中间产物，含 language + segments）
 
 **等待脚本完成**，读取 ASR JSON 向用户展示转录结果摘要。
@@ -188,7 +184,7 @@ output/ep001/
 └── _tmp/               # 中间产物（不交付）
     ├── glossary.json   # Phase 1 字幕指南
     ├── asr.json        # Phase 2 ASR 转录
-    ├── gemini-asr-*.json  # Gemini 原始输出
+    ├── aos-cli-audio-transcribe-raw-*.json  # aos-cli 原始响应 envelope
     └── music_*.mp3     # music-matcher 配乐素材
 ```
 
@@ -198,9 +194,10 @@ ASR 专用参数（`assets/default.env`）：
 
 | 参数 | 默认值 | 说明 |
 |------|----|------|
-| GEMINI_MODEL | gemini-3.1-pro-preview | Gemini 模型 |
-| GEMINI_TEMPERATURE | 0.3 | ASR 精确度优先 |
-| GEMINI_THINKING_LEVEL | low | 思考深度 |
+| ASR_MODEL | gemini-3.1-pro-preview | aos-cli modelPolicy |
+| ASR_TEMPERATURE | 0.3 | ASR 精确度优先 |
+| ASR_THINKING_LEVEL | low | 思考深度 |
+| ASR_MEDIA_RESOLUTION | medium | 媒体解析级别 |
 | ASR_COMPRESS_RESOLUTION | 480 | ASR 压缩目标高度（侧重音频） |
 | ASR_COMPRESS_FPS | 6 | ASR 压缩帧率（降低带宽） |
 | ASR_AUDIO_BITRATE | 128k | 音频码率（保证语音质量） |
@@ -219,5 +216,5 @@ ASR 专用参数（`assets/default.env`）：
 - Phase 1-5 全部用 Bash 执行 Python 脚本
 - Phase 4 **必须** `-c:v libx264`（字幕烧录需修改视频帧）
 - Phase 2 的视频压缩侧重语音质量（128kbps 音频），不同于 music-matcher 的 64k
-- 字幕指南直接给 Gemini，不做事后校正——减少步骤，让 ASR 一次出正确结果
+- 字幕指南直接给 `aos-cli audio.transcribe`，不做事后校正——减少步骤，让 ASR 一次出正确结果
 - 每步完成后向用户汇报进度

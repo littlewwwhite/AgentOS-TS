@@ -265,6 +265,38 @@ def test_build_default_model_service_fakes_video_analyze(monkeypatch):
     assert response["output"] == {"kind": "json", "data": {"ok": True, "task": "video.clip.analysis"}}
 
 
+def test_build_default_model_service_fakes_audio_transcribe_segments(monkeypatch):
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
+
+    response = build_default_model_service().run(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "subtitle.transcribe",
+            "capability": "audio.transcribe",
+            "output": {"kind": "json"},
+            "input": {
+                "prompt": "transcribe",
+                "audio": "file:///tmp/ep001.mp4",
+                "language": "zh",
+            },
+        }
+    )
+
+    assert response["ok"] is True
+    assert response["provider"] == "gemini"
+    assert response["output"]["kind"] == "json"
+    assert response["output"]["data"] == {
+        "segments": [
+            {
+                "start": "00:00:00,000",
+                "end": "00:00:02,000",
+                "speaker": "",
+                "text": "fake transcript",
+            }
+        ]
+    }
+
+
 def test_service_returns_audio_transcript_json():
     response = ModelService(provider_factory=lambda request, dispatch=None: FakeProvider('{"segments":[]}')).run(
         {

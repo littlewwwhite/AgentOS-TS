@@ -294,7 +294,7 @@ class _FakeProvider:
     def generate_text(self, *, system, content, options):
         output_kind = self.request["output"]["kind"]
         if output_kind == "json":
-            text = json.dumps({"ok": True, "task": self.request["task"]})
+            text = json.dumps(_fake_json_payload(self.request))
         else:
             text = "fake response"
         return type("Result", (), {"text": text, "model": "fake-model", "usage": {}})()
@@ -339,6 +339,21 @@ class _FakeProvider:
 
     def embed_content(self, *, content, options):
         return type("EmbeddingResult", (), {"values": [0.1, 0.2], "model": "fake-embedding-model", "usage": {}})()
+
+
+def _fake_json_payload(request: dict) -> dict:
+    if request.get("capability") == "audio.transcribe":
+        return {
+            "segments": [
+                {
+                    "start": "00:00:00,000",
+                    "end": "00:00:02,000",
+                    "speaker": "",
+                    "text": "fake transcript",
+                }
+            ]
+        }
+    return {"ok": True, "task": request["task"]}
 
 
 def _build_options(request: dict) -> dict:

@@ -1,12 +1,9 @@
 """
-Phase 2：Gemini ASR 转录 — 上传视频到 Gemini，带字幕指南提示词进行语音识别
+Phase 2：ASR 转录 — 通过 aos-cli model 边界对视频进行语音识别
 用法：python phase2_transcribe.py <视频文件> [--glossary glossary.json] [--ep-dir output/ep001]
 输出：output/ep00x/_tmp/asr.json
 
-Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-This path uploads video to Gemini Files API and runs ASR transcription. aos-cli
-model v1 has no contract for ASR or video upload, so this stays on the direct
-SDK pending protocol expansion.
+Model boundary note: migrated to aos-cli model audio.transcribe.
 """
 
 import os
@@ -22,6 +19,7 @@ from dotenv import load_dotenv
 
 # 从 styles.py 导入统一的语言配置
 from styles import get_language_config, get_asr_instruction, get_supported_languages
+from common_audio_transcribe import call_audio_transcribe
 
 # 配置加载优先级：环境变量 > CWD/.env > skill 内置 default.env
 SCRIPT_DIR = Path(__file__).parent
@@ -35,15 +33,12 @@ load_dotenv(override=False)
 PROMPT_PATH = SKILL_DIR / "assets" / "asr_prompt.txt"
 OUTPUT_DIR = Path.cwd() / "output"
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://api.chatfire.cn/gemini")
-
-# Gemini 参数
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
-GEMINI_TEMPERATURE = float(os.getenv("GEMINI_TEMPERATURE", "0.3"))
-GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low")
-_res = os.getenv("GEMINI_MEDIA_RESOLUTION", "medium")
-GEMINI_MEDIA_RESOLUTION = f"MEDIA_RESOLUTION_{_res.upper()}"
+# ASR model 参数
+ASR_MODEL = os.getenv("ASR_MODEL") or os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
+ASR_TEMPERATURE = float(os.getenv("ASR_TEMPERATURE", os.getenv("GEMINI_TEMPERATURE", "0.3")))
+ASR_THINKING_LEVEL = os.getenv("ASR_THINKING_LEVEL", os.getenv("GEMINI_THINKING_LEVEL", "low"))
+_res = os.getenv("ASR_MEDIA_RESOLUTION", os.getenv("GEMINI_MEDIA_RESOLUTION", "medium"))
+ASR_MEDIA_RESOLUTION = f"MEDIA_RESOLUTION_{_res.upper()}"
 
 # ASR 压缩参数（侧重语音质量）
 COMPRESS_ENABLED = os.getenv("COMPRESS_BEFORE_UPLOAD", "true").lower() in ("true", "1", "yes")
@@ -100,24 +95,6 @@ def compress_video(video_path: str) -> str | None:
     return out_path
 
 
-def upload_video(video_path: str, client):
-    """上传本地视频到 Gemini Files API"""
-    print(f"正在上传视频: {video_path}")
-    video_file = client.files.upload(file=video_path)
-
-    print("等待 Gemini 处理视频...")
-    while video_file.state.name == "PROCESSING":
-        time.sleep(3)
-        video_file = client.files.get(name=video_file.name)
-        print(f"  状态: {video_file.state.name}")
-
-    if video_file.state.name != "ACTIVE":
-        raise RuntimeError(f"视频处理失败，状态: {video_file.state.name}")
-
-    print(f"OK 视频上传完成: {video_file.name}")
-    return video_file
-
-
 def build_prompt(glossary_path: str | None, language: str = None) -> str:
     """构建 ASR 提示词，注入字幕指南和语言指令"""
     prompt_template = PROMPT_PATH.read_text(encoding="utf-8")
@@ -152,41 +129,28 @@ def build_prompt(glossary_path: str | None, language: str = None) -> str:
     return prompt
 
 
-def transcribe_with_gemini(video_file, video_stem: str, prompt: str, client, output_dir: Path = None) -> list[dict]:
-    """调用 Gemini 进行 ASR 转录"""
-    from google.genai import types
-
+def transcribe_with_aos_cli(media_path: str, video_stem: str, prompt: str, language: str, output_dir: Path = None) -> list[dict]:
+    """调用 aos-cli model 进行 ASR 转录"""
     if output_dir is None:
         output_dir = OUTPUT_DIR
 
-    config = types.GenerateContentConfig(
-        temperature=GEMINI_TEMPERATURE,
-        thinking_config=types.ThinkingConfig(thinking_level=GEMINI_THINKING_LEVEL),
-        media_resolution=GEMINI_MEDIA_RESOLUTION,
-    )
-
-    print(f"正在调用 Gemini ASR（模型: {GEMINI_MODEL}，temperature: {GEMINI_TEMPERATURE}）...")
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[video_file, prompt],
-        config=config,
-    )
-
-    raw = response.text.strip()
-
-    # 保存原始输出
     output_dir.mkdir(parents=True, exist_ok=True)
-    raw_path = output_dir / f"gemini-asr-{video_stem}.json"
-    raw_path.write_text(raw, encoding="utf-8")
-    print(f"OK Gemini 原始输出已保存: {raw_path.name}")
-
-    # 清理 markdown 代码块
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1]
-        raw = raw.rsplit("```", 1)[0]
-
-    segments = json.loads(raw)
-    print(f"OK Gemini 识别出 {len(segments)} 条字幕")
+    print(f"正在调用 aos-cli ASR（capability: audio.transcribe，模型: {ASR_MODEL}，temperature: {ASR_TEMPERATURE}）...")
+    segments = call_audio_transcribe(
+        media_path,
+        prompt,
+        task=f"subtitle-maker.phase2.{video_stem}",
+        model=ASR_MODEL,
+        language=language,
+        options={
+            "temperature": ASR_TEMPERATURE,
+            "thinkingLevel": ASR_THINKING_LEVEL,
+            "mediaResolution": ASR_MEDIA_RESOLUTION,
+        },
+        cwd=Path.cwd(),
+        raw_output_dir=output_dir,
+    )
+    print(f"OK aos-cli 识别出 {len(segments)} 条字幕")
     return segments
 
 
@@ -203,10 +167,6 @@ def main():
         sys.exit(1)
 
     video_stem = Path(args.video_path).stem
-
-    if not GEMINI_API_KEY:
-        print("Error: 请设置 GEMINI_API_KEY 环境变量（值使用 ChatFire key）")
-        sys.exit(1)
 
     # 确定输出目录
     if args.ep_dir:
@@ -232,28 +192,21 @@ def main():
     lang_config = get_language_config(language)
     print(f"ASR 语言: {lang_config.get('name', language)} ({language})")
 
-    # 1. 初始化 Gemini 客户端
-    from google import genai as google_genai
-    from google.genai import types as genai_types
-    client = google_genai.Client(
-        api_key=GEMINI_API_KEY,
-        http_options=genai_types.HttpOptions(base_url=GEMINI_BASE_URL),
-    )
-
-    # 2. 压缩并上传视频
+    # 1. 压缩视频
     compressed = compress_video(args.video_path)
-    upload_path = compressed or args.video_path
-    video_file = upload_video(upload_path, client)
-    if compressed:
-        Path(compressed).unlink(missing_ok=True)
 
-    # 3. 构建提示词
+    # 2. 构建提示词
     prompt = build_prompt(args.glossary, language)
 
-    # 4. ASR 转录
-    subtitles = transcribe_with_gemini(video_file, video_stem, prompt, client, output_dir=out_dir)
+    # 3. ASR 转录
+    transcribe_path = compressed or args.video_path
+    try:
+        subtitles = transcribe_with_aos_cli(transcribe_path, video_stem, prompt, language, output_dir=out_dir)
+    finally:
+        if compressed:
+            Path(compressed).unlink(missing_ok=True)
 
-    # 5. 保存结果（含语言信息）
+    # 4. 保存结果（含语言信息）
     output_path = out_dir / "asr.json"
     output_data = {
         "language": language,
