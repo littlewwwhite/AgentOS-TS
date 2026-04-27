@@ -51,6 +51,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from batch_generate_runtime import _process_scene_clips, process_scenes_parallel
+from subject_resolver import resolve_subject_tokens
 from production_types import ClipIntent
 from video_api import DEFAULT_MODEL_CODE
 from path_manager import VideoReviewPaths, prepare_runtime_storyboard_export
@@ -689,18 +690,19 @@ def run_batch_generate(
             ls_id = ls['clip_id']
             scene_id = ls.get('scene_id', '?')
             pv = ls.get('prompt_version', 0)
-            subject_ids = extract_subject_ids(ls['full_prompts'])
-            mapped = map_subject_ids_to_images(subject_ids, assets_mapping)
+            prompt_with_indices, resolved_refs = resolve_subject_tokens(
+                ls['full_prompts'], assets_mapping
+            )
             print(f"  [{ls_id}] pv={pv} [DRY-RUN] Skipping")
             results.append({
                 "clip_id": ls_id,
                 "scene_id": scene_id,
                 "prompt_version": pv,
-                "prompt": convert_prompt_brackets(ls['full_prompts']),
+                "prompt": convert_prompt_brackets(prompt_with_indices),
                 "success": True,
                 "dry_run": True,
-                "subjects_found": len(subject_ids),
-                "subjects_mapped": len(mapped or []),
+                "subjects_found": len(extract_subject_ids(ls['full_prompts'])),
+                "subjects_mapped": len(resolved_refs),
             })
     else:
         # ── Pre-process all clips ──
