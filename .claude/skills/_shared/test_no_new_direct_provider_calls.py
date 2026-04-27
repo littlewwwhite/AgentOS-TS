@@ -23,6 +23,7 @@ MIGRATED_SCRIPT_PATHS = [
     ".claude/skills/asset-gen/scripts/review_props.py",
     ".claude/skills/video-editing/scripts/common_video_analyze.py",
     ".claude/skills/video-editing/scripts/phase1_analyze.py",
+    ".claude/skills/video-editing/scripts/phase2_assemble.py",
     ".claude/skills/music-matcher/scripts/analyze_video.py",
     ".claude/skills/music-matcher/scripts/batch_analyze.py",
     ".claude/skills/subtitle-maker/scripts/common_audio_transcribe.py",
@@ -49,7 +50,6 @@ DEFERRED_MULTIMODAL_PATHS = [
     ".claude/skills/video-gen/scripts/frame_extractor.py",
     ".claude/skills/video-gen/scripts/config_loader.py",
     ".claude/skills/video-gen/assets/config.json",
-    ".claude/skills/video-editing/scripts/phase2_assemble.py",
 ]
 
 DEFERRED_MARKER = "Model boundary note: deferred multimodal"

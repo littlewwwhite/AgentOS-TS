@@ -82,10 +82,10 @@ from common_video_analyze import call_video_analyze
 
 # ── Model 参数 ──
 
-VIDEO_ANALYZE_MODEL = os.getenv("VIDEO_ANALYZE_MODEL") or os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
-VIDEO_ANALYZE_TEMPERATURE = float(os.getenv("VIDEO_ANALYZE_TEMPERATURE") or os.getenv("GEMINI_TEMPERATURE", "1.0"))
-VIDEO_ANALYZE_THINKING_LEVEL = os.getenv("VIDEO_ANALYZE_THINKING_LEVEL") or os.getenv("GEMINI_THINKING_LEVEL", "low")
-_res = os.getenv("GEMINI_MEDIA_RESOLUTION", "medium")
+VIDEO_ANALYZE_MODEL = os.getenv("VIDEO_ANALYZE_MODEL", "gemini-3.1-pro-preview")
+VIDEO_ANALYZE_TEMPERATURE = float(os.getenv("VIDEO_ANALYZE_TEMPERATURE", "1.0"))
+VIDEO_ANALYZE_THINKING_LEVEL = os.getenv("VIDEO_ANALYZE_THINKING_LEVEL", "low")
+_res = os.getenv("VIDEO_ANALYZE_MEDIA_RESOLUTION", "medium")
 VIDEO_ANALYZE_MEDIA_RESOLUTION = f"MEDIA_RESOLUTION_{_res.upper()}"
 
 # ── 视频压缩参数 ──
@@ -123,7 +123,7 @@ logging.getLogger("libav").setLevel(logging.ERROR)
 
 
 def get_video_meta(video_path: Path) -> dict:
-    """获取视频元信息（duration, fps），不依赖 Gemini。"""
+    """获取视频元信息（duration, fps），不依赖 provider SDK。"""
     from scenedetect import open_video
     try:
         v = open_video(str(video_path), backend="pyav")
@@ -339,7 +339,7 @@ def load_shot_detection(scenes_path: str) -> dict:
     return data
 
 
-# ═══════════════════════ Step 2: Gemini 分析 ═══════════════════════
+# ═══════════════════════ Step 2: aos-cli video.analyze 分析 ═══════════════════════
 
 
 def compress_video(video_path: str) -> str | None:
@@ -709,7 +709,7 @@ def process_single_clip(clip_dir: Path, args, clip_index: int = 0, total_clips: 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="视频分镜分析：clip 组对比分析（PySceneDetect + Gemini）",
+        description="视频分镜分析：clip 组对比分析（PySceneDetect + aos-cli video.analyze）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:

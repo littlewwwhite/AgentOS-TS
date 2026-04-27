@@ -189,7 +189,7 @@ Recommended migration order:
 3. Video submit/poll in `video-gen`.
 4. Remaining multimodal video review paths only after confirming the current `aos-cli` protocol covers the required input/output shape.
 
-Asset image review is migrated through `vision.review`. `video-editing/scripts/phase1_analyze.py`, `music-matcher/scripts/analyze_video.py`, and `video-gen/scripts/analyzer.py` are migrated through `video.analyze`. `music-matcher/scripts/batch_analyze.py` reuses the same boundary. `subtitle-maker/scripts/phase2_transcribe.py` is migrated through `audio.transcribe`. Remaining post-production assembled-video review paths stay deferred until their skill scripts are migrated to the corresponding first-class capabilities. Do not force these through generic `generate` if doing so would hide domain-specific input/output semantics.
+Asset image review is migrated through `vision.review`. `video-editing/scripts/phase1_analyze.py`, `video-editing/scripts/phase2_assemble.py`, `music-matcher/scripts/analyze_video.py`, and `video-gen/scripts/analyzer.py` are migrated through `video.analyze`. `music-matcher/scripts/batch_analyze.py` reuses the same boundary. `subtitle-maker/scripts/phase2_transcribe.py` is migrated through `audio.transcribe`. Remaining deferred multimodal paths stay deferred only until their skill scripts are migrated to the corresponding first-class capabilities. Do not force these through generic `generate` if doing so would hide domain-specific input/output semantics.
 
 ## Deferred Paths Registry
 
@@ -199,7 +199,6 @@ The following skill scripts are formally classified as deferred multimodal paths
 |---|------|---------------------|
 | 1 | `video-gen/scripts/config_loader.py` | Provider config loader for deferred multimodal scripts |
 | 2 | `video-gen/scripts/frame_extractor.py` | Frame description via Gemini multimodal |
-| 3 | `video-editing/scripts/phase2_assemble.py` | Iterative assembled-video review via Gemini multimodal |
 
 One non-script artifact also carries the canonical marker via a `_boundary_note` JSON field:
 

@@ -6,11 +6,11 @@
 
 ## 上下文
 
-第一阶段（`scripts/analyze_video.py`）已经完成。它对每个 clip 目录下的所有变体做了 Gemini 多模态分析，输出了结构化的 `analysis.json`。
+第一阶段（`scripts/analyze_video.py`）已经完成。它对每个 clip 目录下的所有变体通过 aos-cli `video.analyze` 做多模态分析，输出了结构化的 `analysis.json`。
 
 每个 analysis.json 包含：
 - `shots[]`：逐 shot 逐变体的分析数据（camera、quality_score、quality_issues、continuity_to_next、script_match）
-- `clip_comparison.recommended_assembly`：Gemini 推荐的最佳组装方案（哪个 shot 用哪个变体、转场方式）
+- `clip_comparison.recommended_assembly`：video.analyze 推荐的最佳组装方案（哪个 shot 用哪个变体、转场方式）
 - `clip_comparison.per_shot_best`：每个 shot 的最佳变体和分数
 - `clip_comparison.mix_warnings`：混剪风险提示
 
@@ -37,10 +37,10 @@ output/
 对每个 scn，按 clip 顺序：
   取 recommended_assembly 作为初始方案
     ↓
-  Gemini 看完整序列 + 剧本 → 整体评分 + 发现问题
+  video.analyze 看完整序列 + 剧本 → 整体评分 + 发现问题
     ↓
   有问题？
-    是 → 从标签库搜索替代 shot → 替换 → 回到 Gemini 重新评估
+    是 → 从标签库搜索替代 shot → 替换 → 回到 video.analyze 重新评估
     否 → 结束循环
     ↓
   循环终止条件：整体分 ≥ 阈值 OR 达到最大轮次
@@ -56,7 +56,7 @@ output/
 
 读取 `output/ep{NNN}/` 下所有 `analysis.json`，构建一个内存数据结构（我称之为"视频素材的标签库"），支持按 shot 特征搜索。
 
-标签库的用途：当循环中发现某个 shot 有问题（比如 quality_score 太低、script_match 不符），需要从**同一 clip 的其他变体**中找一个更好的 shot 来替换。这个搜索应该是纯代码操作（遍历 analysis.json 里的 per_variant 数据），不需要调 Gemini。
+标签库的用途：当循环中发现某个 shot 有问题（比如 quality_score 太低、script_match 不符），需要从**同一 clip 的其他变体**中找一个更好的 shot 来替换。这个搜索应该是纯代码操作（遍历 analysis.json 里的 per_variant 数据），不需要调模型。
 
 ### 2. 初始方案组装
 
@@ -75,20 +75,20 @@ output/
 
 ### 3. 循环分析
 
-把当前方案对应的视频序列（可能是多个视频的不同片段）和剧本一起发送给 Gemini，做一次整体评估。
+把当前方案对应的视频序列（可能是多个视频的不同片段）和剧本一起发送给 aos-cli `video.analyze`，做一次整体评估。
 
 **第一轮**：如果 `recommended_assembly.strategy == "single"`（单一变体最优），直接发送那个完整视频即可。如果是 "mixed"（混剪），需要按方案顺序发送多段视频片段。
 
-Gemini 在这一轮需要回答：
+video.analyze 在这一轮需要回答：
 - 整体综合分（1-10）
 - 逐 shot 是否有问题（quality、continuity、script_match）
 - 需要修补的 shot 列表及原因
 
-**后续轮**：替换了 shot 之后，再发一次让 Gemini 重新评估。
+**后续轮**：替换了 shot 之后，再发一次让 video.analyze 重新评估。
 
 ### 4. 替换逻辑
 
-当 Gemini 指出某个 shot 有问题：
+当 video.analyze 指出某个 shot 有问题：
 
 1. 在标签库中查找同一 clip 的其他变体的对应 shot
 2. 按 quality_score 排序，选分最高且不是当前正在使用的那个
@@ -175,8 +175,8 @@ LOOP_SCORE_THRESHOLD=7.5
 LOOP_MAX_ITERATIONS=3
 # scn 并发处理数（0=不限制）
 CONCURRENCY=4
-# 循环分析用的 Gemini 模型（可以和第一阶段不同）
-LOOP_GEMINI_MODEL=gemini-3.1-flash-preview
+# 循环分析用的 aos-cli video.analyze 模型（可以和第一阶段不同）
+LOOP_VIDEO_ANALYZE_MODEL=gemini-3.1-flash-preview
 ```
 
 ---
@@ -184,7 +184,7 @@ LOOP_GEMINI_MODEL=gemini-3.1-flash-preview
 ## 不需要做的事
 
 - 不需要重新做切镜检测（第一阶段已完成）
-- 不需要重新上传 clip 视频到 Gemini（循环分析时上传的是拼接的 scn 单位的视频，）
+- 不需要重新分析 clip 视频（循环分析时传入的是拼接的 scn 单位的视频）
 - 不需要生成 Excel/TXT 报告
 - 不需要做物理状态盲测、表情盲测（第一阶段的数据已足够）
 - 不需要修改第一阶段的代码
@@ -216,8 +216,8 @@ assets/
 |------|------------|------|
 | **已被 phase1 替代** | video-scoring.txt, plot-analysis.txt, blind-expression.txt, blind-physical-state.txt, supplement-blind.txt, script-mapping.txt | phase1 已覆盖 |
 | **→ 合入 phase2 循环 prompt** | editing-continuity.txt, connection-analysis.txt, state-regression-check.txt | 核心判断能力需保留 |
-| **→ 纯代码替代** | supplement-match.txt, bridge-select.txt | 标签库搜索替代 Gemini |
-| **→ 循环天然覆盖** | score-validation.txt, critical-issue-validation.txt, supplement-result-validation.txt | 循环中 Gemini 重新评估时自然验证 |
+| **→ 纯代码替代** | supplement-match.txt, bridge-select.txt | 标签库搜索替代模型调用 |
+| **→ 循环天然覆盖** | score-validation.txt, critical-issue-validation.txt, supplement-result-validation.txt | 循环中 video.analyze 重新评估时自然验证 |
 | **保留概念** | bridge-fallback.txt | 无合适替代时的兜底描述 |
 | **暂缓** | audio-duplicate.txt, bridge-candidate-eval.txt | 后续按需加入 |
 

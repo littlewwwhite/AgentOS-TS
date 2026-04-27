@@ -316,6 +316,30 @@ def test_build_default_model_service_fakes_video_gen_review(monkeypatch):
     assert data["prompt_compliance"]["content_compliance_score"] == 8
 
 
+def test_build_default_model_service_fakes_video_editing_phase2_review(monkeypatch):
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
+
+    response = build_default_model_service().run(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video-editing.phase2.loop-review",
+            "capability": "video.analyze",
+            "output": {"kind": "json"},
+            "input": {"content": {"prompt": "review assembled scene", "videos": ["file:///tmp/scn.mp4"]}},
+        }
+    )
+
+    assert response["ok"] is True
+    assert response["provider"] == "gemini"
+    assert response["output"]["kind"] == "json"
+    assert response["output"]["data"] == {
+        "overall_score": 8.0,
+        "summary": "fake assembled-scene review",
+        "issues": [],
+        "edit_suggestions": [],
+    }
+
+
 def test_build_default_model_service_fakes_audio_transcribe_segments(monkeypatch):
     monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
 

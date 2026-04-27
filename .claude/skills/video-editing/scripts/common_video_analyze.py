@@ -22,7 +22,7 @@ if str(_SHARED_DIR) not in sys.path:
 from aos_cli_model import aos_cli_model_run
 
 
-DEFAULT_MODEL = os.environ.get("VIDEO_ANALYZE_MODEL") or os.environ.get("GEMINI_MODEL") or "gemini-3.1-pro-preview"
+DEFAULT_MODEL = os.environ.get("VIDEO_ANALYZE_MODEL") or "gemini-3.1-pro-preview"
 
 
 def call_video_analyze(

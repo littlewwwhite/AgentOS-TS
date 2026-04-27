@@ -385,6 +385,13 @@ def _fake_json_payload(request: dict) -> dict:
                 "overall_compliance_note": "fake video-gen prompt compliance review",
             },
         }
+    if request.get("capability") == "video.analyze" and request.get("task") == "video-editing.phase2.loop-review":
+        return {
+            "overall_score": 8.0,
+            "summary": "fake assembled-scene review",
+            "issues": [],
+            "edit_suggestions": [],
+        }
     return {"ok": True, "task": request["task"]}
 
 
