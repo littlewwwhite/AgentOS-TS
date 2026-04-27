@@ -17,18 +17,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # 配置加载优先级：环境变量 > CWD/.env > skill 内置 default.env
 SCRIPT_DIR = Path(__file__).parent
 SKILL_DIR = SCRIPT_DIR.parent
 DEFAULT_ENV = SKILL_DIR / "assets" / "default.env"
 
-# 先加载 skill 内置默认值（不覆盖已有环境变量）
-if DEFAULT_ENV.exists():
-    load_dotenv(DEFAULT_ENV, override=False)
-# 再加载用户 CWD 下的 .env（不覆盖已有环境变量）
-load_dotenv(override=False)
+if load_dotenv is not None:
+    # 先加载 skill 内置默认值（不覆盖已有环境变量）
+    if DEFAULT_ENV.exists():
+        load_dotenv(DEFAULT_ENV, override=False)
+    # 再加载用户 CWD 下的 .env（不覆盖已有环境变量）
+    load_dotenv(override=False)
 
 PROMPT_PATH = SKILL_DIR / "assets" / "video_analysis.txt"
 OUTPUT_DIR = Path.cwd() / "output"

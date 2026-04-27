@@ -31,7 +31,10 @@ import sys
 import time
 from pathlib import Path
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # ── 配置加载 ──
 
@@ -40,9 +43,10 @@ SKILL_DIR = SCRIPT_DIR.parent
 ASSETS_DIR = SKILL_DIR / "assets"
 DEFAULT_ENV = ASSETS_DIR / "default.env"
 
-if DEFAULT_ENV.exists():
-    load_dotenv(DEFAULT_ENV, override=False)
-load_dotenv(override=False)
+if load_dotenv is not None:
+    if DEFAULT_ENV.exists():
+        load_dotenv(DEFAULT_ENV, override=False)
+    load_dotenv(override=False)
 
 # ── 复用 Phase 2 的共享函数 ──
 

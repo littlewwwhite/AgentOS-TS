@@ -14,16 +14,21 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse, unquote
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # 配置加载优先级：环境变量 > CWD/.env > skill 内置 default.env
 SCRIPT_DIR = Path(__file__).parent
 SKILL_DIR = SCRIPT_DIR.parent
 DEFAULT_ENV = SKILL_DIR / "assets" / "default.env"
 
-if DEFAULT_ENV.exists():
-    load_dotenv(DEFAULT_ENV, override=False)
-load_dotenv(override=False)
+if load_dotenv is not None:
+    if DEFAULT_ENV.exists():
+        load_dotenv(DEFAULT_ENV, override=False)
+    load_dotenv(override=False)
 
 OUTPUT_DIR = Path.cwd() / "output"
 

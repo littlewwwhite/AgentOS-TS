@@ -15,7 +15,11 @@ import shutil
 import tempfile
 import argparse
 from pathlib import Path
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # 从 styles.py 导入统一的语言配置
 from styles import get_language_config, get_asr_instruction, get_supported_languages
@@ -26,9 +30,10 @@ SCRIPT_DIR = Path(__file__).parent
 SKILL_DIR = SCRIPT_DIR.parent
 DEFAULT_ENV = SKILL_DIR / "assets" / "default.env"
 
-if DEFAULT_ENV.exists():
-    load_dotenv(DEFAULT_ENV, override=False)
-load_dotenv(override=False)
+if load_dotenv is not None:
+    if DEFAULT_ENV.exists():
+        load_dotenv(DEFAULT_ENV, override=False)
+    load_dotenv(override=False)
 
 PROMPT_PATH = SKILL_DIR / "assets" / "asr_prompt.txt"
 OUTPUT_DIR = Path.cwd() / "output"

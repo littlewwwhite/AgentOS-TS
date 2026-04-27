@@ -61,7 +61,10 @@ except Exception:
 # Python 层 libav logger 也抑制（兜底）
 logging.getLogger("libav").setLevel(logging.ERROR)
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # ── 配置加载（三级优先级：环境变量 > CWD/.env > skill 内置 default.env）──
 
@@ -70,9 +73,10 @@ SKILL_DIR = SCRIPT_DIR.parent
 ASSETS_DIR = SKILL_DIR / "assets"
 DEFAULT_ENV = ASSETS_DIR / "default.env"
 
-if DEFAULT_ENV.exists():
-    load_dotenv(DEFAULT_ENV, override=False)
-load_dotenv(override=False)
+if load_dotenv is not None:
+    if DEFAULT_ENV.exists():
+        load_dotenv(DEFAULT_ENV, override=False)
+    load_dotenv(override=False)
 
 # ── Prompt 模块 ──
 # 将 assets/ 加入 sys.path，按阶段 import prompt 模块

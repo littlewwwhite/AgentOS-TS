@@ -8,7 +8,6 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -47,23 +46,16 @@ class AssetGenPipelineStateBridgeTest(unittest.TestCase):
                 Path(__file__).resolve().parent / "style_generate.py",
             )
 
-            class FakeClient:
-                class models:
-                    @staticmethod
-                    def generate_content(model, contents):
-                        return SimpleNamespace(
-                            text=json.dumps(
-                                {
-                                    "worldview_type": "仙侠",
-                                    "render_prefix": "古风CG",
-                                },
-                                ensure_ascii=False,
-                            )
-                        )
-
-            module.create_client = lambda: FakeClient()
             style_path = draft_dir / "style.json"
-            module.generate_style(str(script_json), str(style_path), "动漫")
+            with patch.object(
+                module,
+                "generate_json_with_retry",
+                return_value={
+                    "worldview_type": "仙侠",
+                    "render_prefix": "古风CG",
+                },
+            ):
+                module.generate_style(str(script_json), str(style_path), "动漫")
 
             state = json.loads((project_dir / "pipeline-state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["current_stage"], "VISUAL")
