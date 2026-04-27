@@ -8,7 +8,6 @@ describe("buildNavigatorSections", () => {
       hasCatalog: false,
       hasScript: false,
       hasAssets: false,
-      hasStoryboard: false,
       episodeIds: [],
     });
 
@@ -18,12 +17,10 @@ describe("buildNavigatorSections", () => {
       "catalog",
       "script",
       "assets",
-      "storyboard",
       "episodes",
     ]);
     expect(sections.map((section) => section.available)).toEqual([
       true,
-      false,
       false,
       false,
       false,
@@ -40,7 +37,6 @@ describe("buildNavigatorSections", () => {
       hasCatalog: true,
       hasScript: true,
       hasAssets: true,
-      hasStoryboard: true,
       episodeIds: ["ep001"],
     });
 
@@ -50,7 +46,6 @@ describe("buildNavigatorSections", () => {
       "catalog",
       "script",
       "assets",
-      "storyboard",
       "episodes",
     ]);
     expect(sections.every((section) => section.available)).toBe(true);
@@ -62,7 +57,6 @@ describe("buildNavigatorSections", () => {
       hasCatalog: false,
       hasScript: true,
       hasAssets: false,
-      hasStoryboard: false,
       episodeIds: ["ep001"],
     });
 
@@ -77,7 +71,6 @@ describe("buildNavigatorSections", () => {
       hasCatalog: true,
       hasScript: true,
       hasAssets: true,
-      hasStoryboard: true,
       episodeIds: ["ep001"],
     });
 
@@ -90,7 +83,6 @@ describe("buildNavigatorSections", () => {
       catalog: "cross_episode",
       script: "cross_episode",
       assets: "cross_episode",
-      storyboard: "per_episode",
       episodes: "per_episode",
     });
   });
