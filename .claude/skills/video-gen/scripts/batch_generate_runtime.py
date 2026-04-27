@@ -28,10 +28,10 @@ from frame_extractor import (
     describe_frame_with_gemini,
     extract_last_shot_first_frame_blurred,
 )
-from gemini_adapter import get_video_analysis
 from production_types import ClipIntent, ContinuityContext
 from request_compiler import compile_request
 from sensitive_precheck import precheck_and_fix
+from video_review_adapter import get_video_analysis
 from video_api import (
     _cos_relative_url,
     get_subject_reference_for_model,
@@ -103,7 +103,6 @@ def _review_single_clip(
     expected_duration: float,
     original_prompt: str,
     output_dir: str,
-    api_key: Optional[str] = None,
 ) -> Tuple[bool, Dict, Dict]:
     """Review a single generated clip through aos-cli video.analyze and flatten the result."""
     print(f"  [REVIEW] aos-cli video.analyze 评审: {segment_id}")
@@ -116,7 +115,6 @@ def _review_single_clip(
             original_prompt=original_prompt,
             output_dir=output_dir,
             force_reanalyze=True,
-            api_key=api_key,
         )
 
         parallel_results = analysis_result.get("parallel_results", {})
@@ -384,7 +382,6 @@ def _run_generation_rounds(
                 expected_duration=float(clip["dur_api"]),
                 original_prompt=clip["ls"].get("full_prompts", ""),
                 output_dir=clip_dir,
-                api_key=gemini_api_key,
             )
 
         with ThreadPoolExecutor(max_workers=len(review_items)) as executor:

@@ -31,6 +31,7 @@ MIGRATED_SCRIPT_PATHS = [
     ".claude/skills/subtitle-maker/scripts/phase2_transcribe.py",
     ".claude/skills/video-gen/scripts/analyzer.py",
     ".claude/skills/video-gen/scripts/frame_extractor.py",
+    ".claude/skills/video-gen/scripts/video_review_adapter.py",
     ".claude/skills/video-gen/scripts/video_api.py",
 ]
 
@@ -49,6 +50,7 @@ MIGRATED_USER_FACING_PATHS = [
     ".claude/skills/video-gen/scripts/analyzer.py",
     ".claude/skills/video-gen/scripts/batch_generate.py",
     ".claude/skills/video-gen/scripts/evaluator.py",
+    ".claude/skills/video-gen/scripts/video_review_adapter.py",
 ]
 
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -92,6 +94,12 @@ DEFERRED_MARKER = "Model boundary note: " + "deferred multimodal"
 
 MIGRATED_ASSET_CONFIG_PATHS = [
     ".claude/skills/asset-gen/assets/common/gemini_backend.json",
+]
+
+VIDEO_GEN_REVIEW_RUNTIME_PATHS = [
+    ".claude/skills/video-gen/scripts/analyzer.py",
+    ".claude/skills/video-gen/scripts/batch_generate_runtime.py",
+    ".claude/skills/video-gen/scripts/video_review_adapter.py",
 ]
 
 
@@ -161,6 +169,24 @@ class DirectProviderGuardrailTests(unittest.TestCase):
         for relative_path in MIGRATED_ASSET_CONFIG_PATHS:
             source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
             for snippet in credential_snippets:
+                if snippet in source:
+                    violations.append(f"{relative_path}: {snippet}")
+
+        self.assertEqual(violations, [])
+
+    def test_video_gen_review_runtime_uses_provider_neutral_adapter(self) -> None:
+        legacy_adapter = REPO_ROOT / ".claude/skills/video-gen/scripts/gemini_adapter.py"
+        violations: list[str] = []
+        if legacy_adapter.exists():
+            violations.append(str(legacy_adapter.relative_to(REPO_ROOT)))
+
+        forbidden_snippets = (
+            "gemini_adapter",
+            "GeminiVideoAdapter",
+        )
+        for relative_path in VIDEO_GEN_REVIEW_RUNTIME_PATHS:
+            source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+            for snippet in forbidden_snippets:
                 if snippet in source:
                     violations.append(f"{relative_path}: {snippet}")
 

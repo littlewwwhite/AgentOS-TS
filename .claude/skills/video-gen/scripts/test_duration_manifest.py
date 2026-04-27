@@ -156,5 +156,5 @@ def test_generation_runs_aos_cli_review_without_provider_key(tmp_path, monkeypat
     )
 
     assert review_calls
-    assert review_calls[0]["api_key"] is None
+    assert "api_key" not in review_calls[0]
     assert clip["versions"][0]["review"] == {"total_score": 20}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # input: video file bytes + reviewer prompts (reference_consistency, prompt_compliance)
-# output: per-clip review JSON consumed by gemini_adapter / evaluator
+# output: per-clip review JSON consumed by video review adapter / evaluator
 # pos: aos-cli video.analyze review boundary for generated video clips
 """
 Simplified Video Analyzer
