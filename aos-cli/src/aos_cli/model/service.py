@@ -8,6 +8,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import time
 from urllib.parse import unquote, urlparse
 import urllib.request
@@ -315,13 +317,21 @@ class _FakeProvider:
         )()
 
     def submit_video(self, *, prompt, options):
+        task_id = _fake_video_task_id(
+            task=str(self.request.get("task") or "video.generate"),
+            prompt=prompt,
+            duration=options.get("duration"),
+        )
         return type(
             "VideoTask",
             (),
             {
-                "task_id": "fake-video-task",
+                "task_id": task_id,
                 "model": "fake-video-model",
-                "raw": {"requestedDurationSeconds": options.get("duration")},
+                "raw": {
+                    "requestedDurationSeconds": options.get("duration"),
+                    "prompt": prompt,
+                },
             },
         )()
 
@@ -337,8 +347,17 @@ class _FakeProvider:
             for char in str(task_id or "fake-video-task")
         )
         video_path = artifact_dir / f"{safe_task_id}.mp4"
-        video_path.write_bytes(f"fake video duration={duration}\n".encode("utf-8"))
+        if os.environ.get("AOS_CLI_MODEL_FAKE_VIDEO_VALID") == "1":
+            _render_fake_video(
+                video_path=video_path,
+                task_id=safe_task_id,
+                duration=duration,
+                label=options.get("fakeLabel"),
+            )
+        else:
+            video_path.write_bytes(f"fake video duration={duration}\n".encode("utf-8"))
         video_uri = video_path.resolve().as_uri()
+        last_frame_url = f"https://example.test/aos-cli-fake/{safe_task_id}/last-frame.png"
         return type(
             "VideoResult",
             (),
@@ -352,6 +371,8 @@ class _FakeProvider:
                         "remoteUrl": video_uri,
                         "mimeType": "video/mp4",
                         "durationSeconds": duration,
+                        "actualDurationSeconds": duration,
+                        "lastFrameUrl": last_frame_url,
                     }
                 ],
                 "model": "fake-video-model",
@@ -361,6 +382,74 @@ class _FakeProvider:
 
     def embed_content(self, *, content, options):
         return type("EmbeddingResult", (), {"values": [0.1, 0.2], "model": "fake-embedding-model", "usage": {}})()
+
+
+def _fake_video_task_id(*, task: str, prompt: str, duration) -> str:
+    source = json.dumps(
+        {"task": task, "prompt": prompt, "duration": duration},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return f"fake-video-task-{hashlib.sha256(source.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _render_fake_video(*, video_path: Path, task_id: str, duration, label: str | None = None) -> None:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise ModelServiceError(
+            ARTIFACT_ERROR,
+            "AOS_CLI_MODEL_FAKE_VIDEO_VALID=1 requires ffmpeg",
+            retryable=False,
+        )
+    try:
+        duration_seconds = max(float(duration or 6), 0.1)
+    except (TypeError, ValueError):
+        duration_seconds = 6.0
+
+    digest = hashlib.sha256(task_id.encode("utf-8")).hexdigest()
+    palette = ("0x1f6feb", "0x238636", "0xd29922", "0xda3633", "0x8957e5")
+    color = palette[int(digest[:2], 16) % len(palette)]
+    title = _trim_fake_video_label(label or task_id, duration_seconds)
+    command = [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=c={color}:s=640x360:r=24:d={duration_seconds:g}",
+        "-t",
+        f"{duration_seconds:g}",
+        "-an",
+        "-metadata",
+        f"title={title}",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        str(video_path),
+    ]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        raise ModelServiceError(
+            ARTIFACT_ERROR,
+            exc.stderr.strip() or "failed to render fake video artifact",
+            retryable=False,
+        ) from exc
+
+
+def _trim_fake_video_label(label: str, duration_seconds: float) -> str:
+    normalized = " ".join(str(label).split())
+    if len(normalized) > 64:
+        normalized = normalized[:61].rstrip() + "..."
+    return f"{normalized} | {duration_seconds:g}s"
 
 
 def _fake_json_payload(request: dict) -> dict:
@@ -460,6 +549,8 @@ def _poll_request_from_task_receipt(payload: dict) -> dict:
     options = {}
     if raw_output.get("requestedDurationSeconds") is not None:
         options["duration"] = raw_output["requestedDurationSeconds"]
+    if raw_output.get("prompt") is not None:
+        options["fakeLabel"] = raw_output["prompt"]
     request = {
         "apiVersion": payload.get("apiVersion"),
         "task": payload.get("task", "unknown"),
