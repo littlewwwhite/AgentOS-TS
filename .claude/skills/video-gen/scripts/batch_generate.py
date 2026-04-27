@@ -1045,11 +1045,6 @@ def main():
         help=f"Aspect ratio (default: {_gen_cfg.get('default_ratio', '16:9')})"
     )
     parser.add_argument(
-        "--gemini-api-key",
-        default=None,
-        help="Deprecated compatibility option; review provider config is read by aos-cli model"
-    )
-    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume mode: skip clips that already have .mp4 output files"
@@ -1074,7 +1069,6 @@ def main():
         poll_interval=args.interval,
         dry_run=args.dry_run,
         shot_filter=args.shot,
-        gemini_api_key=args.gemini_api_key,
         resume=args.resume,
         skip_review=args.skip_review,
     )

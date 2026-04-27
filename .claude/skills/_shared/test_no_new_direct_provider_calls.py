@@ -45,6 +45,7 @@ MIGRATED_USER_FACING_PATHS = [
     ".claude/skills/music-matcher/scripts/run_music_pipeline.py",
     ".claude/skills/subtitle-maker/scripts/phase2_transcribe.py",
     ".claude/skills/video-gen/SKILL.md",
+    ".claude/skills/video-gen/scripts/batch_generate.py",
     ".claude/skills/video-gen/scripts/evaluator.py",
 ]
 
@@ -80,6 +81,7 @@ FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS = (
     "Gemini ASR",
     "Seedance image reference",
     "ep-20260303234827-tfnzm",
+    "--gemini-api-key",
 )
 
 DEFERRED_MARKER = "Model boundary note: " + "deferred multimodal"
