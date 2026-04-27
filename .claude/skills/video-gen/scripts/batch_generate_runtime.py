@@ -33,7 +33,6 @@ from request_compiler import compile_request
 from analyzer import analyze_video_parallel
 from video_api import (
     _cos_relative_url,
-    get_subject_reference_for_model,
     poll_multiple_tasks,
     submit_video,
     upload_to_cos,
@@ -209,14 +208,11 @@ def _run_generation_rounds(
         submit_result = submit_video(
             prompt=request.prompt,
             model_code=model_code,
-            subjects=request.subjects or None,
             reference_images=request.reference_images or None,
             duration=str(request.duration_seconds),
             quality=request.quality,
             ratio=request.ratio,
             first_frame_url=request.first_frame_url,
-            first_frame_text=None,
-            reference_videos=None,
         )
 
         if submit_result["success"]:
@@ -228,7 +224,6 @@ def _run_generation_rounds(
                     "task_id": task_id,
                     "output_path": str(video_path),
                     "version": version,
-                    "provider": submit_result.get("provider"),
                     "model_code": submit_result.get("model_code") or model_code,
                     "task_envelope": submit_result.get("task_envelope"),
                 }

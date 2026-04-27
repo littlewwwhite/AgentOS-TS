@@ -25,14 +25,10 @@ DEFAULT_CONFIG_PATH = SCRIPT_DIR / ".." / "assets" / "config.json"
 # 内置默认值（与 assets/config.json 保持一致，用于找不到文件时兜底）
 _BUILTIN_DEFAULTS: Dict[str, Any] = {
     "video_model": {
-        "provider": "volcengine_ark",
         "active_model": "seedance2",
         "models": {
             "seedance2": {
-                "provider": "volcengine_ark",
                 "model_code": "ep-20260303234827-tfnzm",
-                "model_group_code": "",
-                "subject_reference": False,
             },
         },
     },
@@ -64,9 +60,14 @@ _config_cache: Dict[str, Any] = {}
 
 
 def _apply_env_overrides(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply non-secret environment overrides after loading file config."""
+    """Strip provider routing/secret leftovers; aos-cli owns provider routing."""
     video_model_cfg = data.setdefault("video_model", {})
     video_model_cfg.pop("providers", None)
+    video_model_cfg.pop("provider", None)
+    for model_cfg in video_model_cfg.get("models", {}).values():
+        if isinstance(model_cfg, dict):
+            for legacy_key in ("provider", "model_group_code", "subject_reference"):
+                model_cfg.pop(legacy_key, None)
 
     clip_review_cfg = data.setdefault("clip_review", {})
     for provider_key in ("api_key", "api_key_env", "api_key_note", "base_url"):

@@ -1,13 +1,9 @@
 {
   "video_model": {
-    "provider": "volcengine_ark",
     "active_model": "seedance2",
     "models": {
       "seedance2": {
-        "provider": "volcengine_ark",
-        "model_code": "ep-20260303234827-tfnzm",
-        "model_group_code": "",
-        "subject_reference": false
+        "model_code": "ep-20260303234827-tfnzm"
       }
     }
   },

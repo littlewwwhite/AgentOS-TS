@@ -27,36 +27,10 @@ from aos_cli_envelope import poll_envelope, submit_envelope  # noqa: E402
 _vm_cfg = get_video_model_config()
 _gen_cfg = get_generation_config()
 
-ACTIVE_VIDEO_PROVIDER = _vm_cfg.get("provider", "volcengine_ark")
-VIDEO_MODEL_CONFIG = {
-    name: {
-        "provider": cfg.get("provider", ACTIVE_VIDEO_PROVIDER),
-        "model_code": cfg["model_code"],
-        "model_group_code": cfg.get("model_group_code", ""),
-        "subject_reference": cfg.get("subject_reference", False),
-    }
-    for name, cfg in _vm_cfg.get("models", {}).items()
-}
-ACTIVE_VIDEO_MODEL = _vm_cfg.get("active_model", "seedance2")
-DEFAULT_MODEL_CODE = VIDEO_MODEL_CONFIG[ACTIVE_VIDEO_MODEL]["model_code"]
-DEFAULT_MODEL_GROUP_CODE = VIDEO_MODEL_CONFIG[ACTIVE_VIDEO_MODEL]["model_group_code"]
-DEFAULT_SUBJECT_REFERENCE = VIDEO_MODEL_CONFIG[ACTIVE_VIDEO_MODEL]["subject_reference"]
-DEFAULT_PROVIDER = VIDEO_MODEL_CONFIG[ACTIVE_VIDEO_MODEL].get("provider", ACTIVE_VIDEO_PROVIDER)
-TERMINAL_STATUSES = {"SUCCESS", "FAIL", "FAILED"}
-
-
-def get_subject_reference_for_model(model_code: str) -> bool:
-    for cfg in VIDEO_MODEL_CONFIG.values():
-        if cfg["model_code"] == model_code:
-            return bool(cfg["subject_reference"])
-    return bool(DEFAULT_SUBJECT_REFERENCE)
-
-
-def get_provider_for_model(model_code: str = None) -> str:
-    for cfg in VIDEO_MODEL_CONFIG.values():
-        if cfg["model_code"] == model_code:
-            return cfg.get("provider", DEFAULT_PROVIDER)
-    return DEFAULT_PROVIDER
+_active_model = _vm_cfg.get("active_model", "seedance2")
+DEFAULT_MODEL_CODE = _vm_cfg.get("models", {}).get(_active_model, {}).get(
+    "model_code", "ep-20260303234827-tfnzm"
+)
 
 
 def _parse_duration_seconds(duration: Any) -> int:
@@ -148,32 +122,6 @@ def _cos_relative_url(full_url: str) -> str:
     return full_url
 
 
-def build_subject_prompt_params(
-    subjects: List[Dict], duration: str = "5", ratio: str = "16:9", quality: str = "720"
-) -> Dict:
-    raise RuntimeError("subject reference mode is not supported by the active provider")
-
-
-def build_image_reference_params(
-    reference_images: List[Dict],
-    duration: str = "5",
-    ratio: str = "16:9",
-    quality: str = "720",
-    first_frame_url: Optional[str] = None,
-    first_frame_text: Optional[str] = None,
-    reference_videos: List[Dict] = None,
-) -> Dict:
-    return {
-        "reference_images": reference_images or [],
-        "reference_videos": reference_videos or [],
-        "first_frame_url": first_frame_url,
-        "first_frame_text": first_frame_text,
-        "duration": duration,
-        "ratio": ratio,
-        "quality": quality,
-    }
-
-
 def download_video(url: str, output_path: str) -> str:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -186,19 +134,13 @@ def download_video(url: str, output_path: str) -> str:
 def submit_video(
     prompt: str,
     model_code: str = DEFAULT_MODEL_CODE,
-    subjects: List[Dict] = None,
     reference_images: List[Dict] = None,
     duration: str = "5",
     quality: str = "720",
     ratio: str = "16:9",
-    need_audio: bool = True,
     first_frame_url: Optional[str] = None,
-    first_frame_text: Optional[str] = None,
-    reference_videos: List[Dict] = None,
 ) -> Dict[str, Any]:
     try:
-        if subjects:
-            raise RuntimeError("subject references are not supported; use public image/video URLs")
         normalized_refs = _normalize_reference_images(reference_images)
         envelope = submit_video_generation(
             prompt=prompt,
@@ -215,7 +157,6 @@ def submit_video(
             "success": True,
             "task_id": output.get("taskId"),
             "message": "submitted",
-            "provider": envelope.get("provider") or get_provider_for_model(model_code),
             "model_code": envelope.get("model") or model_code,
             "task_envelope": envelope,
         }
@@ -227,22 +168,18 @@ def create_video(
     prompt: str,
     output_path: str,
     model_code: str = DEFAULT_MODEL_CODE,
-    subjects: List[Dict] = None,
     reference_images: List[Dict] = None,
     duration: str = "5",
     quality: str = "720",
     ratio: str = "16:9",
-    need_audio: bool = True,
 ) -> Dict:
     submit_result = submit_video(
         prompt=prompt,
         model_code=model_code,
-        subjects=subjects,
         reference_images=reference_images,
         duration=duration,
         quality=quality,
         ratio=ratio,
-        need_audio=need_audio,
     )
     if not submit_result["success"]:
         return submit_result
@@ -251,7 +188,6 @@ def create_video(
             "task_id": submit_result["task_id"],
             "task_envelope": submit_result.get("task_envelope"),
             "output_path": output_path,
-            "provider": submit_result["provider"],
             "model_code": model_code,
         }],
         interval=_gen_cfg.get("poll_interval", 10),
@@ -395,4 +331,4 @@ def poll_multiple_tasks(
 
 
 if __name__ == "__main__":
-    print(json.dumps({"default_model": DEFAULT_MODEL_CODE, "provider": DEFAULT_PROVIDER}, ensure_ascii=False))
+    print(json.dumps({"default_model": DEFAULT_MODEL_CODE}, ensure_ascii=False))

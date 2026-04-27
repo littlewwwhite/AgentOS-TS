@@ -52,7 +52,7 @@ command -v ffmpeg >/dev/null
 ### Auto Mode
 
 - Uses `assets/config.json` defaults, **no user confirmation needed**
-- Default: `seedance2`, subject_reference=false, 9:16, 720p
+- Default: `seedance2`, image-reference mode, 9:16, 720p
 - Run: `python3 ./.claude/skills/video-gen/scripts/generate_episode_json.py --episode N --parallel`
 - 前置条件：`output/storyboard/approved/ep{NNN}_storyboard.json` 已存在
 - Add `--no-generate-video` only when user explicitly says "only export runtime storyboard"

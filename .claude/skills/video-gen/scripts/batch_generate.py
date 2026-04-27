@@ -52,7 +52,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from batch_generate_runtime import _process_scene_clips, process_scenes_parallel
 from production_types import ClipIntent
-from video_api import DEFAULT_MODEL_CODE, get_subject_reference_for_model
+from video_api import DEFAULT_MODEL_CODE
 from path_manager import VideoReviewPaths, prepare_runtime_storyboard_export
 from config_loader import get_generation_config, get_clip_review_config
 from pipeline_state import ensure_state, update_episode, update_stage
@@ -364,41 +364,11 @@ def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
     return mapping
 
 
-def map_subject_ids_to_elements(
-    subject_ids: List[str],
-    assets_mapping: Dict[str, Dict],
-) -> List[Dict]:
-    """Map extracted subject IDs to element_id (subject_id) using asset mapping.
-
-    Args:
-        subject_ids: List of subject IDs extracted from {xxx} (e.g., ["act_001", "loc_003"])
-        assets_mapping: Dict from load_assets_subject_mapping()
-
-    Returns:
-        List of subject dicts: [{"element_id": "subject_id_value", "name": "act_001"}]
-        Only includes subjects that were successfully mapped.
-    """
-    mapped = []
-    for sid in subject_ids:
-        if sid in assets_mapping:
-            entry = assets_mapping[sid]
-            mapped.append({
-                "element_id": entry["subject_id"],
-                "name": sid,
-            })
-        else:
-            print(f"  [WARN] Subject ID '{sid}' not found in assets mapping, skipping",
-                  file=sys.stderr)
-    return mapped
-
-
 def map_subject_ids_to_images(
     subject_ids: List[str],
     assets_mapping: Dict[str, Dict],
 ) -> List[Dict]:
     """Map extracted subject IDs to reference image dicts using asset image URLs.
-
-    Used in image reference mode (DEFAULT_SUBJECT_REFERENCE=False).
 
     Args:
         subject_ids: List of subject IDs (e.g., ["act_001", "loc_003"])
@@ -658,8 +628,7 @@ def run_batch_generate(
         return []
 
     # 2. Build element mapping from output/ assets
-    use_subject_reference = get_subject_reference_for_model(model_code)
-    print(f"[INFO] 参考模式: {'主体参考' if use_subject_reference else '图片参考'} (model={model_code})")
+    print(f"[INFO] 参考模式: 图片参考 (model={model_code})")
     assets_dir = find_assets_dir(output_root)
     assets_mapping = {}
 
@@ -687,10 +656,7 @@ def run_batch_generate(
             scene_id = ls.get('scene_id', '?')
             pv = ls.get('prompt_version', 0)
             subject_ids = extract_subject_ids(ls['full_prompts'])
-            if use_subject_reference:
-                mapped = map_subject_ids_to_elements(subject_ids, assets_mapping)
-            else:
-                mapped = map_subject_ids_to_images(subject_ids, assets_mapping)
+            mapped = map_subject_ids_to_images(subject_ids, assets_mapping)
             print(f"  [{ls_id}] pv={pv} [DRY-RUN] Skipping")
             results.append({
                 "clip_id": ls_id,
@@ -711,26 +677,19 @@ def run_batch_generate(
             pv = ls.get('prompt_version', 0)
             subject_ids = extract_subject_ids(ls['full_prompts'])
 
-            subjects = None
-            reference_images = None
-            if use_subject_reference:
-                subjects = map_subject_ids_to_elements(subject_ids, assets_mapping)
-                if subjects:
-                    print(f"  [{ls_id}] {len(subjects)}/{len(subject_ids)} subjects mapped (主体参考)")
-            else:
-                reference_images = map_subject_ids_to_images(subject_ids, assets_mapping)
-                if reference_images:
-                    print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (图片参考)")
-                # JSON 中已有 lsi.url（上一 clip 最后镜头首帧），同时作为参考图加入
-                lsi_url = ls.get('lsi_url', '')
-                if lsi_url:
-                    reference_images = list(reference_images or [])
-                    reference_images.append({
-                        "url": lsi_url,
-                        "name": "lsi",
-                        "display_name": "上一镜头首帧",
-                    })
-                    print(f"  [{ls_id}] lsi 参考图已加入 (url={lsi_url[:50]})")
+            reference_images = map_subject_ids_to_images(subject_ids, assets_mapping)
+            if reference_images:
+                print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (图片参考)")
+            # JSON 中已有 lsi.url（上一 clip 最后镜头首帧），同时作为参考图加入
+            lsi_url = ls.get('lsi_url', '')
+            if lsi_url:
+                reference_images = list(reference_images or [])
+                reference_images.append({
+                    "url": lsi_url,
+                    "name": "lsi",
+                    "display_name": "上一镜头首帧",
+                })
+                print(f"  [{ls_id}] lsi 参考图已加入 (url={lsi_url[:50]})")
 
             prompt = convert_prompt_brackets(ls['full_prompts'])
             dur_api = parse_duration(ls.get('duration_seconds', '5'))
@@ -763,7 +722,7 @@ def run_batch_generate(
                 prompt_text=prompt,
                 duration_seconds=dur_api,
                 subject_ids=subject_ids,
-                subjects=list(subjects or []),
+                subjects=[],
                 reference_images=list(reference_images or []),
                 location_num=location_num,
                 clip_num=clip_num,
@@ -775,7 +734,7 @@ def run_batch_generate(
                 'ls_id': ls_id,
                 'scene_id': scene_id,
                 'prompt_version': 0,
-                'subjects': subjects,
+                'subjects': [],
                 'reference_images': reference_images,
                 'prompt': prompt,
                 'dur_api': dur_api,

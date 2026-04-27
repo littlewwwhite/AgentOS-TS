@@ -59,13 +59,16 @@ class ProviderSwitchTest(unittest.TestCase):
         self.assertNotIn("review_model", clip_review)
         self.assertNotIn("color_removal_model", clip_review)
 
-    def test_video_config_defaults_use_ark_only(self):
+    def test_video_config_defaults_only_carry_active_model_and_code(self):
         import config_loader
 
         defaults = config_loader._BUILTIN_DEFAULTS["video_model"]
-        self.assertEqual(defaults["provider"], "volcengine_ark")
-        self.assertEqual(defaults["models"]["seedance2"]["provider"], "volcengine_ark")
+        self.assertEqual(defaults["active_model"], "seedance2")
         self.assertEqual(defaults["models"]["seedance2"]["model_code"], "ep-20260303234827-tfnzm")
+        self.assertNotIn("provider", defaults)
+        self.assertNotIn("provider", defaults["models"]["seedance2"])
+        self.assertNotIn("model_group_code", defaults["models"]["seedance2"])
+        self.assertNotIn("subject_reference", defaults["models"]["seedance2"])
         self.assertNotIn("kling_omni", defaults["models"])
         self.assertNotIn("providers", defaults)
 
@@ -74,11 +77,14 @@ class ProviderSwitchTest(unittest.TestCase):
         config = json.loads(config_path.read_text(encoding="utf-8"))
 
         model = config["video_model"]["models"]["seedance2"]
-        self.assertEqual(model["provider"], "volcengine_ark")
         self.assertEqual(model["model_code"], "ep-20260303234827-tfnzm")
+        self.assertNotIn("provider", model)
+        self.assertNotIn("model_group_code", model)
+        self.assertNotIn("subject_reference", model)
+        self.assertNotIn("provider", config["video_model"])
         self.assertNotIn("providers", config["video_model"])
 
-    def test_loaded_video_config_does_not_project_provider_credentials(self):
+    def test_loaded_video_config_strips_legacy_provider_routing_fields(self):
         import config_loader
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -93,6 +99,8 @@ class ProviderSwitchTest(unittest.TestCase):
                                 "seedance2": {
                                     "provider": "volcengine_ark",
                                     "model_code": "ep-test",
+                                    "model_group_code": "legacy",
+                                    "subject_reference": True,
                                 }
                             },
                             "providers": {
@@ -109,7 +117,14 @@ class ProviderSwitchTest(unittest.TestCase):
             os.environ["STORYBOARD_CONFIG"] = str(config_path)
             config_loader._config_cache.clear()
 
-            self.assertNotIn("providers", config_loader.get_video_model_config())
+            video_cfg = config_loader.get_video_model_config()
+            self.assertNotIn("providers", video_cfg)
+            self.assertNotIn("provider", video_cfg)
+            seedance = video_cfg["models"]["seedance2"]
+            self.assertEqual(seedance["model_code"], "ep-test")
+            self.assertNotIn("provider", seedance)
+            self.assertNotIn("model_group_code", seedance)
+            self.assertNotIn("subject_reference", seedance)
 
     def test_poll_multiple_tasks_maps_aos_cli_artifacts_to_video_fields(self):
         import video_api
@@ -150,7 +165,6 @@ class ProviderSwitchTest(unittest.TestCase):
                     "task_id": "task-poll-1",
                     "task_envelope": envelope_seed,
                     "output_path": "/tmp/out.mp4",
-                    "provider": "volcengine_ark",
                     "model_code": "ep-20260303234827-tfnzm",
                 }],
                 interval=0,
