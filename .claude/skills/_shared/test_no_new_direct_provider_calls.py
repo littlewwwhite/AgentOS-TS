@@ -73,6 +73,8 @@ FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS = (
     "Gemini 场景分组失败",
     "Gemini 分析结果",
     "Gemini config not taking effect",
+    "Gemini review failure defaults to pass",
+    "Gemini API rate-limited",
     "Gemini video analysis",
     "Gemini ASR",
 )
