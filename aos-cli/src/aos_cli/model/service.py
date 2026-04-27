@@ -365,6 +365,26 @@ def _fake_json_payload(request: dict) -> dict:
                 }
             ]
         }
+    if request.get("capability") == "video.analyze" and str(request.get("task", "")).startswith("video-gen.review."):
+        return {
+            "reference_consistency": {
+                "actor_consistency": 8,
+                "location_consistency": 8,
+                "props_consistency": 8,
+                "actor_issues": [],
+                "location_issues": [],
+                "props_issues": [],
+                "overall_consistency_note": "fake video-gen consistency review",
+            },
+            "prompt_compliance": {
+                "content_compliance_score": 8,
+                "matched_elements": ["fake prompt element"],
+                "missing_elements": [],
+                "incorrect_elements": [],
+                "deviation_description": "",
+                "overall_compliance_note": "fake video-gen prompt compliance review",
+            },
+        }
     return {"ok": True, "task": request["task"]}
 
 

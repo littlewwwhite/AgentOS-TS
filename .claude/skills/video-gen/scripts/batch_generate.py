@@ -988,7 +988,7 @@ def main():
     parser.add_argument(
         "--gemini-api-key",
         default=None,
-        help="Gemini API key"
+        help="Deprecated compatibility option; review provider config is read by aos-cli model"
     )
     parser.add_argument(
         "--resume",
@@ -998,7 +998,7 @@ def main():
     parser.add_argument(
         "--skip-review",
         action="store_true",
-        help="Skip Gemini video review, mark all generated clips as passed"
+        help="Skip aos-cli video review, mark all generated clips as passed"
     )
 
     args = parser.parse_args()

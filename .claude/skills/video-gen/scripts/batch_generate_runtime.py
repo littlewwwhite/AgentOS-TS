@@ -95,8 +95,8 @@ def _review_single_clip(
     output_dir: str,
     api_key: Optional[str] = None,
 ) -> Tuple[bool, Dict, Dict]:
-    """Review a single generated clip with Gemini and flatten the result."""
-    print(f"  [REVIEW] Gemini 评审: {segment_id}")
+    """Review a single generated clip through aos-cli video.analyze and flatten the result."""
+    print(f"  [REVIEW] aos-cli video.analyze 评审: {segment_id}")
 
     try:
         analysis_result, _ = get_video_analysis(
@@ -335,7 +335,7 @@ def _run_generation_rounds(
     review_requested = bool(gemini_api_key)
     if skip_review and review_items:
         print(
-            f"    [REVIEW] --skip-review: skipping Gemini review, "
+            f"    [REVIEW] --skip-review: skipping aos-cli video review, "
             f"marking {len(review_items)} clips as passed"
         )
         for item in review_items:
@@ -351,7 +351,7 @@ def _run_generation_rounds(
                 {"skipped": True, "reason": "skip-review"},
             )
     elif review_requested and review_items:
-        print(f"    [REVIEW] 显式启用 Gemini 评审，处理 {len(review_items)} 个视频...")
+        print(f"    [REVIEW] 显式启用 aos-cli video.analyze 评审，处理 {len(review_items)} 个视频...")
 
         def do_review(item):
             clip = item["clip"]

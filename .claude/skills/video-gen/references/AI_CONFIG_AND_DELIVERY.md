@@ -25,29 +25,29 @@ VIDEO 阶段不再从 `script.json` 生成 prompt。提示词创作属于 STORYB
 - **仓库级交互运行时**：`apps/console/` 使用 `@anthropic-ai/claude-agent-sdk`
 - **离线分镜草稿 helper**：属于 `storyboard` skill（`.claude/skills/storyboard/scripts/storyboard_batch.py`），不属于 VIDEO 阶段
 
-也就是说：项目整体并不是“去 Claude 化”；Claude Agent SDK 仍是交互层核心，VIDEO 只保留视频生成与视频评审供应商配置。
+也就是说：项目整体并不是“去 Claude 化”；Claude Agent SDK 仍是交互层核心，VIDEO 只保留视频生成、视频评审与连续性帧描述的业务编排。
 
 > Note: 当前这个 CLI adapter 不支持图片输入，所以 scene layout analysis 会在读不到图片时退回 generic layout。
 
-### Video Review (Gemini API)
+### Video Review Boundary (aos-cli model)
 
-Video review uses Gemini models through the ChatFire Gemini proxy, configured from the `gemini` section of `assets/config.json`:
+Generated-clip review uses `aos-cli model` with `capability=video.analyze`.
+`video-gen/scripts/analyzer.py` preserves the existing review JSON contract
+(`reference_consistency` + `prompt_compliance`) while moving provider
+selection, authentication, and multimodal upload handling behind aos-cli.
 
 ```json
 {
-  "gemini": {
-    "base_url": "https://api.chatfire.cn/gemini",
-    "api_key": "",
-    "review_model": "gemini-3.1-pro-preview"
-  }
+  "apiVersion": "aos-cli.model/v1",
+  "task": "video-gen.review.ep001_scn001_clip001",
+  "capability": "video.analyze",
+  "output": { "kind": "json" }
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `base_url` | ChatFire Gemini proxy address |
-| `api_key` | API key (set GEMINI_API_KEY to the ChatFire key value) |
-| `review_model` | Video review model |
+The `gemini` section in `assets/config.json` remains only for the deferred
+`frame_extractor.describe_frame_with_gemini` continuity-helper path until that
+path is also migrated.
 
 ## Delivery JSON Format
 

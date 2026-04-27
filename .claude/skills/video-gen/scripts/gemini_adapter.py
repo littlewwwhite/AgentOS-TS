@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Gemini Video Adapter (内置版)
-直接调用本 skill 内置的 analyzer.py，无需外部 gemini-video-review skill
+Legacy-named video review adapter.
+
+The public module name is kept for compatibility; the implementation now calls
+analyzer.py, which routes generated-clip review through aos-cli video.analyze.
 """
 
 import os
@@ -23,7 +25,7 @@ from analyzer import analyze_video_parallel
 
 class GeminiVideoAdapter:
     """
-    Gemini Video 内置适配器
+    Legacy-named generated-video review adapter.
 
     功能：
     1. 检查是否已有分析结果JSON
@@ -57,7 +59,7 @@ class GeminiVideoAdapter:
             actor_references: 角色参考图片路径列表
             output_dir: 输出目录
             force_reanalyze: 是否强制重新分析
-            api_key: Gemini API Key（可选，默认从环境变量读取）
+            api_key: Deprecated compatibility parameter. aos-cli reads provider config.
 
         Returns:
             Tuple[Dict, str]: (分析结果字典, JSON文件路径)
@@ -106,7 +108,7 @@ def get_video_analysis(
         output_dir: 输出目录
         force_reanalyze: 是否强制重新分析
         gemini_skill_path: 已弃用，保留参数兼容性
-        api_key: Gemini API Key
+        api_key: Deprecated compatibility parameter.
 
     Returns:
         Tuple[Dict, str]: (分析结果, JSON文件路径)
@@ -130,7 +132,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Gemini Video 内置适配器"
+        description="Legacy video review adapter"
     )
     parser.add_argument("video_path", help="视频文件路径")
     parser.add_argument("segment_id", help="片段编号 (SC##-L##)")

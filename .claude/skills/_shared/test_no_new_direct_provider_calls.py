@@ -28,6 +28,7 @@ MIGRATED_SCRIPT_PATHS = [
     ".claude/skills/subtitle-maker/scripts/common_audio_transcribe.py",
     ".claude/skills/subtitle-maker/scripts/phase0_check.py",
     ".claude/skills/subtitle-maker/scripts/phase2_transcribe.py",
+    ".claude/skills/video-gen/scripts/analyzer.py",
     ".claude/skills/video-gen/scripts/video_api.py",
 ]
 
@@ -45,7 +46,6 @@ FORBIDDEN_TEXT_SNIPPETS = (
 )
 
 DEFERRED_MULTIMODAL_PATHS = [
-    ".claude/skills/video-gen/scripts/analyzer.py",
     ".claude/skills/video-gen/scripts/frame_extractor.py",
     ".claude/skills/video-gen/scripts/config_loader.py",
     ".claude/skills/video-gen/assets/config.json",

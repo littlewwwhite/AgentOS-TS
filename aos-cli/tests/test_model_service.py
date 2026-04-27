@@ -294,6 +294,28 @@ def test_build_default_model_service_fakes_music_matcher_video_segments(monkeypa
     }
 
 
+def test_build_default_model_service_fakes_video_gen_review(monkeypatch):
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
+
+    response = build_default_model_service().run(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video-gen.review.ep001_scn001_shot001",
+            "capability": "video.analyze",
+            "output": {"kind": "json"},
+            "input": {"content": {"prompt": "review generated clip", "videos": ["file:///tmp/clip.mp4"]}},
+            "options": {"expectedDuration": 6.0},
+        }
+    )
+
+    assert response["ok"] is True
+    assert response["provider"] == "gemini"
+    assert response["output"]["kind"] == "json"
+    data = response["output"]["data"]
+    assert data["reference_consistency"]["actor_consistency"] == 8
+    assert data["prompt_compliance"]["content_compliance_score"] == 8
+
+
 def test_build_default_model_service_fakes_audio_transcribe_segments(monkeypatch):
     monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
 
