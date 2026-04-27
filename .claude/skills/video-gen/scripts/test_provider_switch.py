@@ -24,7 +24,7 @@ class ProviderSwitchTest(unittest.TestCase):
         except Exception:
             pass
 
-    def test_config_loader_uses_gemini_env_key_with_chatfire_base_url(self):
+    def test_config_loader_does_not_project_provider_secrets_into_review_config(self):
         import config_loader
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -43,20 +43,19 @@ class ProviderSwitchTest(unittest.TestCase):
             os.environ["GEMINI_BASE_URL"] = "https://api.chatfire.cn/gemini"
             config_loader._config_cache.clear()
 
-            self.assertEqual(config_loader.get_gemini_config()["api_key"], "env-chatfire-key")
-            self.assertEqual(config_loader.get_gemini_config()["api_key_env"], "GEMINI_API_KEY")
-            self.assertEqual(
-                config_loader.get_gemini_config()["base_url"],
-                "https://api.chatfire.cn/gemini",
-            )
+            self.assertNotIn("api_key", config_loader.get_gemini_config())
+            self.assertNotIn("api_key_env", config_loader.get_gemini_config())
+            self.assertNotIn("base_url", config_loader.get_gemini_config())
             self.assertNotIn("sk-", json.dumps(config_loader._BUILTIN_DEFAULTS))
 
-    def test_video_config_defaults_use_chatfire_gemini_proxy(self):
+    def test_video_config_defaults_keep_only_review_policy_fields(self):
         import config_loader
 
         gemini = config_loader._BUILTIN_DEFAULTS["gemini"]
-        self.assertEqual(gemini["base_url"], "https://api.chatfire.cn/gemini")
-        self.assertEqual(gemini["api_key_env"], "GEMINI_API_KEY")
+        self.assertNotIn("base_url", gemini)
+        self.assertNotIn("api_key", gemini)
+        self.assertNotIn("api_key_env", gemini)
+        self.assertEqual(gemini["review_model"], "gemini-3.1-pro-preview")
 
     def test_video_config_defaults_use_ark_only(self):
         import config_loader

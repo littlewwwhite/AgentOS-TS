@@ -189,18 +189,10 @@ Recommended migration order:
 3. Video submit/poll in `video-gen`.
 4. Remaining multimodal video review paths only after confirming the current `aos-cli` protocol covers the required input/output shape.
 
-Asset image review and `video-gen/scripts/frame_extractor.py` frame description are migrated through `vision.review`. `video-editing/scripts/phase1_analyze.py`, `video-editing/scripts/phase2_assemble.py`, `music-matcher/scripts/analyze_video.py`, and `video-gen/scripts/analyzer.py` are migrated through `video.analyze`. `music-matcher/scripts/batch_analyze.py` reuses the same boundary. `subtitle-maker/scripts/phase2_transcribe.py` is migrated through `audio.transcribe`. Remaining deferred multimodal paths stay deferred only until their skill scripts are migrated to the corresponding first-class capabilities. Do not force these through generic `generate` if doing so would hide domain-specific input/output semantics.
+Asset image review and `video-gen/scripts/frame_extractor.py` frame description are migrated through `vision.review`. `video-editing/scripts/phase1_analyze.py`, `video-editing/scripts/phase2_assemble.py`, `music-matcher/scripts/analyze_video.py`, and `video-gen/scripts/analyzer.py` are migrated through `video.analyze`. `music-matcher/scripts/batch_analyze.py` reuses the same boundary. `subtitle-maker/scripts/phase2_transcribe.py` is migrated through `audio.transcribe`. Do not force future multimodal work through generic `generate` if doing so would hide domain-specific input/output semantics.
 
 ## Deferred Paths Registry
 
-The following skill scripts are formally classified as deferred multimodal paths. Each carries the canonical marker `Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md` in its module docstring (or top-of-file comment), and is enforced by `_shared/test_no_new_direct_provider_calls.py::test_deferred_paths_carry_boundary_note`.
+There are no remaining deferred multimodal skill paths. The former video-gen config deferral was retired after generated-video review and frame description both moved behind `aos-cli model` capabilities and the skill stopped projecting provider secrets into its own config.
 
-| # | Path | Reason for deferral |
-|---|------|---------------------|
-| 1 | `video-gen/scripts/config_loader.py` | Legacy config compatibility still exposes provider-named review settings pending config cleanup |
-
-One non-script artifact also carries the canonical marker via a `_boundary_note` JSON field:
-
-- `video-gen/assets/config.json`
-
-Adding a new entry here is the *only* sanctioned way to introduce a direct provider SDK call inside a skill. Any other new direct call will be caught by the import/contract guardrails.
+Adding a new direct provider SDK call inside a skill is not sanctioned. Add or extend an explicit `aos-cli model` capability instead.

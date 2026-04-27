@@ -346,7 +346,7 @@ def _run_generation_rounds(
                     file=sys.stderr,
                 )
 
-    review_requested = bool(gemini_api_key)
+    review_requested = not skip_review
     if skip_review and review_items:
         print(
             f"    [REVIEW] --skip-review: skipping aos-cli video review, "
@@ -369,7 +369,7 @@ def _run_generation_rounds(
                 item.get("model_code"),
             )
     elif review_requested and review_items:
-        print(f"    [REVIEW] 显式启用 aos-cli video.analyze 评审，处理 {len(review_items)} 个视频...")
+        print(f"    [REVIEW] 启用 aos-cli video.analyze 评审，处理 {len(review_items)} 个视频...")
 
         def do_review(item):
             clip = item["clip"]
@@ -424,7 +424,7 @@ def _run_generation_rounds(
                 )
     elif review_items:
         print(
-            "    [REVIEW] 默认路径不启用 Gemini 评审，生成成功即通过"
+            "    [REVIEW] 未启用 aos-cli video review，生成成功即通过"
         )
         for item in review_items:
             _save_clip_result(

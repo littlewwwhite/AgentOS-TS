@@ -2,17 +2,16 @@
 # -*- coding: utf-8 -*-
 # input: assets/config.json and local environment variables
 # output: normalized skill runtime configuration dictionaries
-# pos: central config boundary; provider-named legacy fields remain for compatibility
+# pos: central config boundary for video-gen runtime settings
 """
 config_loader.py — video-gen 统一配置加载器
 
 从 assets/config.json 加载配置，支持环境变量 STORYBOARD_CONFIG 覆盖路径。
 找不到文件时返回内置默认值（向后兼容）。
 
-Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md
-The provider-named `gemini` config section is legacy compatibility for review
-thresholds and model selection. Migrated text/JSON/image/video/frame-review
-paths route through aos-cli model and must not read provider secrets directly.
+The legacy-named `gemini` config section is compatibility for review thresholds
+and model selection only. Migrated review and frame-description paths route
+through aos-cli model and must not read provider secrets directly.
 Do not introduce new consumers of `get_gemini_config`.
 """
 
@@ -24,8 +23,6 @@ from typing import Any, Dict
 
 SCRIPT_DIR = Path(__file__).parent
 DEFAULT_CONFIG_PATH = SCRIPT_DIR / ".." / "assets" / "config.json"
-DEFAULT_GEMINI_PROXY_BASE_URL = "https://api.chatfire.cn/gemini"
-
 # 内置默认值（与 assets/config.json 保持一致，用于找不到文件时兜底）
 _BUILTIN_DEFAULTS: Dict[str, Any] = {
     "video_model": {
@@ -57,9 +54,6 @@ _BUILTIN_DEFAULTS: Dict[str, Any] = {
         "max_consecutive_errors": 10,
     },
     "gemini": {
-        "base_url": DEFAULT_GEMINI_PROXY_BASE_URL,
-        "api_key": "",
-        "api_key_env": "GEMINI_API_KEY",
         "model": "gemini-3.1-pro-preview",
         "review_model": "gemini-3.1-pro-preview",
         "color_removal_model": "gemini-3.1-pro-preview",
@@ -79,16 +73,10 @@ _config_cache: Dict[str, Any] = {}
 
 
 def _apply_env_overrides(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply secret-bearing environment overrides after loading file config."""
+    """Apply non-secret environment overrides after loading file config."""
     gemini_cfg = data.setdefault("gemini", {})
-    gemini_api_key = os.environ.get("GEMINI_API_KEY")
-    if gemini_api_key:
-        gemini_cfg["api_key"] = gemini_api_key
-        gemini_cfg["api_key_env"] = "GEMINI_API_KEY"
-
-    base_url = os.environ.get("GEMINI_BASE_URL")
-    if base_url:
-        gemini_cfg["base_url"] = base_url
+    for provider_key in ("api_key", "api_key_env", "api_key_note", "base_url"):
+        gemini_cfg.pop(provider_key, None)
     return data
 
 

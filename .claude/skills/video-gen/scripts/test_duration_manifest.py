@@ -86,3 +86,75 @@ def test_generation_result_records_requested_and_actual_duration(tmp_path, monke
     assert version["actual_duration_seconds"] == 9.0
     assert version["provider_task_id"] == "task-duration-1"
     assert version["output_path"] == str(tmp_path / "clip.mp4")
+
+
+def test_generation_runs_aos_cli_review_without_provider_key(tmp_path, monkeypatch):
+    import batch_generate_runtime as runtime
+
+    review_calls = []
+
+    def fake_submit_video(**kwargs):
+        return {
+            "success": True,
+            "task_id": "task-review-1",
+            "provider": "ark",
+            "model_code": "fake-model",
+            "task_envelope": {"output": {"taskId": "task-review-1"}},
+        }
+
+    def fake_poll_multiple_tasks(tasks, interval, timeout):
+        return [
+            {
+                "success": True,
+                "task_id": tasks[0]["task_id"],
+                "output_path": tasks[0]["output_path"],
+                "video_path": str(tmp_path / "clip.mp4"),
+                "video_url": "https://example.test/clip.mp4",
+                "last_frame_url": "https://example.test/last.png",
+                "actual_duration_seconds": 7.0,
+            }
+        ]
+
+    def fake_review_single_clip(**kwargs):
+        review_calls.append(kwargs)
+        return True, {"segment_id": kwargs["segment_id"]}, {"total_score": 20}
+
+    monkeypatch.setattr(runtime, "submit_video", fake_submit_video)
+    monkeypatch.setattr(runtime, "poll_multiple_tasks", fake_poll_multiple_tasks)
+    monkeypatch.setattr(runtime, "precheck_and_fix", lambda prompt, clip_id: (True, prompt, []))
+    monkeypatch.setattr(runtime, "_review_single_clip", fake_review_single_clip)
+
+    clip = {
+        "ls": {"full_prompts": "orbit reveal"},
+        "ls_id": "scn001_clip001",
+        "scene_id": "scn_001",
+        "prompt_version": 0,
+        "subjects": [],
+        "reference_images": [],
+        "prompt": "orbit reveal",
+        "dur_api": 7,
+        "location_num": 1,
+        "clip_num": 1,
+        "attempts": 0,
+        "passed": False,
+        "done": False,
+        "versions": [],
+        "best_version": None,
+    }
+
+    runtime._run_generation_rounds(
+        clip_group=[clip],
+        episode=1,
+        paths=FakePaths(tmp_path),
+        model_code="fake-model",
+        quality="720",
+        ratio="16:9",
+        poll_interval=0,
+        timeout=1,
+        gemini_api_key=None,
+        skip_review=False,
+    )
+
+    assert review_calls
+    assert review_calls[0]["api_key"] is None
+    assert clip["versions"][0]["review"] == {"total_score": 20}

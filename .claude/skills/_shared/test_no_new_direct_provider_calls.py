@@ -47,12 +47,7 @@ FORBIDDEN_TEXT_SNIPPETS = (
     "GEMINI_API_KEY",
 )
 
-DEFERRED_MULTIMODAL_PATHS = [
-    ".claude/skills/video-gen/scripts/config_loader.py",
-    ".claude/skills/video-gen/assets/config.json",
-]
-
-DEFERRED_MARKER = "Model boundary note: deferred multimodal"
+DEFERRED_MARKER = "Model boundary note: " + "deferred multimodal"
 
 
 def _matches_prefix(name: str, prefixes: tuple[str, ...]) -> bool:
@@ -87,16 +82,17 @@ class DirectProviderGuardrailTests(unittest.TestCase):
 
         self.assertEqual(violations, [])
 
-    def test_deferred_paths_carry_boundary_note(self) -> None:
+    def test_no_deferred_multimodal_paths_remain_in_skills(self) -> None:
         violations: list[str] = []
-        for relative_path in DEFERRED_MULTIMODAL_PATHS:
-            path = REPO_ROOT / relative_path
-            if not path.exists():
-                violations.append(f"{relative_path}: missing")
+        for path in (REPO_ROOT / ".claude" / "skills").rglob("*"):
+            if not path.is_file():
+                continue
+            if any(part == "__pycache__" for part in path.parts):
                 continue
             text = path.read_text(encoding="utf-8")
             if DEFERRED_MARKER not in text:
-                violations.append(f"{relative_path}: missing '{DEFERRED_MARKER}'")
+                continue
+            violations.append(str(path.relative_to(REPO_ROOT)))
         self.assertEqual(violations, [])
 
 

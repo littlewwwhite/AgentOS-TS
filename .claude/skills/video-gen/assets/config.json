@@ -28,11 +28,6 @@
     "max_consecutive_errors": 10
   },
   "gemini": {
-    "_boundary_note": "Model boundary note: deferred multimodal — see .claude/skills/_shared/AOS_CLI_MODEL.md. This provider-named section is legacy compatibility for review thresholds and model selection; migrated frame description routes through aos-cli vision.review.",
-    "base_url": "https://api.chatfire.cn/gemini",
-    "api_key": "",
-    "api_key_env": "GEMINI_API_KEY",
-    "api_key_note": "Set GEMINI_API_KEY to the ChatFire key value (used by deferred multimodal review only)",
     "model": "gemini-3.1-pro-preview",
     "review_model": "gemini-3.1-pro-preview",
     "color_removal_model": "gemini-3.1-pro-preview",
