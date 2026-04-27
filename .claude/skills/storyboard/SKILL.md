@@ -1,7 +1,7 @@
 ---
 name: storyboard
 description: This skill should be used when the user asks to "write a storyboard", "create shot list", "generate video script", "write scene breakdown", mentions "分镜", "故事板", "视频脚本", "镜头脚本", "分镜脚本", "多镜头", "视频对白", "写对白", "视频分镜", or discusses video storyboard creation, multi-shot narrative, or film-style video script writing with dialogue.
-version: 1.3.0
+version: 1.4.0
 ---
 
 # 视频分镜与对白生成助手
@@ -40,8 +40,8 @@ version: 1.3.0
 
 每个 PART 开头必须先输出一段"总体描述/全局约束汇总"，包含：
 
-1. 人物与关系（必须包含材质细节描述，如：粗糙兽皮劲装、丝绸长袍等）
-2. 场景与时间
+1. 人物与关系：用 `@act_xxx` token 列出本 PART 出场的所有角色及其关系（如"@act_001 是 @act_002 的女儿"）。**禁止内联角色的外观/服饰/材质/年龄/发型等静态属性** —— 这些由 `output/actors/actors.json` 注册的 subject 参考图承载，不在 prompt 文本里复述。
+2. 场景与时间：用 `@loc_xxx` 引用场景，时间用"白日/黄昏/夜晚"等画面级描述。
 3. 整体情绪基调
 4. 音频策略（写实对白+环境音/拟音、无BGM）
 5. 一致性约束（服饰发型不变、站位视线连续、道具不瞬移、画面无文字等）
@@ -89,10 +89,10 @@ version: 1.3.0
 ```
 S1 | 00:00-00:03 | 景别/机位
 - 运镜：起始参考物 → 终点参考物
-- 动作：动作点描述
-- 角色状态：位置 + 情绪 + 可见线索
+- 动作：@act_xxx 动作点描述（多角色用分号分隔）
+- 角色状态：@act_001 站位，情绪，可见线索；@act_002 站位，情绪，可见线索
 - 音效：环境音/拟音
-- 对白：无 或【角色｜情绪｜语气｜语速｜音色】"台词"
+- 对白：无 或【@act_xxx｜情绪｜语气｜语速｜音色】"台词"
 
 S2 | 00:03-00:06 | 景别/机位
 - 运镜：……
@@ -176,9 +176,20 @@ python3 ./.claude/skills/storyboard/scripts/storyboard_batch.py "${PROJECT_DIR}"
 - 执行前可运行 `uv run --project aos-cli aos-cli model preflight --json` 检查模型边界运行时配置
 - 模型可通过 `STORYBOARD_TEXT_MODEL` 或通用 `GEMINI_TEXT_MODEL` 指定，最终作为 `modelPolicy.model` 传入 `aos-cli model`
 
-### 出镜角色与情绪/状态
+### 出镜角色与情绪/状态（角色引用规范）
 
-"出镜角色与可见情绪/状态"必须逐个角色写清：**位置（左/右/前景/后景）+ 情绪/紧张度 + 可见线索**。
+**统一引用规范：**
+- 任何角色出现都必须写成 `@act_xxx` token（act_id 取自 `output/script.json` / `actors.json`），禁止用中文名直写
+- 场景写成 `@loc_xxx`，关键道具写成 `@prop_xxx`
+- token 的外观/服饰/年龄/材质等静态属性由对应 subject 参考图承载，**严禁在 prompt 文本里复述**
+
+**"角色状态"字段写法：**
+用**一行统一描述**列出本镜出场角色的动态信息，多个角色用分号 `；` 分隔：
+```
+@act_001 站位（左/右/前景/后景），情绪/紧张度，可见线索；@act_002 站位，情绪，可见线索
+```
+- 禁止给每个角色单独加括号尾注（如 `苏父（左侧偏后, 五十岁农夫, 粗布短衫…）` 这种格式严禁出现）
+- 禁止重复罗列外观/服饰
 
 若镜头为手部特写/背影/遮挡导致看不见脸：禁止描述"表情细节"（如眉眼嘴角），改写为可见状态线索，例如：
 - 手部：握紧/颤抖/指节发白/掌心出汗擦裤缝
@@ -211,13 +222,15 @@ python3 ./.claude/skills/storyboard/scripts/storyboard_batch.py "${PROJECT_DIR}"
 
 **普通对白：**
 ```
-【角色｜情绪｜语气｜语速(慢/中/快)｜音色(清冷/沙哑等)】"台词"
+【@act_xxx｜情绪｜语气｜语速(慢/中/快)｜音色(清冷/沙哑等)】"台词"
 ```
 
 **OS格式：**
 ```
-【角色｜OS｜情绪｜语气｜语速(慢/中/快)｜音色】"用户提供的OS原句/要点"
+【@act_xxx｜OS｜情绪｜语气｜语速(慢/中/快)｜音色】"用户提供的OS原句/要点"
 ```
+
+`@act_xxx` 必须使用 `actors.json` 中已注册的 actor_id；禁止用中文角色名直写。
 
 禁止单独的"旁白段落"；对白只能写在对应分镜内。
 
@@ -241,10 +254,10 @@ PART1
 
 S1 | 00:00-00:03 | 景别/机位
 - 运镜：起始参考物 → 终点参考物
-- 动作：动作点描述
-- 角色状态：位置 + 情绪 + 可见线索
+- 动作：@act_xxx 动作点描述
+- 角色状态：@act_001 站位，情绪，可见线索；@act_002 站位，情绪，可见线索
 - 音效：环境音/拟音
-- 对白：无 或【角色｜情绪｜语气｜语速｜音色】"台词"
+- 对白：无 或【@act_xxx｜情绪｜语气｜语速｜音色】"台词"
 
 S2 | 00:03-00:06 | 景别/机位
 - 运镜：……
@@ -254,7 +267,7 @@ S2 | 00:03-00:06 | 景别/机位
 - 对白：……
 ```
 
-整段 prompt 必须是纯 markdown，禁止再嵌入 fenced JSON 代码块或 `"shot_id"` / `"beats"` 等键值对结构。
+整段 prompt 必须是纯 markdown，禁止再嵌入 fenced JSON 代码块或 `"shot_id"` / `"beats"` 等键值对结构。所有角色/场景/道具引用必须用 `@act_xxx` / `@loc_xxx` / `@prop_xxx` token，禁止内联外观/服饰/材质等静态属性。
 
 ---
 
