@@ -1,6 +1,6 @@
 # Skills aos-cli Model Migration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Route AgentOS skill model calls through the stable `aos-cli model` boundary where the current protocol is sufficient, while explicitly deferring provider-specific multimodal paths that need protocol expansion.
 
@@ -95,7 +95,7 @@ Unsafe parallel work:
 **Files:**
 - Create: `.claude/skills/_shared/test_no_new_direct_provider_calls.py`
 
-- [ ] **Step 1: Write the initial guardrail test for storyboard only**
+- [x] **Step 1: Write the initial guardrail test for storyboard only**
 
 Create `.claude/skills/_shared/test_no_new_direct_provider_calls.py`:
 
@@ -168,7 +168,7 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run the guardrail test and verify it fails**
+- [x] **Step 2: Run the guardrail test and verify it fails**
 
 Run:
 
@@ -178,7 +178,7 @@ uv run python -m unittest discover -s .claude/skills/_shared -p 'test_no_new_dir
 
 Expected: FAIL because `storyboard_batch.py` still contains direct Gemini/ChatFire provider references.
 
-- [ ] **Step 3: Do not commit the failing guardrail yet**
+- [x] **Step 3: Do not commit the failing guardrail yet**
 
 Keep the file uncommitted until Task 2 removes storyboard violations and the test passes.
 
@@ -192,7 +192,7 @@ Keep the file uncommitted until Task 2 removes storyboard violations and the tes
 - Modify: `.claude/skills/storyboard/SKILL.md`
 - Modify: `.claude/skills/_shared/test_no_new_direct_provider_calls.py`
 
-- [ ] **Step 1: Add aos-cli response fixture test for storyboard generation**
+- [x] **Step 1: Add aos-cli response fixture test for storyboard generation**
 
 In `.claude/skills/storyboard/scripts/test_storyboard_batch.py`, add:
 
@@ -250,7 +250,7 @@ def test_storyboard_generator_uses_aos_cli_json_boundary(tmp_path, monkeypatch):
     assert result["scenes"][0]["shots"][0]["prompt"] == "Moonlit courtyard wide shot"
 ```
 
-- [ ] **Step 2: Run the new storyboard test and verify it fails**
+- [x] **Step 2: Run the new storyboard test and verify it fails**
 
 Run:
 
@@ -260,7 +260,7 @@ uv run pytest .claude/skills/storyboard/scripts/test_storyboard_batch.py::test_s
 
 Expected: FAIL because `StoryboardModelClient` does not exist and direct provider clients are still used.
 
-- [ ] **Step 3: Implement minimal storyboard boundary client**
+- [x] **Step 3: Implement minimal storyboard boundary client**
 
 In `.claude/skills/storyboard/scripts/storyboard_batch.py`, replace `GeminiStoryboardClient`, `ChatFireStoryboardClient`, and `load_storyboard_client()` provider selection with this boundary client:
 
@@ -321,7 +321,7 @@ def load_storyboard_client(project_dir: Path):
 
 Then update the existing call site that creates the client so it passes the current project directory into `load_storyboard_client(project_dir)`.
 
-- [ ] **Step 4: Preserve scene prompt normalization**
+- [x] **Step 4: Preserve scene prompt normalization**
 
 In `generate_scene_prompt()`, remove `parse_json_loose(text)` around provider text. The client now returns parsed JSON data:
 
@@ -339,7 +339,7 @@ raw = client.generate(
 return normalize_scene_shots(raw, scene)
 ```
 
-- [ ] **Step 5: Update storyboard docs**
+- [x] **Step 5: Update storyboard docs**
 
 In `.claude/skills/storyboard/SKILL.md`, replace direct Gemini/ChatFire setup text with:
 
@@ -353,7 +353,7 @@ uv run --project aos-cli aos-cli model preflight --json
 Storyboard text/JSON generation uses `generate` with `output.kind=json` through `.claude/skills/_shared/aos_cli_model.py`.
 ```
 
-- [ ] **Step 6: Run storyboard tests and guardrail**
+- [x] **Step 6: Run storyboard tests and guardrail**
 
 Run:
 
@@ -364,7 +364,7 @@ uv run python -m unittest discover -s .claude/skills/_shared -p 'test_no_new_dir
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit storyboard migration and initial guardrail**
+- [x] **Step 7: Commit storyboard migration and initial guardrail**
 
 ```bash
 git add .claude/skills/storyboard/scripts/storyboard_batch.py .claude/skills/storyboard/scripts/test_storyboard_batch.py .claude/skills/storyboard/SKILL.md .claude/skills/_shared/test_no_new_direct_provider_calls.py
@@ -382,7 +382,7 @@ git commit -m "Route storyboard generation through aos-cli model"
 - Create or modify: `.claude/skills/asset-gen/scripts/test_aos_cli_asset_model.py`
 - Modify: `.claude/skills/_shared/test_no_new_direct_provider_calls.py`
 
-- [ ] **Step 1: Extend guardrail to asset text scripts**
+- [x] **Step 1: Extend guardrail to asset text scripts**
 
 In `.claude/skills/_shared/test_no_new_direct_provider_calls.py`, update `MIGRATED_SCRIPT_PATHS`:
 
@@ -395,7 +395,7 @@ MIGRATED_SCRIPT_PATHS = [
 ]
 ```
 
-- [ ] **Step 2: Add asset text boundary tests**
+- [x] **Step 2: Add asset text boundary tests**
 
 Create `.claude/skills/asset-gen/scripts/test_aos_cli_asset_model.py`:
 
@@ -479,7 +479,7 @@ def test_generate_json_writes_generate_json_request(tmp_path, monkeypatch):
     assert result == {"style": "cinematic"}
 ```
 
-- [ ] **Step 3: Run asset text tests and verify they fail**
+- [x] **Step 3: Run asset text tests and verify they fail**
 
 Run:
 
@@ -489,7 +489,7 @@ uv run pytest .claude/skills/asset-gen/scripts/test_aos_cli_asset_model.py::test
 
 Expected: FAIL because `common_gemini_client.py` still uses direct Gemini code and does not expose `generate_json_with_retry()`.
 
-- [ ] **Step 4: Replace direct text provider wrapper with aos-cli boundary**
+- [x] **Step 4: Replace direct text provider wrapper with aos-cli boundary**
 
 In `.claude/skills/asset-gen/scripts/common_gemini_client.py`, preserve existing helper names where callers use them and add JSON support:
 
@@ -604,7 +604,7 @@ def _run_aos_cli_model(
     return response
 ```
 
-- [ ] **Step 5: Update asset text callers only where signatures require it**
+- [x] **Step 5: Update asset text callers only where signatures require it**
 
 In `.claude/skills/asset-gen/scripts/generate_prompts_from_script.py`, preserve the existing business functions and replace any direct `json.loads(generate_content_with_retry(...))` pattern with:
 
@@ -630,7 +630,7 @@ style = generate_json_with_retry(
 
 Do not modify `review_scene.py`, `review_char.py`, or `review_props.py` in this task; those image+text review paths are deferred in Task 6.
 
-- [ ] **Step 6: Run asset text tests and guardrail**
+- [x] **Step 6: Run asset text tests and guardrail**
 
 Run:
 
@@ -641,7 +641,7 @@ uv run python -m unittest discover -s .claude/skills/_shared -p 'test_no_new_dir
 
 Expected: PASS for the text tests and guardrail paths listed so far.
 
-- [ ] **Step 7: Commit asset text migration**
+- [x] **Step 7: Commit asset text migration**
 
 ```bash
 git add .claude/skills/asset-gen/scripts/common_gemini_client.py .claude/skills/asset-gen/scripts/generate_prompts_from_script.py .claude/skills/asset-gen/scripts/style_generate.py .claude/skills/asset-gen/scripts/test_aos_cli_asset_model.py .claude/skills/_shared/test_no_new_direct_provider_calls.py
@@ -662,7 +662,7 @@ git commit -m "Route asset text generation through aos-cli model"
 - Modify: `.claude/skills/asset-gen/scripts/test_aos_cli_asset_model.py`
 - Modify: `.claude/skills/_shared/test_no_new_direct_provider_calls.py`
 
-- [ ] **Step 1: Extend guardrail to asset image API**
+- [x] **Step 1: Extend guardrail to asset image API**
 
 In `.claude/skills/_shared/test_no_new_direct_provider_calls.py`, update `MIGRATED_SCRIPT_PATHS`:
 
@@ -676,7 +676,7 @@ MIGRATED_SCRIPT_PATHS = [
 ]
 ```
 
-- [ ] **Step 2: Add image boundary compatibility test**
+- [x] **Step 2: Add image boundary compatibility test**
 
 Append to `.claude/skills/asset-gen/scripts/test_aos_cli_asset_model.py`:
 
@@ -735,7 +735,7 @@ def test_image_api_preserves_submit_and_poll_contract(tmp_path, monkeypatch):
     assert result["artifacts"][0]["sha256"] == "abc"
 ```
 
-- [ ] **Step 3: Run image boundary test and verify it fails**
+- [x] **Step 3: Run image boundary test and verify it fails**
 
 Run:
 
@@ -745,7 +745,7 @@ uv run pytest .claude/skills/asset-gen/scripts/test_aos_cli_asset_model.py::test
 
 Expected: FAIL because `common_image_api.py` still uses the direct OpenAI-compatible API and does not accept `project_dir`.
 
-- [ ] **Step 4: Replace image API internals while preserving public functions**
+- [x] **Step 4: Replace image API internals while preserving public functions**
 
 In `.claude/skills/asset-gen/scripts/common_image_api.py`, keep existing public names and use in-memory task state only to preserve the skill's current async-ish contract:
 
@@ -850,7 +850,7 @@ def download_image(url: str, output_path: str | Path) -> str | None:
     return url
 ```
 
-- [ ] **Step 5: Update image callers only where needed**
+- [x] **Step 5: Update image callers only where needed**
 
 In `generate_characters.py`, `generate_scenes.py`, and `generate_props.py`, preserve the existing workflow and only pass `project_dir`, `local_dir`, `role`, and `task` through `params` where the current call site has that context:
 
@@ -876,7 +876,7 @@ if artifacts:
     metadata["artifacts"] = artifacts
 ```
 
-- [ ] **Step 6: Update asset-gen docs**
+- [x] **Step 6: Update asset-gen docs**
 
 In `.claude/skills/asset-gen/SKILL.md`, replace provider setup with:
 
@@ -890,7 +890,7 @@ Model calls go through `aos-cli model`.
 
 In `.claude/skills/asset-gen/references/troubleshooting.md`, mark direct ChatFire/OpenAI-compatible image API notes as legacy migration context, not the current integration path.
 
-- [ ] **Step 7: Run asset tests and guardrail**
+- [x] **Step 7: Run asset tests and guardrail**
 
 Run:
 
@@ -901,7 +901,7 @@ uv run python -m unittest discover -s .claude/skills/_shared -p 'test_no_new_dir
 
 Expected: PASS for all migrated asset paths listed in the guardrail.
 
-- [ ] **Step 8: Commit asset image migration**
+- [x] **Step 8: Commit asset image migration**
 
 ```bash
 git add .claude/skills/asset-gen/scripts/common_image_api.py .claude/skills/asset-gen/scripts/generate_characters.py .claude/skills/asset-gen/scripts/generate_scenes.py .claude/skills/asset-gen/scripts/generate_props.py .claude/skills/asset-gen/SKILL.md .claude/skills/asset-gen/references/troubleshooting.md .claude/skills/asset-gen/scripts/test_aos_cli_asset_model.py .claude/skills/_shared/test_no_new_direct_provider_calls.py
@@ -919,7 +919,7 @@ git commit -m "Route asset image generation through aos-cli model"
 - Modify: `.claude/skills/video-gen/references/AI_CONFIG_AND_DELIVERY.md`
 - Modify: `.claude/skills/_shared/test_no_new_direct_provider_calls.py`
 
-- [ ] **Step 1: Extend guardrail to video API**
+- [x] **Step 1: Extend guardrail to video API**
 
 In `.claude/skills/_shared/test_no_new_direct_provider_calls.py`, update `MIGRATED_SCRIPT_PATHS`:
 
@@ -934,7 +934,7 @@ MIGRATED_SCRIPT_PATHS = [
 ]
 ```
 
-- [ ] **Step 2: Add video boundary submit/poll tests**
+- [x] **Step 2: Add video boundary submit/poll tests**
 
 In `.claude/skills/video-gen/scripts/test_provider_switch.py`, add boundary tests while preserving compatibility expectations for public wrappers:
 
@@ -1031,7 +1031,7 @@ def test_video_poll_uses_aos_cli_task_result_boundary(tmp_path, monkeypatch):
     assert result["output"]["artifacts"][0]["lastFrameUrl"] == "https://example.test/last.png"
 ```
 
-- [ ] **Step 3: Run video boundary tests and verify they fail**
+- [x] **Step 3: Run video boundary tests and verify they fail**
 
 Run:
 
@@ -1041,7 +1041,7 @@ uv run pytest .claude/skills/video-gen/scripts/test_provider_switch.py::test_vid
 
 Expected: FAIL because `video_api.py` still uses direct Ark API or lacks these boundary functions.
 
-- [ ] **Step 4: Replace raw Ark calls with boundary functions**
+- [x] **Step 4: Replace raw Ark calls with boundary functions**
 
 In `.claude/skills/video-gen/scripts/video_api.py`, add boundary primitives and make existing public wrappers call them:
 
@@ -1129,7 +1129,7 @@ def poll_video_generation(*, task_envelope: dict[str, Any], project_dir: str | P
     return envelope
 ```
 
-- [ ] **Step 5: Preserve existing `submit_video()` compatibility**
+- [x] **Step 5: Preserve existing `submit_video()` compatibility**
 
 Make `submit_video()` call `submit_video_generation()` and return the fields expected by `batch_generate_runtime.py`:
 
@@ -1154,7 +1154,7 @@ return {
 }
 ```
 
-- [ ] **Step 6: Preserve existing poll result compatibility**
+- [x] **Step 6: Preserve existing poll result compatibility**
 
 Make `poll_multiple_tasks()` store and poll the `task_envelope` returned by `submit_video()`. When `poll_video_generation()` returns `output.kind=task_result`, map artifacts back into current delivery fields:
 
@@ -1167,7 +1167,7 @@ last_frame_url = video_artifact.get("lastFrameUrl") or video_artifact.get("last_
 
 Preserve existing `video_url`, `video_path`, and `last_frame_url` keys in the result dictionaries.
 
-- [ ] **Step 7: Update video-gen docs**
+- [x] **Step 7: Update video-gen docs**
 
 In `.claude/skills/video-gen/SKILL.md`, replace raw Ark setup with:
 
@@ -1181,7 +1181,7 @@ Video model calls go through `aos-cli model`.
 
 In `.claude/skills/video-gen/references/AI_CONFIG_AND_DELIVERY.md`, document that provider-specific Ark fields are owned by `aos-cli`, while `video-gen` owns storyboard-to-request mapping and delivery JSON.
 
-- [ ] **Step 8: Run video tests and global guardrail**
+- [x] **Step 8: Run video tests and global guardrail**
 
 Run:
 
@@ -1192,7 +1192,7 @@ uv run python -m unittest discover -s .claude/skills/_shared -p 'test_no_new_dir
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit video migration and final guardrail expansion**
+- [x] **Step 9: Commit video migration and final guardrail expansion**
 
 ```bash
 git add .claude/skills/video-gen/scripts/video_api.py .claude/skills/video-gen/scripts/test_provider_switch.py .claude/skills/video-gen/SKILL.md .claude/skills/video-gen/references/AI_CONFIG_AND_DELIVERY.md .claude/skills/_shared/test_no_new_direct_provider_calls.py
@@ -1212,7 +1212,7 @@ git commit -m "Route video generation through aos-cli model"
 - Modify: `.claude/skills/subtitle-maker/SKILL.md`
 - Modify: `.claude/skills/_shared/AOS_CLI_MODEL.md`
 
-- [ ] **Step 1: Add explicit deferred notes to asset review scripts**
+- [x] **Step 1: Add explicit deferred notes to asset review scripts**
 
 At the top-level docstring or provider setup section of these scripts:
 
@@ -1228,7 +1228,7 @@ Add one short note:
 
 Do not change their provider behavior in this task.
 
-- [ ] **Step 2: Add explicit deferred notes to post-production skills**
+- [x] **Step 2: Add explicit deferred notes to post-production skills**
 
 In each of these files:
 
@@ -1242,7 +1242,7 @@ Add this provider-boundary note near the model/provider setup section:
 Model boundary note: this skill still uses direct Gemini multimodal/ASR calls because the current `aos-cli model` protocol does not yet fully cover this skill's required input/output shape. Do not add new provider surfaces here; migrate this skill only after the `aos-cli` protocol explicitly supports the needed multimodal or transcription contract.
 ```
 
-- [ ] **Step 3: Update shared migration guide**
+- [x] **Step 3: Update shared migration guide**
 
 In `.claude/skills/_shared/AOS_CLI_MODEL.md`, ensure the migration section contains:
 
@@ -1250,7 +1250,7 @@ In `.claude/skills/_shared/AOS_CLI_MODEL.md`, ensure the migration section conta
 Asset image review, post-production video analysis, music matching, and subtitle transcription remain deferred until `aos-cli model` has explicit protocol coverage for their required multimodal or ASR contracts. Do not force these through `generate` if doing so would hide domain-specific input/output semantics.
 ```
 
-- [ ] **Step 4: Verify docs contain deferred notes**
+- [x] **Step 4: Verify docs contain deferred notes**
 
 Run:
 
@@ -1275,7 +1275,7 @@ PY
 
 Expected: prints `deferred notes present`.
 
-- [ ] **Step 5: Commit deferred migration notes**
+- [x] **Step 5: Commit deferred migration notes**
 
 ```bash
 git add .claude/skills/asset-gen/scripts/review_scene.py .claude/skills/asset-gen/scripts/review_char.py .claude/skills/asset-gen/scripts/review_props.py .claude/skills/video-editing/SKILL.md .claude/skills/music-matcher/SKILL.md .claude/skills/subtitle-maker/SKILL.md .claude/skills/_shared/AOS_CLI_MODEL.md
@@ -1295,7 +1295,7 @@ git commit -m "Document deferred multimodal skill migration"
 - Read: `.claude/skills/music-matcher/SKILL.md`
 - Read: `.claude/skills/subtitle-maker/SKILL.md`
 
-- [ ] **Step 1: Run migrated skill tests**
+- [x] **Step 1: Run migrated skill tests**
 
 Run:
 
@@ -1308,7 +1308,7 @@ uv run pytest .claude/skills/video-gen/scripts/test_provider_switch.py -v
 
 Expected: PASS.
 
-- [ ] **Step 2: Run aos-cli core tests**
+- [x] **Step 2: Run aos-cli core tests**
 
 Run:
 
@@ -1318,7 +1318,7 @@ uv run --project aos-cli pytest aos-cli/tests -v
 
 Expected: PASS.
 
-- [ ] **Step 3: Run deterministic fake model smoke tests**
+- [x] **Step 3: Run deterministic fake model smoke tests**
 
 Run:
 
@@ -1330,7 +1330,7 @@ AOS_CLI_MODEL_FAKE=1 aos-cli/scripts/manual-model-tests.sh 9
 
 Expected: fake text, fake image, and fake video submit/poll all return `ok: true` JSON envelopes.
 
-- [ ] **Step 4: Audit remaining direct provider references**
+- [x] **Step 4: Audit remaining direct provider references**
 
 Run:
 
@@ -1352,7 +1352,7 @@ PY
 
 Expected: remaining hits are either deferred multimodal/ASR paths, legacy troubleshooting notes explicitly marked as legacy, or future protocol-expansion work. No script from `MIGRATED_SCRIPT_PATHS` should appear.
 
-- [ ] **Step 5: Check delivery-facing compatibility**
+- [x] **Step 5: Check delivery-facing compatibility**
 
 Run focused smoke tests or fixtures for the public contracts that migrated callers depend on:
 
@@ -1363,11 +1363,11 @@ uv run pytest .claude/skills/video-gen/scripts/test_provider_switch.py::test_vid
 
 Expected: PASS, proving the migration did not force callers to understand provider-specific envelopes.
 
-- [ ] **Step 6: Update plan checkboxes if executing manually**
+- [x] **Step 6: Update plan checkboxes if executing manually**
 
 If this plan is executed manually, check off each completed step in `docs/superpowers/plans/2026-04-26-skills-aos-cli-model-migration.md`.
 
-- [ ] **Step 7: Commit verification doc updates only if plan checkboxes changed**
+- [x] **Step 7: Commit verification doc updates only if plan checkboxes changed**
 
 ```bash
 git add docs/superpowers/plans/2026-04-26-skills-aos-cli-model-migration.md
