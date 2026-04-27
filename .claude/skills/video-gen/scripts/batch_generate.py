@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# input: runtime storyboard JSON, approved storyboard JSON, and video generation options
+# output: generated video clips, delivery JSON, generation summary, and video task manifest
+# pos: VIDEO stage batch entrypoint that bridges storyboard artifacts to aos-cli model generation
 """
 Batch Video Generation from ep_storyboard.json
 
@@ -522,6 +525,50 @@ def _clean_clip_data(paths: VideoReviewPaths, episode: int, location_num: int, c
             print(f"  [CLEAN] 已清除 {ws_removed} 个 workspace 任务文件")
 
 
+def _build_video_task_manifest(
+    *,
+    episode: int,
+    source_json: Path,
+    runtime_json_path: Path,
+    results: List[Dict],
+    generated_at: str,
+) -> Dict:
+    tasks = []
+    for result in results:
+        for version in result.get("versions", []):
+            output_path = version.get("output_path") or version.get("video_path")
+            tasks.append(
+                {
+                    "episode": episode,
+                    "scene_id": result.get("scene_id"),
+                    "clip_id": result.get("clip_id"),
+                    "shot_id": result.get("clip_id"),
+                    "prompt_version": result.get("prompt_version", 0) + 1,
+                    "version": version.get("version"),
+                    "success": bool(version.get("success")),
+                    "passed": bool(version.get("passed")),
+                    "requested_duration_seconds": version.get(
+                        "requested_duration_seconds"
+                    ),
+                    "actual_duration_seconds": version.get("actual_duration_seconds"),
+                    "provider_task_id": version.get("provider_task_id")
+                    or version.get("task_id"),
+                    "provider": version.get("provider"),
+                    "model_code": version.get("model_code"),
+                    "output_path": output_path,
+                }
+            )
+
+    return {
+        "schema_version": "video-task-manifest/v1",
+        "episode": episode,
+        "source_json": str(source_json),
+        "runtime_storyboard_json": str(runtime_json_path),
+        "generated_at": generated_at,
+        "tasks": tasks,
+    }
+
+
 # ============================================================
 # Batch Generation Entry Point
 # ============================================================
@@ -831,19 +878,33 @@ def run_batch_generate(
     workspace_dir = project_root / "workspace" / ep_name
     workspace_dir.mkdir(parents=True, exist_ok=True)
     summary_path = workspace_dir / f"ep{episode:03d}_generation_summary.json"
+    task_manifest_path = output_root_path / f"ep{episode:03d}_video_task_manifest.json"
+    generated_at = datetime.now().isoformat()
     summary = {
         "episode": episode,
         "source_json": str(json_path),
         "runtime_storyboard_json": str(runtime_json_path),
+        "video_task_manifest_json": str(task_manifest_path),
         "storyboard_source_kind": storyboard_source_kind,
         "total": total,
         "success": success_count,
         "failed": fail_count,
         "dry_run": dry_run,
         "model_code": model_code,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": generated_at,
         "results": results,
     }
+    task_manifest = _build_video_task_manifest(
+        episode=episode,
+        source_json=Path(json_path),
+        runtime_json_path=runtime_json_path,
+        results=results,
+        generated_at=generated_at,
+    )
+    with open(task_manifest_path, 'w', encoding='utf-8') as f:
+        json.dump(task_manifest, f, ensure_ascii=False, indent=2)
+    print(f"[FILE] Video task manifest: {task_manifest_path}")
+
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     with open(summary_path, 'w', encoding='utf-8') as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)

@@ -82,17 +82,25 @@ def test_fake_e2e_generates_episode_1_to_3_artifacts_with_duration_evidence(
             / f"ep{episode:03d}_generation_summary.json"
         )
         delivery_path = output_root / f"ep{episode:03d}_delivery.json"
+        task_manifest_path = output_root / f"ep{episode:03d}_video_task_manifest.json"
         runtime_storyboard_path = output_root / f"ep{episode:03d}_storyboard.json"
 
         assert runtime_storyboard_path.is_file()
         assert delivery_path.is_file()
+        assert task_manifest_path.is_file()
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        task_manifest = json.loads(task_manifest_path.read_text(encoding="utf-8"))
         assert summary["episode"] == episode
         assert summary["success"] == len(durations)
         assert summary["failed"] == 0
         assert summary["runtime_storyboard_json"] == str(runtime_storyboard_path)
+        assert summary["video_task_manifest_json"] == str(task_manifest_path)
+        assert task_manifest["episode"] == episode
+        assert task_manifest["runtime_storyboard_json"] == str(runtime_storyboard_path)
+        assert len(task_manifest["tasks"]) == len(durations)
 
         evidence = []
+        manifest_evidence = []
         for result in summary["results"]:
             assert result["success"] is True
             version = result["versions"][0]
@@ -105,5 +113,21 @@ def test_fake_e2e_generates_episode_1_to_3_artifacts_with_duration_evidence(
                 )
             )
 
+        for task in task_manifest["tasks"]:
+            assert task["episode"] == episode
+            assert task["scene_id"] == "scn_001"
+            assert task["clip_id"].startswith("scn001_clip")
+            assert task["shot_id"] == task["clip_id"]
+            assert task["provider_task_id"]
+            output_path = Path(task["output_path"])
+            assert output_path.is_file()
+            manifest_evidence.append(
+                (
+                    task["requested_duration_seconds"],
+                    task["actual_duration_seconds"],
+                )
+            )
+
         assert evidence == [(duration, float(duration)) for duration in durations]
+        assert manifest_evidence == [(duration, float(duration)) for duration in durations]
         assert all(actual != 5.0 for _requested, actual in evidence)
