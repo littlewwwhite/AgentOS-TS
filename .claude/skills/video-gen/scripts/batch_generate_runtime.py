@@ -219,6 +219,7 @@ def _run_generation_rounds(
             quality=request.quality,
             ratio=request.ratio,
             first_frame_url=request.first_frame_url,
+            reference_videos=request.reference_videos or None,
         )
 
         if submit_result["success"]:
