@@ -8,7 +8,12 @@ from typing import Dict, List, Optional
 
 @dataclass(frozen=True)
 class ClipIntent:
-    """Upstream intent for generating one clip."""
+    """Upstream intent for generating one clip.
+
+    `first_frame_url` carries cross-run continuity loaded from JSON `clip.lsi.url`
+    (orthogonal to `reference_images`, which is for subject binding only).
+    Runtime in-scene continuity arrives separately via `ContinuityContext`.
+    """
 
     clip_id: str
     scene_id: str
@@ -17,6 +22,7 @@ class ClipIntent:
     subject_ids: List[str] = field(default_factory=list)
     subjects: List[Dict] = field(default_factory=list)
     reference_images: List[Dict] = field(default_factory=list)
+    first_frame_url: Optional[str] = None
     location_num: int = 0
     clip_num: int = 0
 

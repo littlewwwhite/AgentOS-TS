@@ -1,31 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Compile one clip intent into the provider-facing request shape."""
+"""Compile one clip intent into the provider-facing request shape.
 
-from typing import Dict, List
+Two orthogonal continuity axes are kept strictly separate here:
+
+* `reference_images[]` — subject-binding refs only (act/loc/prp), each with
+  `role: "reference_image"`, indexed by `[图N]` in the prompt.
+* `first_frame_url`    — the previous clip's last-shot first frame URL,
+  carried independently. Runtime `ContinuityContext.first_frame_url` (in-scene
+  override) takes precedence over the upstream `ClipIntent.first_frame_url`
+  (cross-run JSON `lsi.url`).
+"""
 
 from production_types import ClipIntent, ContinuityContext, GenerationRequest
-
-
-def _with_continuity_frame(
-    reference_images: List[Dict],
-    first_frame_url: str | None,
-) -> List[Dict]:
-    if not first_frame_url:
-        return list(reference_images)
-
-    compiled = list(reference_images)
-    if any(ref.get("name") == "lsi" for ref in compiled):
-        return compiled
-
-    compiled.append(
-        {
-            "url": first_frame_url,
-            "name": "lsi",
-            "display_name": "上一镜头首帧",
-        }
-    )
-    return compiled
 
 
 def compile_request(
@@ -37,10 +24,7 @@ def compile_request(
 ) -> GenerationRequest:
     """Compile the shortest default path: prompt + refs + continuity + params."""
 
-    reference_images = _with_continuity_frame(
-        intent.reference_images,
-        continuity.first_frame_url,
-    )
+    effective_first_frame_url = continuity.first_frame_url or intent.first_frame_url
 
     return GenerationRequest(
         clip_id=intent.clip_id,
@@ -50,8 +34,8 @@ def compile_request(
         quality=quality,
         ratio=ratio,
         subjects=[],
-        reference_images=reference_images,
-        first_frame_url=continuity.first_frame_url,
+        reference_images=list(intent.reference_images),
+        first_frame_url=effective_first_frame_url,
         first_frame_text=continuity.first_frame_text,
         reference_videos=[],
     )
