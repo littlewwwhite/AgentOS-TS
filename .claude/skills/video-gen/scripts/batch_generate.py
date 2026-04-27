@@ -51,7 +51,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from batch_generate_runtime import _process_scene_clips, process_scenes_parallel
-from subject_resolver import resolve_subject_tokens
+from subject_resolver import resolve_subject_tokens, resolve_subject_tokens_to_names
 from production_types import ClipIntent
 from video_api import DEFAULT_MODEL_CODE
 from path_manager import VideoReviewPaths, prepare_runtime_storyboard_export
@@ -713,25 +713,44 @@ def run_batch_generate(
             scene_id = ls.get('scene_id', '?')
             pv = ls.get('prompt_version', 0)
 
-            prompt_with_indices, reference_images = resolve_subject_tokens(
-                ls['full_prompts'], assets_mapping
+            # Ark Seedance 2.0 hard constraint (verified 2026-04-27 against Ark
+            # production): one task may use EITHER reference_image refs (subject
+            # binding via [图N]) OR first/last frame items, NEVER both. We must
+            # pick a per-clip mode here. Policy: lsi-priority — when a clip has
+            # a usable lsi from its predecessor, switch to first_frame mode and
+            # emit the prompt with display names (no [图N], no reference list).
+            lsi_url_raw = (ls.get('lsi_url') or '').strip()
+            usable_lsi = bool(lsi_url_raw) and lsi_url_raw.startswith(
+                ('http://', 'https://', 'data:')
             )
+            if lsi_url_raw and not usable_lsi:
+                print(
+                    f"  [{ls_id}] [WARN] lsi.url 既非 http(s) 也非 data URI，跳过续帧: {lsi_url_raw[:60]}",
+                    file=sys.stderr,
+                )
+
             subject_ids = extract_subject_ids(ls['full_prompts'])
-            if reference_images:
-                print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (image-reference mode)")
-            # JSON 中已有 lsi.url（上一 clip 最后镜头首帧）→ 走独立的 first_frame_url 通道，
-            # 由 video_api 边界把它装配为 referenceImages 末项 role=first_frame。
-            # 不要塞进 reference_images：那是主体绑定通道（[图N] 索引），与续帧正交。
             clip_first_frame_url: Optional[str] = None
-            lsi_url = (ls.get('lsi_url') or '').strip()
-            if lsi_url:
-                if lsi_url.startswith(('http://', 'https://', 'data:')):
-                    clip_first_frame_url = lsi_url
-                    print(f"  [{ls_id}] lsi 续帧注入 first_frame_url: {lsi_url[:60]}")
-                else:
+            if usable_lsi:
+                # First-frame mode: prompt names subjects in plain text; the lsi
+                # frame visually anchors them. Ark forbids reference_image refs
+                # in this mode, so do not call resolve_subject_tokens here.
+                prompt_with_indices = resolve_subject_tokens_to_names(
+                    ls['full_prompts'], assets_mapping
+                )
+                reference_images: List[Dict] = []
+                clip_first_frame_url = lsi_url_raw
+                print(
+                    f"  [{ls_id}] first_frame mode: lsi 续帧 ({lsi_url_raw[:60]}); "
+                    f"prompt 主体改写为名称，无 [图N]"
+                )
+            else:
+                prompt_with_indices, reference_images = resolve_subject_tokens(
+                    ls['full_prompts'], assets_mapping
+                )
+                if reference_images:
                     print(
-                        f"  [{ls_id}] [WARN] lsi.url 既非 http(s) 也非 data URI，跳过续帧: {lsi_url[:60]}",
-                        file=sys.stderr,
+                        f"  [{ls_id}] reference mode: {len(reference_images)}/{len(subject_ids)} 参考图映射 [图N]"
                     )
 
             prompt = convert_prompt_brackets(prompt_with_indices)
