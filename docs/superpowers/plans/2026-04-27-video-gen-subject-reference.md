@@ -1,270 +1,285 @@
-# Video-Gen Subject Reference Activation Plan (v2, post-gnhf-merge)
+# Video-Gen Subject Reference Activation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close the producer→consumer gap on subject references. The `storyboard` skill (v1.4.0, commit `caa9607`) emits `@act_xxx` / `@loc_xxx` / `@prop_xxx` tokens. The `video-gen` consumer must (a) extract those tokens including the new `@`-form and `prop_*` namespace, (b) rewrite the prompt sent to Ark from `@act_001 …` to `[图1] …` so Ark binds each reference image by 1-based index in `content[]`, and (c) inject the resolved image URLs into `intent.reference_images` so `request_compiler` forwards them through the aos-cli `video.generate` capability into `ArkVideoProvider.build_ark_video_task_body`.
+**Goal:** Make `video-gen` recognize the `@act_xxx` / `@loc_xxx` / `@prop_xxx` tokens that the v1.4.0 `storyboard` skill emits, rewrite them to `[图N]` markers in the prompt sent to Ark, and inject the matching reference-image URLs into `referenceImages[]` so Ark binds each image to its index in the prompt.
 
-**Architecture:** Add a pure `subject_resolver` module to `video-gen` that owns token extraction + image lookup + `[图N]` prompt rewriting in one place. Wire it into `batch_generate.iter_clips` (or the preprocessing block at line ~673) so `ClipIntent.prompt_text` and `ClipIntent.reference_images` carry the rewritten prompt + ordered image dicts before reaching `request_compiler`. `request_compiler` is unchanged — it already accepts `intent.reference_images` and merges the lsi continuity frame correctly. `video_api` and `config.json` are unchanged — gnhf #40 already finished those layers. `_shared/AOS_CLI_MODEL.md` gains a documented `referenceImages[]` / `referenceVideos[]` block under the `video.generate` capability example.
+**Architecture:** Add a pure `subject_resolver` module to `video-gen/scripts/` that owns token regex, image lookup against the existing flat `assets_mapping`, and `[图N]` prompt rewriting. Wire it into `batch_generate.py`'s clip preprocessing so `ClipIntent.prompt_text` and `ClipIntent.reference_images` carry the rewritten prompt and ordered image dicts before reaching `request_compiler`. `request_compiler.compile_request` already forwards `intent.reference_images` and merges the lsi continuity frame — no change needed there. `video_api.py` and `config.json` are also unchanged (gnhf #40 already finished those layers).
 
-**Tech Stack:** Python 3.11+, `pytest` for unit tests; existing `_shared/aos_cli_envelope`, `aos_cli_model_submit`, `ArkVideoProvider`. No new runtime deps.
+**Tech Stack:** Python 3.11+, `unittest` (matching the existing `test_*.py` style under `video-gen/scripts/`), no new runtime deps. Storyboard producer side already shipped (commit `caa9607`, skill v1.4.0).
 
 ---
+
+## Audit Findings (Verified Post-Merge, df74cb2)
+
+- **Producer (shipped):** `.claude/skills/storyboard/SKILL.md` v1.4.0 + `prompts/storyboard_system.txt` enforce `@act_xxx`/`@loc_xxx`/`@prop_xxx`; static appearance forbidden.
+- **Consumer gap (regex):** `.claude/skills/video-gen/scripts/batch_generate.py:172` → `_SUBJECT_ID_PATTERN = re.compile(r'\{((?:act|loc)_\d+)\}')`. Confirmed empirically: `findall` against `"@act_001 与 {act_002} 在 @loc_003"` returns only `['act_002']`.
+- **Consumer gap (no `[图N]` rewrite):** No code in `video-gen/scripts/` mentions `@act_`, `@loc_`, `@prop_`, or `[图`. Even if reference URLs were attached, Ark gets the prompt with raw `@act_001` strings, which Ark treats as plain text — the corresponding image is sent but never bound.
+- **Consumer gap (no `prop` namespace):** Neither the regex nor `load_assets_subject_mapping` has any `prop_xxx` awareness.
+- **Boundary status:** `aos-cli/src/aos_cli/model/providers/ark_video.py:30-55` builds Ark `content[]` from `options.referenceImages`. `video_api.submit_video_generation` writes `input.referenceImages = [...]`. Wire shape supports it; no protocol extension needed.
+- **Docs gap:** `.claude/skills/_shared/AOS_CLI_MODEL.md` Video submit example only shows `{prompt, duration, ratio, quality}`.
 
 ## What gnhf P4 Already Did (Do Not Redo)
 
-The following items were in the v1 plan but are already shipped in master:
-
-- `video_api.submit_video` no longer takes `subjects=` and no longer raises `RuntimeError("subject references are not supported …")` (gnhf #40)
-- `request_compiler.compile_request` no longer forks on `use_subject_reference`; it unconditionally builds `reference_images` plus the lsi continuity frame
-- `config.json` no longer has `seedance2.subject_reference` (and no longer has `provider` / `model_group_code` / `providers[]`); the boundary owns provider routing
-- `get_subject_reference_for_model`, `get_provider_for_model`, `build_subject_prompt_params`, `build_image_reference_params`, `map_subject_ids_to_elements`, and the legacy `subjects[]` clip-state field are deleted
-- `batch_generate_runtime.py` no longer imports the dropped helpers
-
-**Remaining work is strictly the producer→consumer wire-up that was never present, plus one doc gap.**
-
----
-
-## Audit Findings (Verified Post-Merge)
-
-- **Producer (storyboard skill, shipped):** `SKILL.md` v1.4.0 + `prompts/storyboard_system.txt` enforce `@act_xxx` / `@loc_xxx` / `@prop_xxx`; static appearance forbidden. Outer envelope `[{ source_refs, prompt }]` carries the markdown.
-- **Consumer gap 1 (regex):** `.claude/skills/video-gen/scripts/batch_generate.py:172` `_SUBJECT_ID_PATTERN = re.compile(r'\{((?:act|loc)_\d+)\}')` — does not match `@act_xxx`, does not include `prop_xxx`. Result: `extract_subject_ids` returns `[]` for every storyboard written by the new skill, so `map_subject_ids_to_images` returns `[]`, so `ClipIntent.reference_images` arrives at `request_compiler` empty.
-- **Consumer gap 2 (prompt passthrough):** Even if regex matched, no current code rewrites `@act_001 → [图1]`. Ark's multi-image binding requires `[图N]` markers in the prompt that index into `content[]` order — without rewriting, Ark treats `@act_001` as plain text and ignores the corresponding reference image entirely.
-- **Consumer gap 3 (legacy `convert_prompt_brackets`):** `batch_generate.py:197` still rewrites `【xxx】 / 【xxx（yyy）】 → {base_name}`. This is a different (older) pre-storyboard-v1.4 format. Keep it for back-compat but do not let it shadow the new resolver.
-- **Boundary status (verified):** `aos-cli/src/aos_cli/model/providers/ark_video.py:30-55` accepts `options.referenceImages` and builds Ark `content[]` with `image_url` entries. `video_api.submit_video_generation` at `.claude/skills/video-gen/scripts/video_api.py` (current shape) writes `input.referenceImages = [...]`. **No protocol extension required.**
-- **Docs gap:** `.claude/skills/_shared/AOS_CLI_MODEL.md:117-132` Video submit example only documents `{prompt, duration, ratio, quality}`. Real wire shape supports `referenceImages[]` and `referenceVideos[]`.
-- **Asset shape (unchanged):** `actors.json` entries have nested state keys (`default`, `中药`, …) each containing `subject_id` + `face_view_url` / `side_view_url` / `back_view_url` / `three_view_url`. Locations/props have flat `image_url` at top level. The existing `load_assets_subject_mapping` in `batch_generate.py:395-460` already handles both shapes correctly — we keep that loader and only swap the regex + add the rewrite step.
+- `submit_video()` no longer takes `subjects=`, no longer raises `RuntimeError`
+- `request_compiler.compile_request` always builds image refs + lsi continuity frame
+- `config.json` no longer has `subject_reference` flag
+- `get_subject_reference_for_model` / `build_subject_prompt_params` deleted
 
 ---
 
 ## File Map
 
-- **New:** `.claude/skills/video-gen/scripts/subject_resolver.py`
-  - Pure module: token regex (handles `@`-form + legacy `{...}`-form, supports `act` / `loc` / `prop`), prompt rewriter to `[图N]`, ordered URL list builder.
-- **New:** `.claude/skills/video-gen/scripts/test_subject_resolver.py`
-  - Unit tests for token extraction, deduplication, prompt rewriting, missing-token soft-fail, mixed @ + legacy form.
+- **Create:** `.claude/skills/video-gen/scripts/subject_resolver.py`
+  Pure module, two public functions: `extract_subject_tokens(prompt) -> list[str]` and `resolve_subject_tokens(prompt, assets_mapping) -> tuple[str, list[dict]]`. Token regex matches `@act_001`, `{act_001}`, `@loc_002`, `{loc_002}`, `@prop_003`, `{prop_003}`. Reuses the existing flat `assets_mapping` shape from `load_assets_subject_mapping` so we inherit actor image priority (`three_view_url` > `main_url`) without duplication.
+- **Create:** `.claude/skills/video-gen/scripts/test_subject_resolver.py`
+  `unittest`-style test module that mirrors `test_provider_switch.py` style. Covers extraction (both forms, dedup, prop namespace), resolution (rewritten prompt + ordered refs, missing token soft-fail, mixed forms).
 - **Modify:** `.claude/skills/video-gen/scripts/batch_generate.py`
-  - Replace `_SUBJECT_ID_PATTERN` to also match `@(act|loc|prop)_\d+` (back-compat with `{...}`).
-  - In the clip preprocessing block (~line 673), call `resolve_subject_tokens(prompt, …)` to get rewritten `prompt` + ordered `reference_images`. Replace today's `extract_subject_ids` + `map_subject_ids_to_images` two-step with the single resolver call. Keep `convert_prompt_brackets` for the older `【】` form (run it after the resolver so `@`-tokens are already gone).
-  - Update the dry-run branch (~line 658) symmetrically.
-  - Update doc strings/log lines that reference `{act_xxx}` placeholder mode.
+  - Replace `_SUBJECT_ID_PATTERN` at line 172 to also match `@`-form and `prop_*`.
+  - Add `from subject_resolver import resolve_subject_tokens` near line 53 (existing imports block).
+  - Extend `load_assets_subject_mapping` (line 297) with a third loader for `props/props.json` mirroring the locations branch.
+  - Replace the dry-run preprocessing block at lines 658-670: call `resolve_subject_tokens` once, use its outputs.
+  - Replace the real-run preprocessing block at lines 678-694: call `resolve_subject_tokens` once, drop the duplicate `extract_subject_ids` + `map_subject_ids_to_images` two-step.
 - **Modify:** `.claude/skills/_shared/AOS_CLI_MODEL.md`
-  - Extend `video.generate` example with `referenceImages[]` / `referenceVideos[]` (additive — implementation already supports this).
+  Extend the Video submit example (lines 117-132) with `referenceImages[]` / `referenceVideos[]` and a one-paragraph note on `[图N]` indexing.
 - **Modify:** `.claude/skills/video-gen/SKILL.md`
-  - One-paragraph addendum documenting `@token → [图N]` consumption contract and pointing at `subject_resolver.py`.
-
-**Not touched (intentional):**
-- `request_compiler.py` — already passes `intent.reference_images` through and merges the continuity frame; no change needed
-- `video_api.py` — already removed by gnhf #40
-- `config.json` — already simplified by gnhf #40
-- `production_types.ClipIntent` — `subjects: list = []` field was kept by gnhf #40 as a vestigial empty list; ignore it (do not remove in this plan to keep diff focused)
+  Add a one-paragraph "Subject reference resolution" section pointing at `subject_resolver.py` and cross-linking `_shared/AOS_CLI_MODEL.md`.
 
 ---
 
-## Parallelization Decision
-
-All edits land in two adjacent modules (`subject_resolver.py` + `batch_generate.py`) plus two doc files. Tasks 1 and 2 are tightly coupled (the test suite for the resolver locks behavior the consumer relies on). Tasks 3 and 4 are leaf docs.
-
-**Recommendation:** Single agent, sequential. Do not dispatch subagents. Total expected diff: ~250 lines added, ~30 lines deleted/replaced.
-
----
-
-## Canonical Marker
-
-**Plan canonical id:** `video-gen-subject-reference-2026-04-27-v2`. All commits MUST reference this id in trailer, e.g. `Plan-Id: video-gen-subject-reference-2026-04-27-v2`.
-
----
-
-### Task 1: Add `subject_resolver` pure module + unit tests
+### Task 1: Create the resolver module with failing tests
 
 **Files:**
-- New: `.claude/skills/video-gen/scripts/subject_resolver.py`
-- New: `.claude/skills/video-gen/scripts/test_subject_resolver.py`
+- Create: `.claude/skills/video-gen/scripts/subject_resolver.py`
+- Create: `.claude/skills/video-gen/scripts/test_subject_resolver.py`
 
-- [ ] **Step 1: Write the failing unit test**
+- [ ] **Step 1: Write the failing test file**
 
-Create `test_subject_resolver.py`:
+Create `.claude/skills/video-gen/scripts/test_subject_resolver.py` with this exact content:
 
 ```python
-import pytest
-from subject_resolver import extract_subject_tokens, resolve_subject_tokens
+#!/usr/bin/env python3
+# input: subject_resolver module under video-gen/scripts
+# output: unittest assertions for token extraction + prompt rewriting + image resolution
+# pos: regression coverage for storyboard @-token → Ark referenceImages[] bridge
+import sys
+import unittest
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).parent
+sys.path.insert(0, str(SCRIPT_DIR))
 
 
-def test_extracts_at_form_act_loc_prop_in_order():
-    prompt = "@act_001 走入 @loc_002，望向 @prop_003"
-    assert extract_subject_tokens(prompt) == ["act_001", "loc_002", "prop_003"]
+class ExtractSubjectTokensTest(unittest.TestCase):
+    def test_extracts_at_form_act_loc_prop_in_order(self):
+        from subject_resolver import extract_subject_tokens
+
+        prompt = "@act_001 走入 @loc_002，望向 @prop_003"
+        self.assertEqual(extract_subject_tokens(prompt), ["act_001", "loc_002", "prop_003"])
+
+    def test_extracts_legacy_brace_form(self):
+        from subject_resolver import extract_subject_tokens
+
+        prompt = "{act_001} 走入 {loc_002}"
+        self.assertEqual(extract_subject_tokens(prompt), ["act_001", "loc_002"])
+
+    def test_dedupes_repeated_tokens_preserving_first_occurrence(self):
+        from subject_resolver import extract_subject_tokens
+
+        prompt = "@act_001 转向 @act_002，@act_001 抬手"
+        self.assertEqual(extract_subject_tokens(prompt), ["act_001", "act_002"])
+
+    def test_mixed_at_and_brace_forms(self):
+        from subject_resolver import extract_subject_tokens
+
+        prompt = "{act_001} 与 @act_002 在 @loc_003"
+        self.assertEqual(extract_subject_tokens(prompt), ["act_001", "act_002", "loc_003"])
 
 
-def test_extracts_legacy_brace_form():
-    prompt = "{act_001} 走入 {loc_002}"
-    assert extract_subject_tokens(prompt) == ["act_001", "loc_002"]
+class ResolveSubjectTokensTest(unittest.TestCase):
+    def _mapping(self):
+        return {
+            "act_001": {
+                "subject_id": "s1",
+                "name": "白行风",
+                "type": "actor",
+                "image_url": "https://x/a1.png",
+            },
+            "act_002": {
+                "subject_id": "s2",
+                "name": "苏父",
+                "type": "actor",
+                "image_url": "https://x/a2.png",
+            },
+            "loc_003": {
+                "subject_id": "sL",
+                "name": "诛仙台",
+                "type": "location",
+                "image_url": "https://x/L.png",
+            },
+            "prop_004": {
+                "subject_id": "sP",
+                "name": "银锭",
+                "type": "prop",
+                "image_url": "https://x/P.png",
+            },
+        }
+
+    def test_rewrites_prompt_to_image_indexes_and_orders_refs(self):
+        from subject_resolver import resolve_subject_tokens
+
+        prompt = "@act_001 走入 @loc_003"
+        rewritten, refs = resolve_subject_tokens(prompt, self._mapping())
+        self.assertEqual(rewritten, "[图1] 走入 [图2]")
+        self.assertEqual([r["url"] for r in refs], ["https://x/a1.png", "https://x/L.png"])
+        self.assertEqual(refs[0]["name"], "act_001")
+        self.assertEqual(refs[1]["display_name"], "诛仙台")
+
+    def test_dedupes_so_one_token_one_image_one_index(self):
+        from subject_resolver import resolve_subject_tokens
+
+        prompt = "@act_001 转向 @act_002，@act_001 抬手"
+        rewritten, refs = resolve_subject_tokens(prompt, self._mapping())
+        self.assertEqual(rewritten, "[图1] 转向 [图2]，[图1] 抬手")
+        self.assertEqual(len(refs), 2)
+
+    def test_missing_token_keeps_raw_text_and_skips_url(self):
+        from subject_resolver import resolve_subject_tokens
+
+        prompt = "@act_001 与 @act_999 对话"
+        rewritten, refs = resolve_subject_tokens(prompt, self._mapping())
+        self.assertEqual(rewritten, "[图1] 与 @act_999 对话")
+        self.assertEqual([r["url"] for r in refs], ["https://x/a1.png"])
+
+    def test_token_with_no_image_url_is_skipped(self):
+        from subject_resolver import resolve_subject_tokens
+
+        mapping = {
+            "act_001": {
+                "subject_id": "s1",
+                "name": "X",
+                "type": "actor",
+                "image_url": "",
+            }
+        }
+        prompt = "@act_001 出场"
+        rewritten, refs = resolve_subject_tokens(prompt, mapping)
+        self.assertEqual(rewritten, "@act_001 出场")
+        self.assertEqual(refs, [])
+
+    def test_mixed_form_resolution(self):
+        from subject_resolver import resolve_subject_tokens
+
+        prompt = "{act_001} 与 @act_002 在 @loc_003"
+        rewritten, refs = resolve_subject_tokens(prompt, self._mapping())
+        self.assertEqual(rewritten, "[图1] 与 [图2] 在 [图3]")
+        self.assertEqual(len(refs), 3)
+
+    def test_prop_token_resolves(self):
+        from subject_resolver import resolve_subject_tokens
+
+        prompt = "@act_001 拿起 @prop_004"
+        rewritten, refs = resolve_subject_tokens(prompt, self._mapping())
+        self.assertEqual(rewritten, "[图1] 拿起 [图2]")
+        self.assertEqual(refs[1]["url"], "https://x/P.png")
 
 
-def test_dedupes_repeated_tokens_preserving_first_occurrence():
-    prompt = "@act_001 转向 @act_002，@act_001 抬手"
-    assert extract_subject_tokens(prompt) == ["act_001", "act_002"]
-
-
-def test_resolves_to_ordered_image_dicts_and_rewrites_prompt():
-    actors = {"act_001": {"default": {"face_view_url": "https://x/a.png", "subject_id": "s1"}}}
-    locations = {"loc_002": {"image_url": "https://x/l.png", "subject_id": "s2", "name": "诛仙台"}}
-    rewritten, refs = resolve_subject_tokens(
-        "@act_001 走入 @loc_002",
-        actors=actors, locations=locations, props={},
-    )
-    assert rewritten == "[图1] 走入 [图2]"
-    assert [r["url"] for r in refs] == ["https://x/a.png", "https://x/l.png"]
-    # Refs should carry name+display_name+subject_id for downstream logging parity
-    assert refs[0]["name"] == "act_001"
-    assert refs[1]["display_name"] == "诛仙台"
-
-
-def test_missing_token_keeps_raw_token_and_skips_url():
-    rewritten, refs = resolve_subject_tokens(
-        "@act_001 与 @act_999 对话",
-        actors={"act_001": {"default": {"face_view_url": "https://x/a.png"}}},
-        locations={}, props={},
-    )
-    assert "@act_999" in rewritten
-    assert rewritten.startswith("[图1] 与 @act_999")
-    assert [r["url"] for r in refs] == ["https://x/a.png"]
-
-
-def test_mixed_at_and_brace_forms_in_one_prompt():
-    rewritten, refs = resolve_subject_tokens(
-        "{act_001} 与 @act_002 在 @loc_003",
-        actors={
-            "act_001": {"default": {"face_view_url": "https://x/a1.png"}},
-            "act_002": {"default": {"face_view_url": "https://x/a2.png"}},
-        },
-        locations={"loc_003": {"image_url": "https://x/l3.png"}},
-        props={},
-    )
-    assert rewritten == "[图1] 与 [图2] 在 [图3]"
-    assert len(refs) == 3
-
-
-def test_actor_falls_back_through_state_keys():
-    # Actor has no 'default' state but has '中药' state with face_view_url
-    actors = {"act_001": {"name": "X", "voice": "...", "中药": {"face_view_url": "https://x/y.png"}}}
-    _, refs = resolve_subject_tokens(
-        "@act_001 出场",
-        actors=actors, locations={}, props={},
-    )
-    assert refs[0]["url"] == "https://x/y.png"
+if __name__ == "__main__":
+    unittest.main()
 ```
 
-Run: `cd .claude/skills/video-gen/scripts && python -m pytest test_subject_resolver.py -x`. **Verify RED** (ImportError).
+- [ ] **Step 2: Verify the test fails**
 
-- [ ] **Step 2: Implement `subject_resolver.py`**
+Run:
+```bash
+cd .claude/skills/video-gen/scripts && python3 -m unittest test_subject_resolver -v 2>&1 | tail -10
+```
+
+Expected: every test fails with `ModuleNotFoundError: No module named 'subject_resolver'`.
+
+- [ ] **Step 3: Create the resolver module**
+
+Create `.claude/skills/video-gen/scripts/subject_resolver.py` with this exact content:
 
 ```python
-# input: storyboard prompt with @act_xxx/@loc_xxx/@prop_xxx tokens (or legacy {...} form),
-#        registered actor/location/prop dicts loaded from output/{actors,locations,props}/*.json
+#!/usr/bin/env python3
+# input: storyboard prompt with @/{}-form act/loc/prop tokens + flat assets_mapping
 # output: prompt rewritten with [图N] markers + ordered list of reference image dicts
-# pos: video-gen consumer-side resolver bridging storyboard producer tokens to Ark referenceImages[]
+# pos: video-gen consumer-side bridge from storyboard tokens to Ark referenceImages[]
+"""Subject reference resolver for video-gen.
+
+Storyboard skill v1.4.0 emits prompts that reference characters/locations/props
+via `@act_001` / `@loc_002` / `@prop_003` tokens (legacy `{act_001}` form is
+also accepted for back-compat). Ark's multi-image binding requires `[图N]`
+markers in the prompt that index 1-based into `content[]` reference images.
+This module rewrites the tokens and assembles the ordered reference list.
+"""
 
 import re
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
 # Match @act_001 OR {act_001} OR @prop_002 OR {loc_003}; act/loc/prop only.
-_TOKEN_RE = re.compile(r"[@{](act|loc|prop)_(\d+)\}?")
+# Trailing `}` is optional so the same regex captures both forms.
+_TOKEN_RE = re.compile(r"[@{]((?:act|loc|prop)_\d+)\}?")
 
 
 def extract_subject_tokens(prompt: str) -> List[str]:
+    """Return de-duplicated subject ids in first-occurrence order.
+
+    Args:
+        prompt: Storyboard prompt text.
+
+    Returns:
+        List of token ids like ["act_001", "loc_002", "prop_003"].
+    """
     seen: List[str] = []
-    seen_set: set[str] = set()
-    for kind, num in _TOKEN_RE.findall(prompt):
-        token = f"{kind}_{num}"
+    seen_set = set()
+    for token in _TOKEN_RE.findall(prompt):
         if token not in seen_set:
             seen.append(token)
             seen_set.add(token)
     return seen
 
 
-def _actor_image_url(actor: Dict) -> Optional[str]:
-    """Walk the nested state dicts in an actor entry; return the first usable url.
-
-    Prefers face_view_url, then three_view_url, then side_view_url.
-    """
-    for value in actor.values():
-        if not isinstance(value, dict):
-            continue
-        for key in ("face_view_url", "three_view_url", "side_view_url"):
-            url = value.get(key)
-            if url:
-                return url
-    return None
-
-
-def _lookup_image(token: str, actors: Dict, locations: Dict, props: Dict) -> Optional[Dict]:
-    if token.startswith("act_"):
-        actor = actors.get(token) or {}
-        url = _actor_image_url(actor)
-        if not url:
-            return None
-        # Find subject_id from the same state dict that produced the url (best-effort).
-        subject_id = ""
-        for value in actor.values():
-            if isinstance(value, dict) and value.get("subject_id"):
-                subject_id = value["subject_id"]
-                break
-        return {
-            "url": url,
-            "name": token,
-            "display_name": actor.get("name", token),
-            "subject_id": subject_id,
-        }
-    if token.startswith("loc_"):
-        loc = locations.get(token) or {}
-        url = loc.get("image_url")
-        if not url:
-            return None
-        return {
-            "url": url,
-            "name": token,
-            "display_name": loc.get("name", token),
-            "subject_id": loc.get("subject_id", ""),
-        }
-    if token.startswith("prop_"):
-        prop = props.get(token) or {}
-        url = prop.get("image_url")
-        if not url:
-            return None
-        return {
-            "url": url,
-            "name": token,
-            "display_name": prop.get("name", token),
-            "subject_id": prop.get("subject_id", ""),
-        }
-    return None
-
-
 def resolve_subject_tokens(
     prompt: str,
-    *,
-    actors: Dict,
-    locations: Dict,
-    props: Dict,
+    assets_mapping: Dict[str, Dict],
 ) -> Tuple[str, List[Dict]]:
-    """Rewrite tokens in prompt to [图N] markers and return matching reference image dicts.
+    """Rewrite tokens to [图N] and return the matching ordered reference dicts.
+
+    Args:
+        prompt: Storyboard prompt text containing @act_xxx / {act_xxx} tokens.
+        assets_mapping: Flat dict from load_assets_subject_mapping(), keyed by
+            id (act_001, loc_002, prop_003) with entries
+            {"subject_id": str, "name": str, "type": str, "image_url": str}.
 
     Returns:
-        (rewritten_prompt, ordered_reference_images)
-        - Tokens with no resolvable image are left as-is in the prompt and skipped in refs.
-        - [图N] is 1-based and matches reference_images list order.
+        Tuple of (rewritten_prompt, ordered_reference_image_dicts).
+        - Tokens whose entry is missing or has no image_url are left as-is in
+          the prompt and skipped in refs.
+        - [图N] is 1-based and matches reference list order.
     """
     tokens = extract_subject_tokens(prompt)
     refs: List[Dict] = []
     token_to_index: Dict[str, int] = {}
+
     for token in tokens:
-        ref = _lookup_image(token, actors, locations, props)
-        if ref is None:
+        entry = assets_mapping.get(token)
+        if not entry:
             continue
-        refs.append(ref)
+        url = entry.get("image_url") or ""
+        if not url:
+            continue
+        refs.append({
+            "url": url,
+            "name": token,
+            "display_name": entry.get("name", token),
+            "subject_id": entry.get("subject_id", ""),
+        })
         token_to_index[token] = len(refs)
 
-    def _replace(match: re.Match[str]) -> str:
-        token = f"{match.group(1)}_{match.group(2)}"
+    def _replace(match: "re.Match[str]") -> str:
+        token = match.group(1)
         idx = token_to_index.get(token)
         if idx is None:
             return match.group(0)
@@ -274,215 +289,625 @@ def resolve_subject_tokens(
     return rewritten, refs
 ```
 
-Re-run tests → **expect GREEN**. Fix any failure before moving on.
+- [ ] **Step 4: Verify all tests pass**
 
-- [ ] **Step 3: Commit**
-
-```
-feat(video-gen): add subject_resolver for @token → [图N] rewrite
-
-Plan-Id: video-gen-subject-reference-2026-04-27-v2
-```
-
----
-
-### Task 2: Wire resolver into `batch_generate.py` preprocessing
-
-**Files:**
-- Modify: `.claude/skills/video-gen/scripts/batch_generate.py`
-
-The current preprocessing flow (verified at line 673-729) is:
-
-```
-ls['full_prompts']                                  # raw storyboard prompt with @act_001 tokens
-  → subject_ids = extract_subject_ids(...)          # GAP: regex misses @-form
-  → reference_images = map_subject_ids_to_images(...) # mapping is correct, just receives [] today
-  → reference_images.append(lsi)                    # continuity frame still applied below
-  → prompt = convert_prompt_brackets(...)           # legacy 【xxx】 → {base_name}
-  → ClipIntent(prompt_text=prompt, reference_images=[...], ...)
-```
-
-After this task:
-
-```
-ls['full_prompts']
-  → prompt_with_indices, resolved_refs = resolve_subject_tokens(prompt, actors=..., locations=..., props=...)
-  → reference_images = list(resolved_refs)
-  → reference_images.append(lsi)
-  → prompt = convert_prompt_brackets(prompt_with_indices)   # safe: 【】 form is orthogonal to @-tokens
-  → ClipIntent(prompt_text=prompt, reference_images=reference_images, ...)
-```
-
-- [ ] **Step 1: Update `_SUBJECT_ID_PATTERN` at line 172**
-
-Replace:
-
-```python
-_SUBJECT_ID_PATTERN = re.compile(r'\{((?:act|loc)_\d+)\}')
-```
-
-with:
-
-```python
-# Matches @act_001 / {act_001} / @prop_002 / {loc_003}. act/loc/prop only.
-_SUBJECT_ID_PATTERN = re.compile(r'[@{]((?:act|loc|prop)_\d+)\}?')
-```
-
-Update `extract_subject_ids` docstring/examples to mention both forms.
-
-- [ ] **Step 2: Load `props.json` alongside actors and locations**
-
-In `load_assets_subject_mapping` (around line 395-460), add a third loader for `props.json` that mirrors the locations branch (flat `image_url` + `subject_id` per entry). If `props.json` does not exist, log `[INFO] no props.json found; props/* tokens will pass through unresolved` and continue.
-
-- [ ] **Step 3: Replace the two-step at line 658 (dry-run) and line 678 (real run)**
-
-Add `from subject_resolver import resolve_subject_tokens` at module top.
-
-In the dry-run branch:
-
-```python
-subject_ids = extract_subject_ids(ls['full_prompts'])  # kept for log parity
-prompt_with_indices, resolved_refs = resolve_subject_tokens(
-    ls['full_prompts'],
-    actors=assets_mapping.get("actors", {}),
-    locations=assets_mapping.get("locations", {}),
-    props=assets_mapping.get("props", {}),
-)
-prompt = convert_prompt_brackets(prompt_with_indices)
-```
-
-Adjust `assets_mapping` shape if needed — currently it is a flat `Dict[id, entry]`. Either pass three sub-dicts to the resolver, or keep flat and switch resolver to accept it. **Recommendation:** keep three sub-dicts. Refactor `load_assets_subject_mapping` to return `{"actors": {...}, "locations": {...}, "props": {...}}`, and update the two existing callers.
-
-In the real-run branch (line 678 onward):
-
-```python
-prompt_with_indices, resolved_refs = resolve_subject_tokens(
-    ls['full_prompts'],
-    actors=assets_mapping.get("actors", {}),
-    locations=assets_mapping.get("locations", {}),
-    props=assets_mapping.get("props", {}),
-)
-reference_images = list(resolved_refs)
-if reference_images:
-    print(f"  [{ls_id}] {len(reference_images)} 参考图映射 (image-reference mode)")
-lsi_url = ls.get('lsi_url', '')
-if lsi_url:
-    reference_images.append({
-        "url": lsi_url,
-        "name": "lsi",
-        "display_name": "上一镜头首帧",
-    })
-    print(f"  [{ls_id}] lsi 参考图已加入 (url={lsi_url[:50]})")
-
-prompt = convert_prompt_brackets(prompt_with_indices)
-```
-
-Drop the now-redundant `subject_ids = extract_subject_ids(...)` and `map_subject_ids_to_images(...)` calls in the real-run branch (the old log line `f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射"` becomes `f"  [{ls_id}] {len(reference_images)} 参考图映射"`).
-
-- [ ] **Step 4: Sanity-test by hand**
-
-Pick a real workspace (e.g. `workspace/c4-1/`) with approved storyboard. Run:
-
+Run:
 ```bash
-cd .claude/skills/video-gen/scripts
-PROJECT_DIR=$(pwd)/../../../../workspace/c4-1 \
-  python batch_generate.py --episode 1 --dry-run 2>&1 | head -40
+cd .claude/skills/video-gen/scripts && python3 -m unittest test_subject_resolver -v 2>&1 | tail -15
 ```
 
-Confirm:
-- log line shows non-zero `参考图映射` count
-- if you `print(prompt)` once, `[图1]` / `[图2]` markers are present (not raw `@act_001`)
+Expected: `Ran 11 tests in ...s` and `OK`.
 
 - [ ] **Step 5: Commit**
 
-```
-feat(video-gen): resolve @token references through subject_resolver
+```bash
+git add .claude/skills/video-gen/scripts/subject_resolver.py .claude/skills/video-gen/scripts/test_subject_resolver.py
+git commit -m "$(cat <<'EOF'
+feat(video-gen): add subject_resolver for @-token → [图N] rewrite
 
-Plan-Id: video-gen-subject-reference-2026-04-27-v2
+New pure module bridging storyboard v1.4.0 @act_xxx/@loc_xxx/@prop_xxx
+tokens to Ark referenceImages[] + [图N] prompt indexing. Accepts both
+@-form and legacy {}-form. Dedupes repeated tokens, soft-fails on
+missing assets.
+EOF
+)"
 ```
 
 ---
 
-### Task 3: Document `referenceImages` in aos-cli model contract
+### Task 2: Extend asset loader to include props.json
 
 **Files:**
-- Modify: `.claude/skills/_shared/AOS_CLI_MODEL.md`
+- Modify: `.claude/skills/video-gen/scripts/batch_generate.py:297-364`
+- Test: `.claude/skills/video-gen/scripts/test_subject_resolver.py` (add a loader smoke test)
 
-- [ ] **Step 1: Extend the Video submit example at line 117-132**
+- [ ] **Step 1: Write a failing loader test**
 
-Replace the existing block with:
+Append this class to `.claude/skills/video-gen/scripts/test_subject_resolver.py` (just before the `if __name__ == "__main__":` line):
 
-```jsonc
+```python
+class LoadAssetsWithPropsTest(unittest.TestCase):
+    def test_load_assets_subject_mapping_loads_props(self):
+        import json
+        import tempfile
+        from batch_generate import load_assets_subject_mapping
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "actors").mkdir()
+            (tmp_path / "locations").mkdir()
+            (tmp_path / "props").mkdir()
+            (tmp_path / "actors" / "actors.json").write_text(json.dumps({
+                "act_001": {"name": "X", "default": {"subject_id": "s1", "three_view_url": "https://x/a.png"}}
+            }), encoding="utf-8")
+            (tmp_path / "locations" / "locations.json").write_text(json.dumps({}), encoding="utf-8")
+            (tmp_path / "props" / "props.json").write_text(json.dumps({
+                "prop_001": {"subject_id": "sp", "name": "银锭", "image_url": "https://x/p.png"}
+            }), encoding="utf-8")
+
+            mapping = load_assets_subject_mapping(str(tmp_path))
+
+        self.assertIn("prop_001", mapping)
+        self.assertEqual(mapping["prop_001"]["type"], "prop")
+        self.assertEqual(mapping["prop_001"]["image_url"], "https://x/p.png")
+        self.assertEqual(mapping["prop_001"]["name"], "银锭")
+```
+
+- [ ] **Step 2: Verify the new test fails**
+
+Run:
+```bash
+cd .claude/skills/video-gen/scripts && python3 -m unittest test_subject_resolver.LoadAssetsWithPropsTest -v 2>&1 | tail -10
+```
+
+Expected: `AssertionError: 'prop_001' not found in {...}` (loader does not load props yet).
+
+- [ ] **Step 3: Add props loader to `load_assets_subject_mapping`**
+
+In `.claude/skills/video-gen/scripts/batch_generate.py`, locate the block ending at line 364 (`return mapping`). Insert this block immediately before `return mapping`:
+
+```python
+    # Load props from props/props.json
+    props_file = assets_path / "props" / "props.json"
+    if props_file.exists():
+        with open(props_file, 'r', encoding='utf-8') as f:
+            props_data = json.load(f)
+        prop_count = 0
+        for prop_id, prop_data in props_data.items():
+            subject_id = prop_data.get("subject_id", "")
+            image_url = (
+                prop_data.get("three_view_url")
+                or prop_data.get("main_url")
+                or prop_data.get("image_url", "")
+            )
+            name = prop_data.get("name", prop_id)
+            if subject_id or image_url:
+                mapping[prop_id] = {
+                    "subject_id": subject_id,
+                    "name": name,
+                    "type": "prop",
+                    "image_url": image_url,
+                }
+                prop_count += 1
+            else:
+                print(f"  [WARN] Prop '{prop_id}' ({name}) has no subject_id or image_url, skipping",
+                      file=sys.stderr)
+        print(f"[ASSETS] Loaded {prop_count} props from {props_file}")
+    else:
+        print(f"[INFO] props.json not found: {props_file} (props/* tokens will pass through unresolved)")
+```
+
+- [ ] **Step 4: Verify the test passes**
+
+Run:
+```bash
+cd .claude/skills/video-gen/scripts && python3 -m unittest test_subject_resolver.LoadAssetsWithPropsTest -v 2>&1 | tail -10
+```
+
+Expected: `OK`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add .claude/skills/video-gen/scripts/batch_generate.py .claude/skills/video-gen/scripts/test_subject_resolver.py
+git commit -m "$(cat <<'EOF'
+feat(video-gen): load props.json into asset subject mapping
+
+Extends load_assets_subject_mapping with a third loader mirroring the
+locations branch. Without this, @prop_xxx tokens from storyboard v1.4.0
+have no image_url to resolve to and pass through unresolved.
+EOF
+)"
+```
+
+---
+
+### Task 3: Replace the brace-only regex with @-form-aware regex
+
+**Files:**
+- Modify: `.claude/skills/video-gen/scripts/batch_generate.py:171-192`
+- Test: `.claude/skills/video-gen/scripts/test_subject_resolver.py` (add a regression test)
+
+- [ ] **Step 1: Write a failing regression test**
+
+Append this class to `.claude/skills/video-gen/scripts/test_subject_resolver.py` (before the `if __name__ == "__main__":` line):
+
+```python
+class BatchGenerateRegexTest(unittest.TestCase):
+    def test_batch_generate_extract_subject_ids_recognizes_at_form(self):
+        from batch_generate import extract_subject_ids
+
+        prompt = "@act_001 与 @act_002 在 @loc_003 对话，握住 @prop_004"
+        self.assertEqual(
+            extract_subject_ids(prompt),
+            ["act_001", "act_002", "loc_003", "prop_004"],
+        )
+
+    def test_batch_generate_extract_subject_ids_keeps_brace_form(self):
+        from batch_generate import extract_subject_ids
+
+        prompt = "{act_001} 与 {loc_002}"
+        self.assertEqual(extract_subject_ids(prompt), ["act_001", "loc_002"])
+```
+
+- [ ] **Step 2: Verify the test fails**
+
+Run:
+```bash
+cd .claude/skills/video-gen/scripts && python3 -m unittest test_subject_resolver.BatchGenerateRegexTest -v 2>&1 | tail -10
+```
+
+Expected: `test_batch_generate_extract_subject_ids_recognizes_at_form` fails with `AssertionError: Lists differ: [] != ['act_001', 'act_002', 'loc_003', 'prop_004']`.
+
+- [ ] **Step 3: Replace the regex at line 172**
+
+In `.claude/skills/video-gen/scripts/batch_generate.py`, find the block:
+
+```python
+# Pattern: matches {act_xxx} or {loc_xxx} subject ID placeholders
+_SUBJECT_ID_PATTERN = re.compile(r'\{((?:act|loc)_\d+)\}')
+```
+
+Replace with:
+
+```python
+# Pattern: matches @act_xxx / {act_xxx} / @loc_xxx / {loc_xxx} / @prop_xxx / {prop_xxx}
+# Storyboard skill v1.4.0 emits @-form; legacy storyboards still use {-form.
+_SUBJECT_ID_PATTERN = re.compile(r'[@{]((?:act|loc|prop)_\d+)\}?')
+```
+
+In the same file, update the `extract_subject_ids` docstring at lines 180-191 to mention both forms. Find:
+
+```python
+def extract_subject_ids(full_prompt: str) -> List[str]:
+    """Extract all unique subject IDs from {act_xxx} or {loc_xxx} in prompt.
+
+    Examples:
+    - "{act_001} 站在演武场中央" -> ["act_001"]
+    - "{act_001} 和 {act_002} 在 {loc_003} 对话" -> ["act_001", "act_002", "loc_003"]
+
+    Args:
+        full_prompt: The full_prompts string from ep_shots.json
+
+    Returns:
+        De-duplicated list of subject IDs (preserving order)
+    """
+```
+
+Replace with:
+
+```python
+def extract_subject_ids(full_prompt: str) -> List[str]:
+    """Extract all unique subject IDs from @ or {} forms in prompt.
+
+    Accepted forms (per storyboard skill v1.4.0): @act_xxx, @loc_xxx,
+    @prop_xxx, plus legacy {act_xxx}/{loc_xxx}/{prop_xxx} for back-compat.
+
+    Examples:
+    - "@act_001 站在演武场中央" -> ["act_001"]
+    - "@act_001 和 @act_002 在 @loc_003 对话" -> ["act_001", "act_002", "loc_003"]
+    - "{act_001} 与 @prop_004" -> ["act_001", "prop_004"]
+
+    Args:
+        full_prompt: The full_prompts string from ep_storyboard.json
+
+    Returns:
+        De-duplicated list of subject IDs (preserving order)
+    """
+```
+
+- [ ] **Step 4: Verify both regression tests pass**
+
+Run:
+```bash
+cd .claude/skills/video-gen/scripts && python3 -m unittest test_subject_resolver.BatchGenerateRegexTest -v 2>&1 | tail -10
+```
+
+Expected: `Ran 2 tests in ...s` and `OK`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add .claude/skills/video-gen/scripts/batch_generate.py .claude/skills/video-gen/scripts/test_subject_resolver.py
+git commit -m "$(cat <<'EOF'
+feat(video-gen): match @-form and prop_* in subject ID regex
+
+Updates _SUBJECT_ID_PATTERN to match @act_xxx / {act_xxx} /
+@loc_xxx / {loc_xxx} / @prop_xxx / {prop_xxx}. Without this,
+extract_subject_ids returned [] for every prompt the storyboard
+skill produced after v1.4.0.
+EOF
+)"
+```
+
+---
+
+### Task 4: Wire the resolver into the dry-run preprocessing block
+
+**Files:**
+- Modify: `.claude/skills/video-gen/scripts/batch_generate.py:53` (import) and `:653-670` (dry-run loop)
+
+- [ ] **Step 1: Add the resolver import**
+
+In `.claude/skills/video-gen/scripts/batch_generate.py`, find line 53:
+
+```python
+from batch_generate_runtime import _process_scene_clips, process_scenes_parallel
+```
+
+Insert immediately after it:
+
+```python
+from subject_resolver import resolve_subject_tokens
+```
+
+- [ ] **Step 2: Replace the dry-run preprocessing block**
+
+In the same file, find the dry-run block at lines 653-670:
+
+```python
+    if dry_run:
+        for ls in clips:
+            ls_id = ls['clip_id']
+            scene_id = ls.get('scene_id', '?')
+            pv = ls.get('prompt_version', 0)
+            subject_ids = extract_subject_ids(ls['full_prompts'])
+            mapped = map_subject_ids_to_images(subject_ids, assets_mapping)
+            print(f"  [{ls_id}] pv={pv} [DRY-RUN] Skipping")
+            results.append({
+                "clip_id": ls_id,
+                "scene_id": scene_id,
+                "prompt_version": pv,
+                "prompt": convert_prompt_brackets(ls['full_prompts']),
+                "success": True,
+                "dry_run": True,
+                "subjects_found": len(subject_ids),
+                "subjects_mapped": len(mapped or []),
+            })
+```
+
+Replace with:
+
+```python
+    if dry_run:
+        for ls in clips:
+            ls_id = ls['clip_id']
+            scene_id = ls.get('scene_id', '?')
+            pv = ls.get('prompt_version', 0)
+            prompt_with_indices, resolved_refs = resolve_subject_tokens(
+                ls['full_prompts'], assets_mapping
+            )
+            print(f"  [{ls_id}] pv={pv} [DRY-RUN] Skipping")
+            results.append({
+                "clip_id": ls_id,
+                "scene_id": scene_id,
+                "prompt_version": pv,
+                "prompt": convert_prompt_brackets(prompt_with_indices),
+                "success": True,
+                "dry_run": True,
+                "subjects_found": len(extract_subject_ids(ls['full_prompts'])),
+                "subjects_mapped": len(resolved_refs),
+            })
+```
+
+- [ ] **Step 3: Run the dry-run path against an existing fixture**
+
+Run the existing test suite to confirm nothing else breaks:
+```bash
+cd .claude/skills/video-gen/scripts && python3 -m unittest discover -p "test_*.py" -v 2>&1 | tail -20
+```
+
+Expected: existing tests still pass; resolver tests still green.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add .claude/skills/video-gen/scripts/batch_generate.py
+git commit -m "$(cat <<'EOF'
+feat(video-gen): apply subject_resolver in dry-run preprocessing
+
+Dry-run path now rewrites @-tokens to [图N] markers before storing the
+prompt in results, matching real-run behavior. Token extraction stays
+for diagnostic counts.
+EOF
+)"
+```
+
+---
+
+### Task 5: Wire the resolver into the real-run preprocessing block
+
+**Files:**
+- Modify: `.claude/skills/video-gen/scripts/batch_generate.py:672-694`
+
+- [ ] **Step 1: Replace the real-run preprocessing block**
+
+In `.claude/skills/video-gen/scripts/batch_generate.py`, find the block at lines 672-694:
+
+```python
+    else:
+        # ── Pre-process all clips ──
+        clip_states = []
+        for ls in clips:
+            ls_id = ls['clip_id']
+            scene_id = ls.get('scene_id', '?')
+            pv = ls.get('prompt_version', 0)
+            subject_ids = extract_subject_ids(ls['full_prompts'])
+
+            reference_images = map_subject_ids_to_images(subject_ids, assets_mapping)
+            if reference_images:
+                print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (图片参考)")
+            # JSON 中已有 lsi.url（上一 clip 最后镜头首帧），同时作为参考图加入
+            lsi_url = ls.get('lsi_url', '')
+            if lsi_url:
+                reference_images = list(reference_images or [])
+                reference_images.append({
+                    "url": lsi_url,
+                    "name": "lsi",
+                    "display_name": "上一镜头首帧",
+                })
+                print(f"  [{ls_id}] lsi 参考图已加入 (url={lsi_url[:50]})")
+
+            prompt = convert_prompt_brackets(ls['full_prompts'])
+            dur_api = parse_duration(ls.get('duration_seconds', '5'))
+            location_num, clip_num = parse_clip_id(ls_id)
+```
+
+Replace with:
+
+```python
+    else:
+        # ── Pre-process all clips ──
+        clip_states = []
+        for ls in clips:
+            ls_id = ls['clip_id']
+            scene_id = ls.get('scene_id', '?')
+            pv = ls.get('prompt_version', 0)
+
+            prompt_with_indices, reference_images = resolve_subject_tokens(
+                ls['full_prompts'], assets_mapping
+            )
+            subject_ids = extract_subject_ids(ls['full_prompts'])
+            if reference_images:
+                print(f"  [{ls_id}] {len(reference_images)}/{len(subject_ids)} 参考图映射 (image-reference mode)")
+            # JSON 中已有 lsi.url（上一 clip 最后镜头首帧），同时作为参考图加入
+            lsi_url = ls.get('lsi_url', '')
+            if lsi_url:
+                reference_images = list(reference_images)
+                reference_images.append({
+                    "url": lsi_url,
+                    "name": "lsi",
+                    "display_name": "上一镜头首帧",
+                })
+                print(f"  [{ls_id}] lsi 参考图已加入 (url={lsi_url[:50]})")
+
+            prompt = convert_prompt_brackets(prompt_with_indices)
+            dur_api = parse_duration(ls.get('duration_seconds', '5'))
+            location_num, clip_num = parse_clip_id(ls_id)
+```
+
+The order matters: `resolve_subject_tokens` runs **before** `convert_prompt_brackets`, so `@`-tokens become `[图N]` first, then `convert_prompt_brackets` cleans up legacy `【xxx】` form (orthogonal — they cannot collide).
+
+- [ ] **Step 2: Run the full video-gen test suite**
+
+Run:
+```bash
+cd .claude/skills/video-gen/scripts && python3 -m unittest discover -p "test_*.py" -v 2>&1 | tail -25
+```
+
+Expected: all existing tests still pass, `Ran NN tests in ...s`, `OK`.
+
+- [ ] **Step 3: Smoke-test against a real workspace if present**
+
+Check whether `workspace/c4-1/output/storyboard/approved/` exists:
+```bash
+ls workspace/c4-1/output/storyboard/approved/ 2>&1 | head -5
+```
+
+If at least one `ep*_storyboard.json` exists, run a dry-run and grep for `[图`:
+```bash
+PROJECT_DIR=$(pwd)/workspace/c4-1 \
+  python3 .claude/skills/video-gen/scripts/batch_generate.py \
+  workspace/c4-1/output/storyboard/approved/ep001_storyboard.json \
+  --output workspace/c4-1/output/ep001 \
+  --episode 1 --dry-run 2>&1 | grep -E '\[图|参考图映射' | head -10
+```
+
+Expected: at least one line containing `[图` or `参考图映射` with a non-zero count. If no real workspace exists, skip this step — the test suite already locks behavior.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add .claude/skills/video-gen/scripts/batch_generate.py
+git commit -m "$(cat <<'EOF'
+feat(video-gen): apply subject_resolver in real-run preprocessing
+
+Real-run path now resolves @-tokens to [图N] markers + ordered
+referenceImages[] before building ClipIntent. Resolver runs before
+convert_prompt_brackets so @-tokens and legacy 【xxx】 form remain
+orthogonal. lsi continuity frame is appended after resolution.
+EOF
+)"
+```
+
+---
+
+### Task 6: Document referenceImages/referenceVideos in the model contract
+
+**Files:**
+- Modify: `.claude/skills/_shared/AOS_CLI_MODEL.md:117-132`
+
+- [ ] **Step 1: Replace the Video submit example**
+
+In `.claude/skills/_shared/AOS_CLI_MODEL.md`, find lines 117-132:
+
+```markdown
+Video submit:
+
+```json
 {
   "apiVersion": "aos-cli.model/v1",
   "task": "video.ep001.scn001.clip001",
   "capability": "video.generate",
   "output": {"kind": "task"},
   "input": {
-    "prompt": "[图1] 走入 [图2]，[图1] 抬眼。",
+    "prompt": "Slow camera push through a moonlit courtyard.",
+    "duration": 5,
+    "ratio": "16:9",
+    "quality": "standard"
+  }
+}
+```
+```
+
+Replace with:
+
+````markdown
+Video submit:
+
+```json
+{
+  "apiVersion": "aos-cli.model/v1",
+  "task": "video.ep001.scn001.clip001",
+  "capability": "video.generate",
+  "output": {"kind": "task"},
+  "input": {
+    "prompt": "[图1] 走入 [图2]，[图1] 抬眼望向远处。",
     "duration": 5,
     "ratio": "16:9",
     "quality": "standard",
     "referenceImages": [
-      { "url": "https://...portrait.png", "role": "reference_image", "name": "act_001" },
-      { "url": "https://...location.png", "role": "reference_image", "name": "loc_002" }
+      { "url": "https://.../act_001.png", "role": "reference_image", "name": "act_001" },
+      { "url": "https://.../loc_002.png", "role": "reference_image", "name": "loc_002" }
     ],
     "referenceVideos": [
-      { "url": "https://...lsi.mp4", "role": "first_frame", "name": "lsi" }
+      { "url": "https://.../prev_clip_first_frame.mp4", "role": "first_frame", "name": "lsi" }
     ]
   }
 }
 ```
 
-Add a short paragraph after the example:
+`[图N]` markers in `prompt` are 1-based indexes into `input.referenceImages[]`.
+The boundary forwards these references into Ark's `content[]` array; Ark binds
+them by index. `referenceVideos[]` accepts a `first_frame` role used by the
+continuity hand-off between consecutive clips. Both arrays are optional —
+omit them for plain text-to-video generation.
+````
 
-> `[图N]` markers in `prompt` are 1-based indexes into `input.referenceImages[]`. The boundary forwards these references into Ark's `content[]` array; Ark binds them by index. `referenceVideos[]` accepts a `first_frame` role used by the continuity hand-off between consecutive clips.
+- [ ] **Step 2: Verify the change**
 
-- [ ] **Step 2: Commit**
-
+Run:
+```bash
+grep -n "referenceImages\|referenceVideos" .claude/skills/_shared/AOS_CLI_MODEL.md
 ```
+
+Expected: at least 2 lines mentioning each field.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add .claude/skills/_shared/AOS_CLI_MODEL.md
+git commit -m "$(cat <<'EOF'
 docs(aos-cli-model): document referenceImages/referenceVideos in video.generate
 
-Plan-Id: video-gen-subject-reference-2026-04-27-v2
+Documents the `input.referenceImages[]` and `input.referenceVideos[]`
+fields that the boundary already supports
+(aos-cli/src/aos_cli/model/providers/ark_video.py:30-55) but whose wire
+shape was undocumented. Includes [图N] indexing convention.
+EOF
+)"
 ```
 
 ---
 
-### Task 4: Cross-link from `video-gen/SKILL.md`
+### Task 7: Cross-link from video-gen SKILL.md
 
 **Files:**
 - Modify: `.claude/skills/video-gen/SKILL.md`
 
-- [ ] **Step 1: Add a short consumption-contract section**
+- [ ] **Step 1: Locate the input-format section**
 
-Find the existing input-format section. Add a paragraph (or sub-section) describing:
-
-> **Subject reference resolution.** Storyboard prompts use `@act_xxx` / `@loc_xxx` / `@prop_xxx` tokens. Before submission, `subject_resolver.resolve_subject_tokens()` rewrites them to `[图N]` markers and assembles the matching `referenceImages[]` entry list from `output/actors/actors.json`, `output/locations/locations.json`, `output/props/props.json`. Tokens with no resolvable image stay as raw text — the model receives them unchanged but no reference image is attached. See `_shared/AOS_CLI_MODEL.md` for the wire shape.
-
-- [ ] **Step 2: Commit**
-
+Run:
+```bash
+grep -n "^## \|^### " .claude/skills/video-gen/SKILL.md | head -20
 ```
-docs(video-gen): document @token → [图N] consumption contract
 
-Plan-Id: video-gen-subject-reference-2026-04-27-v2
+Identify the section that documents how prompts flow through video-gen (look for headings like `## Input` / `## Pipeline` / `## Reference`). If no such section exists, the addendum goes directly under the front-matter.
+
+- [ ] **Step 2: Add the resolution-contract paragraph**
+
+Open `.claude/skills/video-gen/SKILL.md`. Find the most appropriate section header from Step 1 (or the first `---` divider after front-matter if none exists). Insert the following paragraph immediately after that header:
+
+```markdown
+### Subject reference resolution
+
+Storyboard prompts use `@act_xxx` / `@loc_xxx` / `@prop_xxx` tokens (legacy
+`{act_xxx}` form is also accepted). Before submission,
+`scripts/subject_resolver.resolve_subject_tokens()` rewrites them to `[图N]`
+markers and assembles the matching `referenceImages[]` entry list from
+`output/actors/actors.json`, `output/locations/locations.json`,
+`output/props/props.json`. Tokens with no resolvable image stay as raw text —
+the model receives them unchanged and no reference image is attached for that
+slot. See `_shared/AOS_CLI_MODEL.md` for the wire shape.
+```
+
+- [ ] **Step 3: Verify the paragraph landed**
+
+Run:
+```bash
+grep -n "subject_resolver\|@act_xxx" .claude/skills/video-gen/SKILL.md
+```
+
+Expected: at least one line per pattern.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add .claude/skills/video-gen/SKILL.md
+git commit -m "$(cat <<'EOF'
+docs(video-gen): document @-token consumption contract
+
+Documents how subject_resolver bridges storyboard @act_xxx / @loc_xxx /
+@prop_xxx tokens to the [图N] marker + referenceImages[] convention
+that the aos-cli video.generate capability consumes.
+EOF
+)"
 ```
 
 ---
 
 ## Risks and Rollback
 
-- **Risk: Storyboards still containing legacy `【xxx】` form.** Handled by keeping `convert_prompt_brackets` in the chain; resolver runs first and handles `@`-tokens, then `convert_prompt_brackets` cleans up `【】`. Order matters — resolver must run **before** `convert_prompt_brackets`.
-- **Risk: `[图N]` index drift on multi-character scenes.** Resolver dedupes by token (`act_001` referenced twice → one entry in `referenceImages` → both occurrences rewrite to `[图1]`). Confirmed by `test_dedupes_repeated_tokens_preserving_first_occurrence`.
-- **Risk: Missing assets.** When a token has no `image_url`, the resolver leaves the raw `@act_xxx` in the prompt and skips its slot. This is intentionally lossy-soft — Ark gets a prompt with an unresolved token (≤ today's behavior, since today the prompt also passes `@act_001` through unchanged).
-- **Risk: Real-person photo restrictions in Ark.** Out of scope for this plan. If Ark rejects, the failure surfaces through the existing aos-cli error envelope (`PROVIDER_REJECTED`), unchanged.
-- **Rollback path:** Revert Task 4 → 3 → 2 → 1 in reverse order. Task 1 is purely additive (new module + new test file) and safe to leave merged even after a feature-flag-style rollback. Single revert of Task 2's commit restores the previous broken-but-shipping behavior immediately.
+- **Risk: Storyboards still containing legacy `【xxx】` form.** Handled by keeping `convert_prompt_brackets` in the chain; resolver runs first and handles `@`-tokens, then `convert_prompt_brackets` cleans up `【】`. Order matters — resolver must run **before** `convert_prompt_brackets`. Locked by Task 5 Step 1 ordering.
+- **Risk: `[图N]` index drift on multi-character scenes.** Resolver dedupes by token (`act_001` referenced twice → one entry in `referenceImages` → both occurrences rewrite to `[图1]`). Locked by `test_dedupes_so_one_token_one_image_one_index`.
+- **Risk: Missing assets.** When a token has no `image_url`, the resolver leaves the raw `@act_xxx` in the prompt and skips its slot. This is intentionally lossy-soft and matches today's behavior (the prompt already passes `@act_001` through unchanged). Locked by `test_missing_token_keeps_raw_text_and_skips_url`.
+- **Risk: Real-person photo restrictions in Ark.** Out of scope. If Ark rejects a reference image, the failure surfaces through the existing aos-cli error envelope (`PROVIDER_REJECTED`), unchanged by this plan.
+- **Rollback path:** Revert Task 7 → 6 → 5 → 4 → 3 → 2 → 1 in reverse commit order. Tasks 1, 2, and 6 are purely additive and safe to leave merged even after a behavior-level rollback. Single revert of Task 5's commit alone restores the previous broken-but-shipping behavior immediately.
 
 ---
 
-## Verification Checklist
+## Self-Review Checklist (executed)
 
-- [ ] `cd .claude/skills/video-gen/scripts && python -m pytest test_subject_resolver.py` → all green
-- [ ] `cd .claude/skills/video-gen/scripts && python -m pytest .` → no regression in existing suites (`test_provider_switch.py`, `test_duration_manifest.py`, `test_fake_e2e_generation.py`, `test_video_generation_scheduling.py`)
-- [ ] Manual dry-run on `workspace/c4-1/` produces `[图N]` in compiled prompt and non-empty `referenceImages` in submit JSON
-- [ ] `_shared/AOS_CLI_MODEL.md` documents both new fields
-- [ ] `video-gen/SKILL.md` cross-links the resolver
+- **Spec coverage:** Each gap listed in Audit Findings → covered by a task. Regex gap → Task 3. `[图N]` rewriter gap → Task 1 + Task 4 + Task 5. `prop_xxx` gap → Task 2 + Task 3. Docs gap → Task 6 + Task 7.
+- **Placeholder scan:** No "TODO", no "appropriate handling", no "similar to Task N". All commit messages are full multi-line strings via heredoc. All commands have expected output.
+- **Type/name consistency:** `extract_subject_tokens` (resolver) vs `extract_subject_ids` (existing batch_generate function) — kept distinct on purpose; the former is the new public resolver function, the latter is the existing batch_generate helper that we update in-place to share the same regex (`_SUBJECT_ID_PATTERN`). Both use `[@{]((?:act|loc|prop)_\d+)\}?` after Task 3.
