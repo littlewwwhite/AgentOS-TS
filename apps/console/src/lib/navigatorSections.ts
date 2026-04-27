@@ -27,3 +27,10 @@ export function buildNavigatorSections(input: {
     { key: "episodes", label: "分集视频", available: input.episodeIds.length > 0, group: "per_episode" },
   ];
 }
+
+export function shouldShowGroupDivider(
+  prevGroup: NavigatorGroup | null,
+  section: NavigatorSection,
+): boolean {
+  return prevGroup === "cross_episode" && section.group === "per_episode" && section.available;
+}

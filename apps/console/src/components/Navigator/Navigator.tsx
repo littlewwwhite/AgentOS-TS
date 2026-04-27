@@ -1,10 +1,11 @@
 import { useMemo } from "react";
+import type { ReactNode } from "react";
 import { useProject } from "../../contexts/ProjectContext";
 import { useTabs } from "../../contexts/TabsContext";
 import { resolveView } from "../Viewer/resolveView";
 import { StageNode } from "./StageNode";
 import { EpisodeNode } from "./EpisodeNode";
-import { buildNavigatorSections } from "../../lib/navigatorSections";
+import { buildNavigatorSections, shouldShowGroupDivider } from "../../lib/navigatorSections";
 import type { NavigatorGroup, NavigatorSection } from "../../lib/navigatorSections";
 import { STAGE_ORDER } from "../../lib/workflowModel";
 
@@ -51,7 +52,7 @@ export function Navigator() {
     episodeIds: epIds,
   });
 
-  function renderSection(section: NavigatorSection): React.ReactNode {
+  function renderSection(section: NavigatorSection): ReactNode {
     if (section.key === "overview") {
       return (
         <StageNode
@@ -184,7 +185,8 @@ export function Navigator() {
   return (
     <div className="py-4 overflow-y-auto h-full">
       {sections.map((section) => {
-        const dividerNeeded = lastGroup === "cross_episode" && section.group === "per_episode" && section.available;
+        // Layout-only boundary between cross_episode and per_episode groups; not a content separator.
+        const dividerNeeded = shouldShowGroupDivider(lastGroup, section);
         lastGroup = section.group;
         const node = renderSection(section);
         return (

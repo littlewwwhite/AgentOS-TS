@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { buildNavigatorSections } from "../src/lib/navigatorSections";
+import {
+  buildNavigatorSections,
+  shouldShowGroupDivider,
+} from "../src/lib/navigatorSections";
+import type { NavigatorSection } from "../src/lib/navigatorSections";
 
 describe("buildNavigatorSections", () => {
   test("keeps a stable production navigation skeleton", () => {
@@ -85,5 +89,40 @@ describe("buildNavigatorSections", () => {
       assets: "cross_episode",
       episodes: "per_episode",
     });
+  });
+});
+
+describe("shouldShowGroupDivider", () => {
+  const episodesAvailable: NavigatorSection = {
+    key: "episodes",
+    label: "分集视频",
+    available: true,
+    group: "per_episode",
+  };
+  const episodesEmpty: NavigatorSection = {
+    ...episodesAvailable,
+    available: false,
+  };
+  const crossSection: NavigatorSection = {
+    key: "assets",
+    label: "素材",
+    available: true,
+    group: "cross_episode",
+  };
+
+  test("shows divider at the cross_episode → per_episode boundary when target is available", () => {
+    expect(shouldShowGroupDivider("cross_episode", episodesAvailable)).toBe(true);
+  });
+
+  test("hides divider when the per_episode section has no episodes yet", () => {
+    expect(shouldShowGroupDivider("cross_episode", episodesEmpty)).toBe(false);
+  });
+
+  test("hides divider between two cross_episode sections", () => {
+    expect(shouldShowGroupDivider("cross_episode", crossSection)).toBe(false);
+  });
+
+  test("hides divider for the very first section (no previous group)", () => {
+    expect(shouldShowGroupDivider(null, episodesAvailable)).toBe(false);
   });
 });
