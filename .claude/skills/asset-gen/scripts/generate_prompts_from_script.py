@@ -5,7 +5,7 @@
 
 流程:
   1. 读取 script.json 中的 episodes 数组
-  2. 使用 Gemini 分析指定集数的剧本内容
+  2. 使用 aos-cli model 分析指定集数的剧本内容
   3. 提取角色、场景、道具列表
   4. 为每个资产生成详细的英文提示词
   5. 输出三个 JSON 文件到 workspace
@@ -132,7 +132,7 @@ def format_episode_to_text(episode_data):
 
 
 def generate_voice_desc_with_gemini(actor_name, description, script_config):
-    """使用 Gemini 为角色生成音色描述"""
+    """通过 aos-cli model 为角色生成音色描述"""
     world_context = (
         f"世界观背景:\n"
         f"- 项目名: {script_config.get('title', '未知')}\n"
@@ -150,7 +150,7 @@ def generate_voice_desc_with_gemini(actor_name, description, script_config):
 
 
 def generate_asset_description_with_gemini(asset_type, asset_name, description, script_config):
-    """使用 Gemini 为单个资产生成中文描述"""
+    """通过 aos-cli model 为单个资产生成中文描述"""
     world_context = (
         f"世界观背景:\n"
         f"- 项目名: {script_config.get('title', '未知')}\n"
@@ -166,9 +166,9 @@ def generate_asset_description_with_gemini(asset_type, asset_name, description, 
 
 
 def _build_gender_anchor(gender: str, height_cm) -> str:
-    """Build a hard-coded gender/height anchor prefix to prevent Gemini gender hallucination.
+    """Build a hard-coded gender/height anchor prefix to prevent model gender hallucination.
 
-    This prefix is prepended to the Gemini output so the image model receives
+    This prefix is prepended to the generated text so the image model receives
     an unambiguous gender signal before any generated text.
     """
     try:
@@ -208,7 +208,7 @@ def _extract_gender_height(description: str):
 def generate_prompt_with_gemini(asset_type, asset_name, asset_description, style_config,
                                appearance_region='', appearance_subtype='', appearance_region_traits='',
                                worldview='', region='', gender='', height_cm=None):
-    """使用 Gemini 生成单个资产的中文提示词"""
+    """通过 aos-cli model 生成单个资产的中文提示词"""
     tpls = _GC["prompt_templates"]["asset_prompt"]
 
     if asset_type == "character_three_view":
@@ -239,8 +239,8 @@ def generate_prompt_with_gemini(asset_type, asset_name, asset_description, style
             prefix = style_config['character_style'].get('prefix', '')
             suffix = style_config['character_style'].get('suffix', '')
             generated_text = generated_text.strip('，。, ')
-            # Prepend a hard-coded gender/height anchor to prevent Gemini gender hallucination.
-            # Final order: style prefix + gender anchor + Gemini text + style suffix
+            # Prepend a hard-coded gender/height anchor to prevent model gender hallucination.
+            # Final order: style prefix + gender anchor + generated text + style suffix
             gender_anchor = _build_gender_anchor(gender or 'female', height_cm)
             return f"{prefix}{gender_anchor}{generated_text}，{suffix}"
 
@@ -289,7 +289,7 @@ def collect_all_actions_text(script_data):
 
 
 def analyze_actor_profiles_with_gemini(script_data, workspace_path):
-    """调用 Gemini，基于剧本 actions 内容分析每个角色的性格、外貌、服装、情感弧线。
+    """调用 aos-cli model，基于剧本 actions 内容分析每个角色的性格、外貌、服装、情感弧线。
 
     输出保存到 draft/actor_analysis.json，支持断点续传。
     返回 {actor_id: {actor_name, personality, appearance, clothing, emotional_arc}}。
@@ -410,7 +410,7 @@ def process_character_state(actor_name, actor_id, actor_description, state, asse
     state_name = state.get('state_name') or state.get('name')
     log(f"  - 生成形态: {actor_name}({state_name})")
 
-    # Extract gender and height before Gemini call to anchor the prompt
+    # Extract gender and height before model generation to anchor the prompt
     gender, height_cm = _extract_gender_height(actor_description)
 
     # 生成该形态的描述
@@ -454,7 +454,7 @@ def process_character_default(actor_name, actor_id, actor_description, asset_epi
     """并发处理单个角色默认形态的提示词生成"""
     log(f"  - 生成默认形态: {actor_name}")
 
-    # Extract gender and height before Gemini call to anchor the prompt
+    # Extract gender and height before model generation to anchor the prompt
     gender, height_cm = _extract_gender_height(actor_description)
 
     description = generate_asset_description_with_gemini(
@@ -489,7 +489,7 @@ def process_character_default(actor_name, actor_id, actor_description, asset_epi
 
 
 def determine_scene_groups_with_gemini(locations, script_config):
-    """使用 Gemini 语义分析场景列表，返回每个场景的组归属信息。
+    """通过 aos-cli model 语义分析场景列表，返回每个场景的组归属信息。
 
     返回格式:
         {location_name: {"group": "桃花楼", "group_default": True/False}, ...}
@@ -536,7 +536,7 @@ def determine_scene_groups_with_gemini(locations, script_config):
         log(f"✓ 场景分组完成，共 {len(result)} 个场景")
         return result
     except Exception as e:
-        log(f"⚠ Gemini 场景分组失败: {e}，使用默认策略（每个场景自成一组）")
+        log(f"⚠ aos-cli model 场景分组失败: {e}，使用默认策略（每个场景自成一组）")
         return {(loc.get('location_name') or loc.get('name', '')): {"group": (loc.get('location_name') or loc.get('name', '')), "group_default": True} for loc in locations}
 
 
@@ -725,8 +725,8 @@ def _build_scenes(locations, asset_episodes, script_config, style_config, projec
     worldview = (style_config or {}).get('worldview_subtype', '') or script_config.get('worldview', '')
     region = (style_config or {}).get('appearance_region', '')
 
-    # 先用 Gemini 语义分组
-    log("  → 使用 Gemini 分析场景分组...")
+    # 先用 aos-cli model 语义分组
+    log("  → 使用 aos-cli model 分析场景分组...")
     groups_info = determine_scene_groups_with_gemini(locations, script_config)
 
     with ThreadPoolExecutor(max_workers=10) as executor:
