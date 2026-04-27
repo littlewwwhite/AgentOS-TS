@@ -166,6 +166,7 @@ class ProviderSwitchTest(unittest.TestCase):
 
 def test_video_submit_uses_aos_cli_task_boundary(tmp_path, monkeypatch):
     import video_api
+    import aos_cli_envelope
 
     calls = []
 
@@ -192,7 +193,7 @@ def test_video_submit_uses_aos_cli_task_boundary(tmp_path, monkeypatch):
         )
         return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-    monkeypatch.setattr(video_api, "aos_cli_model_submit", fake_submit)
+    monkeypatch.setattr(aos_cli_envelope, "aos_cli_model_submit", fake_submit)
 
     result = video_api.submit_video_generation(
         prompt="Slow camera push.",
@@ -209,6 +210,7 @@ def test_video_submit_uses_aos_cli_task_boundary(tmp_path, monkeypatch):
 
 def test_video_poll_uses_aos_cli_task_result_boundary(tmp_path, monkeypatch):
     import video_api
+    import aos_cli_envelope
 
     def fake_poll(task_path, result_path, *, cwd=None):
         result_path.write_text(
@@ -236,7 +238,7 @@ def test_video_poll_uses_aos_cli_task_result_boundary(tmp_path, monkeypatch):
         )
         return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-    monkeypatch.setattr(video_api, "aos_cli_model_poll", fake_poll)
+    monkeypatch.setattr(aos_cli_envelope, "aos_cli_model_poll", fake_poll)
 
     result = video_api.poll_video_generation(
         task_envelope={

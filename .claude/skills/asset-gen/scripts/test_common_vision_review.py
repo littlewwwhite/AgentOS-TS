@@ -28,6 +28,7 @@ class CommonVisionReviewBoundaryTest(unittest.TestCase):
 
     def test_call_vision_review_uses_aos_cli_model_boundary(self):
         common_vision_review = self.import_module()
+        aos_cli_envelope = importlib.import_module("aos_cli_envelope")
         captured = {}
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -58,7 +59,7 @@ class CommonVisionReviewBoundaryTest(unittest.TestCase):
                 )
                 return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-            with patch.object(common_vision_review, "aos_cli_model_run", side_effect=fake_run):
+            with patch.object(aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
                 result = common_vision_review.call_vision_review(
                     ["system prompt", image_part, "scene prompt"],
                     task="scene.main.review",

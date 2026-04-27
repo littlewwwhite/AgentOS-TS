@@ -31,8 +31,12 @@ class CommonVideoAnalyzeBoundaryTest(unittest.TestCase):
         sys.modules.pop("common_video_analyze", None)
         return importlib.import_module("common_video_analyze")
 
+    def import_envelope(self):
+        return importlib.import_module("aos_cli_envelope")
+
     def test_call_video_analyze_uses_aos_cli_model_boundary(self):
         common_video_analyze = self.import_module()
+        aos_cli_envelope = self.import_envelope()
         captured = {}
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -61,7 +65,7 @@ class CommonVideoAnalyzeBoundaryTest(unittest.TestCase):
                 )
                 return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-            with patch.object(common_video_analyze, "aos_cli_model_run", side_effect=fake_run):
+            with patch.object(aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
                 result = common_video_analyze.call_video_analyze(
                     [video_path],
                     "compare variants",

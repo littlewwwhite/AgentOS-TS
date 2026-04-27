@@ -31,8 +31,12 @@ class CommonAudioTranscribeBoundaryTest(unittest.TestCase):
         sys.modules.pop("common_audio_transcribe", None)
         return importlib.import_module("common_audio_transcribe")
 
+    def import_envelope(self):
+        return importlib.import_module("aos_cli_envelope")
+
     def test_call_audio_transcribe_uses_aos_cli_model_boundary(self):
         common_audio_transcribe = self.import_module()
+        aos_cli_envelope = self.import_envelope()
         captured = {}
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -66,7 +70,7 @@ class CommonAudioTranscribeBoundaryTest(unittest.TestCase):
                 )
                 return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-            with patch.object(common_audio_transcribe, "aos_cli_model_run", side_effect=fake_run):
+            with patch.object(aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
                 result = common_audio_transcribe.call_audio_transcribe(
                     video_path,
                     "transcribe this video",

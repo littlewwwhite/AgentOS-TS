@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -23,7 +22,7 @@ _SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
 if str(_SHARED_DIR) not in sys.path:
     sys.path.insert(0, str(_SHARED_DIR))
 
-from aos_cli_model import aos_cli_model_poll, aos_cli_model_submit  # noqa: E402
+from aos_cli_envelope import poll_envelope, submit_envelope  # noqa: E402
 
 _vm_cfg = get_video_model_config()
 _gen_cfg = get_generation_config()
@@ -127,21 +126,7 @@ def submit_video_generation(
     if model:
         request["modelPolicy"] = {"model": model}
 
-    with tempfile.TemporaryDirectory(prefix="video-submit-aos-cli-") as tmp:
-        request_path = Path(tmp) / "request.json"
-        task_path = Path(tmp) / "task.json"
-        request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
-        completed = aos_cli_model_submit(request_path, task_path, cwd=project_dir)
-        if completed.returncode != 0:
-            raise RuntimeError(
-                completed.stderr or f"aos-cli failed with exit code {completed.returncode}"
-            )
-        envelope = json.loads(task_path.read_text(encoding="utf-8"))
-
-    if not envelope.get("ok"):
-        error = envelope.get("error", {}) or {}
-        raise RuntimeError(error.get("message") or "aos-cli video submit failed")
-    return envelope
+    return submit_envelope(request, cwd=project_dir, tmp_prefix="video-submit-aos-cli-")
 
 
 def poll_video_generation(
@@ -151,23 +136,7 @@ def poll_video_generation(
 ) -> Dict[str, Any]:
     """Poll a previously-submitted aos-cli video task for its task_result."""
 
-    with tempfile.TemporaryDirectory(prefix="video-poll-aos-cli-") as tmp:
-        task_path = Path(tmp) / "task.json"
-        result_path = Path(tmp) / "result.json"
-        task_path.write_text(
-            json.dumps(task_envelope, ensure_ascii=False), encoding="utf-8"
-        )
-        completed = aos_cli_model_poll(task_path, result_path, cwd=project_dir)
-        if completed.returncode != 0:
-            raise RuntimeError(
-                completed.stderr or f"aos-cli failed with exit code {completed.returncode}"
-            )
-        envelope = json.loads(result_path.read_text(encoding="utf-8"))
-
-    if not envelope.get("ok"):
-        error = envelope.get("error", {}) or {}
-        raise RuntimeError(error.get("message") or "aos-cli video poll failed")
-    return envelope
+    return poll_envelope(task_envelope, cwd=project_dir, tmp_prefix="video-poll-aos-cli-")
 
 
 def upload_to_cos(file_path: str, scene_type: str = "first_frame") -> Optional[str]:

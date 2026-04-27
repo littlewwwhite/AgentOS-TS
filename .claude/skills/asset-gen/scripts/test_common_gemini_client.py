@@ -28,7 +28,9 @@ class CommonGeminiClientBoundaryTest(unittest.TestCase):
 
     def import_module(self):
         sys.modules.pop("common_gemini_client", None)
-        return importlib.import_module("common_gemini_client")
+        module = importlib.import_module("common_gemini_client")
+        self.aos_cli_envelope = importlib.import_module("aos_cli_envelope")
+        return module
 
     def test_generate_text_with_retry_uses_aos_cli_model_boundary(self):
         common_gemini_client = self.import_module()
@@ -47,7 +49,7 @@ class CommonGeminiClientBoundaryTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(common_gemini_client, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             result = common_gemini_client.generate_text_with_retry(
                 "rewrite this",
                 label="rewrite_prompt",
@@ -79,7 +81,7 @@ class CommonGeminiClientBoundaryTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(common_gemini_client, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             result = common_gemini_client.generate_json_with_retry(
                 "analyze style",
                 label="世界观分析",
@@ -109,7 +111,7 @@ class CommonGeminiClientBoundaryTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(common_gemini_client, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             result = common_gemini_client.generate_json_with_retry("prompt", max_retries=1)
 
         self.assertEqual(result, {"worldview_type": "奇幻"})
@@ -127,7 +129,7 @@ class CommonGeminiClientBoundaryTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(common_gemini_client, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             with self.assertRaisesRegex(RuntimeError, "output.kind mismatch"):
                 common_gemini_client.generate_text_with_retry("prompt", max_retries=1)
 
@@ -144,7 +146,7 @@ class CommonGeminiClientBoundaryTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(common_gemini_client, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             with self.assertRaisesRegex(RuntimeError, "missing output.text"):
                 common_gemini_client.generate_text_with_retry("prompt", max_retries=1)
 
@@ -161,7 +163,7 @@ class CommonGeminiClientBoundaryTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(common_gemini_client, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             result = common_gemini_client.generate_content_with_retry("prompt", max_retries=1)
 
         self.assertEqual(result, "generated description")
@@ -179,7 +181,7 @@ class CommonGeminiClientBoundaryTest(unittest.TestCase):
             )
             return type("Completed", (), {"returncode": 0, "stderr": ""})()
 
-        with patch.object(common_gemini_client, "aos_cli_model_run", side_effect=fake_run):
+        with patch.object(self.aos_cli_envelope, "aos_cli_model_run", side_effect=fake_run):
             with self.assertRaisesRegex(RuntimeError, "missing key"):
                 common_gemini_client.generate_text_with_retry("prompt", max_retries=1)
 

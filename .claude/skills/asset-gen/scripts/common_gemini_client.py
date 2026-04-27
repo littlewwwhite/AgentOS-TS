@@ -8,20 +8,17 @@ common_gemini_client.py — aos-cli text/JSON adapter for asset-gen.
 
 Despite the legacy module name, this file no longer talks to Gemini directly. It builds
 `aos-cli.model/v1` envelopes with `capability=generate` and dispatches them through
-`.claude/skills/_shared/aos_cli_model.py`. Provider routing, key resolution, and proxy
-selection are owned by `aos-cli`.
+`_shared/aos_cli_envelope.py`. Provider routing, key resolution, and proxy selection
+are owned by `aos-cli`.
 
 Image+text review paths use `common_vision_review.py` and `vision.review`.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 import random
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -32,7 +29,7 @@ _SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
 if str(_SHARED_DIR) not in sys.path:
     sys.path.insert(0, str(_SHARED_DIR))
 
-from aos_cli_model import aos_cli_model_run
+from aos_cli_envelope import extract_json, extract_text, run_envelope
 
 
 logger = logging.getLogger(__name__)
@@ -43,31 +40,13 @@ def _load_backend_config() -> dict:
 
 
 def get_model(backend_config: dict | None = None) -> str:
-    """Return the configured text/JSON model name (read by `_aos_cli_generate`)."""
     if backend_config is None:
         backend_config = _load_backend_config()
     return backend_config.get("model", "gemini-2.0-flash")
 
 
-def _read_aos_cli_response(response_path: Path) -> dict:
-    if not response_path.exists():
-        return {}
-    try:
-        return json.loads(response_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Invalid aos-cli response envelope: {response_path}") from exc
-
-
-def _parse_json_text(text: str) -> Any:
-    raw = (text or "").strip()
-    if raw.startswith("```"):
-        lines = raw.split("\n")
-        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-    return json.loads(raw)
-
-
 def _aos_cli_generate(prompt: str, *, label: str, output_kind: str, model: str | None = None) -> Any:
-    request = {
+    request: dict[str, Any] = {
         "apiVersion": "aos-cli.model/v1",
         "task": label,
         "capability": "generate",
@@ -78,37 +57,17 @@ def _aos_cli_generate(prompt: str, *, label: str, output_kind: str, model: str |
     if selected_model:
         request["modelPolicy"] = {"model": selected_model}
 
-    with tempfile.TemporaryDirectory(prefix="asset-gen-aos-cli-") as tmp:
-        request_path = Path(tmp) / "request.json"
-        response_path = Path(tmp) / "response.json"
-        request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
-        completed = aos_cli_model_run(request_path, response_path, cwd=Path.cwd())
-        response = _read_aos_cli_response(response_path)
-
-    if not response:
-        if completed.returncode != 0:
-            raise RuntimeError(completed.stderr or f"aos-cli failed with exit code {completed.returncode}")
-        raise RuntimeError("aos-cli did not write a response envelope")
-
-    if not response.get("ok"):
-        error = response.get("error") or {}
-        raise RuntimeError(error.get("message") or "aos-cli model generation failed")
-
-    output = response.get("output") or {}
-    actual_kind = output.get("kind")
-    if actual_kind != output_kind:
-        raise RuntimeError(f"aos-cli response output.kind mismatch: expected {output_kind}, got {actual_kind}")
+    envelope = run_envelope(
+        request,
+        cwd=Path.cwd(),
+        expected_kind=output_kind,
+        tmp_prefix="asset-gen-aos-cli-",
+    )
 
     if output_kind == "json":
-        if "data" in output and output["data"] is not None:
-            return output["data"]
-        if isinstance(output.get("text"), str) and output["text"]:
-            return _parse_json_text(output["text"])
-        raise RuntimeError("aos-cli response missing output.data")
+        return extract_json(envelope)
     if output_kind == "text":
-        if isinstance(output.get("text"), str) and output["text"]:
-            return output["text"].strip()
-        raise RuntimeError("aos-cli response missing output.text")
+        return extract_text(envelope)
     raise RuntimeError(f"Unsupported aos-cli output kind: {output_kind}")
 
 

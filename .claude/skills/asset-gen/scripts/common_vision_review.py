@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -19,7 +18,7 @@ _SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
 if str(_SHARED_DIR) not in sys.path:
     sys.path.insert(0, str(_SHARED_DIR))
 
-from aos_cli_model import aos_cli_model_run
+from aos_cli_envelope import extract_json, run_envelope
 
 
 DEFAULT_MODEL = os.environ.get("ASSET_REVIEW_MODEL") or "gemini-3.1-pro-preview"
@@ -55,30 +54,24 @@ def call_vision_review(
 
 
 def _run_review_once(contents: list[Any], *, task: str, model: str, cwd: Path) -> dict[str, Any]:
-    request = _build_request(contents, task=task, model=model)
-    with tempfile.TemporaryDirectory(prefix="asset-gen-review-aos-cli-") as tmp:
-        tmp_dir = Path(tmp)
-        request_path = tmp_dir / "request.json"
-        response_path = tmp_dir / "response.json"
-        request_path.write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
-        completed = aos_cli_model_run(request_path, response_path, cwd=cwd)
-        if completed.returncode != 0:
-            raise RuntimeError(completed.stderr or f"aos-cli failed with exit code {completed.returncode}")
-        if not response_path.exists():
-            raise RuntimeError("aos-cli did not write a review response envelope")
-        return _read_json_output(response_path)
-
-
-def _build_request(contents: list[Any], *, task: str, model: str) -> dict[str, Any]:
-    content = _contents_to_model_content(contents)
-    return {
+    request = {
         "apiVersion": "aos-cli.model/v1",
         "task": task,
         "capability": "vision.review",
         "modelPolicy": {"model": model},
-        "input": {"content": content},
+        "input": {"content": _contents_to_model_content(contents)},
         "output": {"kind": "json"},
     }
+    envelope = run_envelope(
+        request,
+        cwd=cwd,
+        expected_kind="json",
+        tmp_prefix="asset-gen-review-aos-cli-",
+    )
+    data = extract_json(envelope)
+    if not isinstance(data, dict):
+        raise RuntimeError("aos-cli review output must decode to an object")
+    return data
 
 
 def _contents_to_model_content(contents: list[Any]) -> dict[str, Any]:
@@ -97,38 +90,3 @@ def _contents_to_model_content(contents: list[Any]) -> dict[str, Any]:
         "prompt": "\n".join(part for part in prompt_parts if part),
         "images": images,
     }
-
-
-def _read_json_output(response_path: Path) -> dict[str, Any]:
-    try:
-        response = json.loads(response_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Invalid aos-cli review response envelope: {response_path}") from exc
-
-    if not response.get("ok"):
-        error = response.get("error") or {}
-        raise RuntimeError(error.get("message") or "aos-cli vision review failed")
-
-    output = response.get("output") or {}
-    if output.get("kind") != "json":
-        raise RuntimeError(f"aos-cli response output.kind mismatch: expected json, got {output.get('kind')}")
-    if "data" in output:
-        data = output["data"]
-        if not isinstance(data, dict):
-            raise RuntimeError("aos-cli review output.data must be an object")
-        return data
-    if "text" in output:
-        return _parse_json_text(str(output["text"]))
-    raise RuntimeError("aos-cli review response missing output.data")
-
-
-def _parse_json_text(raw: str) -> dict[str, Any]:
-    text = raw.strip()
-    if "```json" in text:
-        text = text.split("```json", 1)[1].split("```", 1)[0].strip()
-    elif "```" in text:
-        text = text.split("```", 1)[1].split("```", 1)[0].strip()
-    data = json.loads(text)
-    if not isinstance(data, dict):
-        raise RuntimeError("aos-cli review JSON text must decode to an object")
-    return data

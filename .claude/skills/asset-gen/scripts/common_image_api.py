@@ -6,11 +6,9 @@
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -24,7 +22,7 @@ _SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
 if str(_SHARED_DIR) not in sys.path:
     sys.path.insert(0, str(_SHARED_DIR))
 
-from aos_cli_model import aos_cli_model_run
+from aos_cli_envelope import extract_artifacts, run_envelope
 
 
 DEFAULT_MODEL = (
@@ -100,15 +98,6 @@ def _build_request(prompt: str, params: dict[str, Any], model: str, working_dir:
     return request
 
 
-def _read_response_envelope(response_path: Path) -> dict[str, Any]:
-    if not response_path.exists():
-        return {}
-    try:
-        return json.loads(response_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Invalid aos-cli image response envelope: {response_path}") from exc
-
-
 def _artifact_uri_to_display_url(artifact: dict[str, Any]) -> str:
     remote_url = artifact.get("remoteUrl")
     if isinstance(remote_url, str) and remote_url:
@@ -127,36 +116,20 @@ def _post_generation(
 ) -> list[dict[str, Any]]:
     cwd = (working_dir or Path.cwd()).resolve()
     request = _build_request(prompt, params, model, cwd)
-    with tempfile.TemporaryDirectory(prefix="asset-gen-image-aos-cli-") as tmp:
-        request_path = Path(tmp) / "request.json"
-        response_path = Path(tmp) / "response.json"
-        request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
-        completed = aos_cli_model_run(request_path, response_path, cwd=cwd)
-        response = _read_response_envelope(response_path)
-
-    if not response:
-        if completed.returncode != 0:
-            raise RuntimeError(completed.stderr or f"aos-cli failed with exit code {completed.returncode}")
-        raise RuntimeError("aos-cli did not write an image response envelope")
-
-    if not response.get("ok"):
-        error = response.get("error") or {}
+    envelope = run_envelope(
+        request,
+        cwd=cwd,
+        expected_kind="artifact",
+        tmp_prefix="asset-gen-image-aos-cli-",
+        validate_ok=False,
+    )
+    if not envelope.get("ok"):
+        error = envelope.get("error") or {}
         message = error.get("message") or "aos-cli image generation failed"
         if error.get("code") in {"RATE_LIMITED", "AUTH_ERROR"}:
             raise InsufficientCreditsError(message)
         raise RuntimeError(message)
-
-    output = response.get("output") or {}
-    actual_kind = output.get("kind")
-    if actual_kind != "artifact":
-        raise RuntimeError(f"aos-cli response output.kind mismatch: expected artifact, got {actual_kind}")
-    artifacts = output.get("artifacts")
-    if not isinstance(artifacts, list) or not artifacts:
-        raise RuntimeError("aos-cli image response missing output.artifacts")
-    for artifact in artifacts:
-        if not isinstance(artifact, dict):
-            raise RuntimeError(f"aos-cli image artifact must be an object: {artifact}")
-    return artifacts
+    return extract_artifacts(envelope)
 
 
 def submit_image_task(
