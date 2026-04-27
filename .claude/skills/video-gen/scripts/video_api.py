@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sys
@@ -38,6 +39,27 @@ def _parse_duration_seconds(duration: Any) -> int:
         return int(float(duration))
     except (TypeError, ValueError):
         return 6
+
+
+def image_path_to_data_uri(path: str | Path) -> str:
+    """Encode a local image as a `data:` URI suitable for referenceImages[].url.
+
+    Ark Seedance 2.0 accepts either a public http(s) URL or a base64-encoded
+    local image as first/last frame anchor; data URIs let us inject the lsi
+    continuity frame inline without depending on an external bucket.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"image not found: {p}")
+    ext = p.suffix.lower()
+    if ext in (".jpg", ".jpeg"):
+        mime = "image/jpeg"
+    elif ext == ".png":
+        mime = "image/png"
+    else:
+        raise ValueError(f"unsupported image extension for data URI: {ext}")
+    encoded = base64.b64encode(p.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
 
 
 def _public_url(url: str) -> str:
