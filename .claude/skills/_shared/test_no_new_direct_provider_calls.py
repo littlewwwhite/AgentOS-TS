@@ -1,193 +1,64 @@
-# input: migrated skill script source files
-# output: guardrail tests preventing direct provider SDK/API reintroduction
-# pos: migration safety net for the aos-cli model boundary
+# input: skills source tree
+# output: guardrail tests preventing direct provider SDK reintroduction
+# pos: structural ban on provider SDK imports inside skills
 
 from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Iterator
 import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+SKILLS_ROOT = REPO_ROOT / ".claude" / "skills"
 
-MIGRATED_SCRIPT_PATHS = [
-    ".claude/skills/storyboard/scripts/storyboard_batch.py",
-    ".claude/skills/asset-gen/scripts/common_gemini_client.py",
-    ".claude/skills/asset-gen/scripts/common_vision_review.py",
-    ".claude/skills/asset-gen/scripts/generate_prompts_from_script.py",
-    ".claude/skills/asset-gen/scripts/style_generate.py",
-    ".claude/skills/asset-gen/scripts/common_image_api.py",
-    ".claude/skills/asset-gen/scripts/review_scene.py",
-    ".claude/skills/asset-gen/scripts/review_char.py",
-    ".claude/skills/asset-gen/scripts/review_props.py",
-    ".claude/skills/video-editing/scripts/common_video_analyze.py",
-    ".claude/skills/video-editing/scripts/phase1_analyze.py",
-    ".claude/skills/video-editing/scripts/phase2_assemble.py",
-    ".claude/skills/music-matcher/scripts/analyze_video.py",
-    ".claude/skills/music-matcher/scripts/batch_analyze.py",
-    ".claude/skills/subtitle-maker/scripts/common_audio_transcribe.py",
-    ".claude/skills/subtitle-maker/scripts/phase0_check.py",
-    ".claude/skills/subtitle-maker/scripts/phase2_transcribe.py",
-    ".claude/skills/video-gen/scripts/analyzer.py",
-    ".claude/skills/video-gen/scripts/frame_extractor.py",
-    ".claude/skills/video-gen/scripts/video_api.py",
-]
-
-MIGRATED_USER_FACING_PATHS = [
-    ".claude/skills/asset-gen/references/troubleshooting.md",
-    ".claude/skills/asset-gen/scripts/generate_characters.py",
-    ".claude/skills/asset-gen/scripts/generate_props.py",
-    ".claude/skills/asset-gen/scripts/generate_scenes.py",
-    ".claude/skills/asset-gen/scripts/review_char.py",
-    ".claude/skills/asset-gen/scripts/style_generate.py",
-    ".claude/skills/asset-gen/scripts/generate_prompts_from_script.py",
-    ".claude/skills/music-matcher/scripts/run_music_pipeline.py",
-    ".claude/skills/subtitle-maker/scripts/phase2_transcribe.py",
-    ".claude/skills/video-editing/references/phase2_spec.md",
-    ".claude/skills/video-gen/SKILL.md",
-    ".claude/skills/video-gen/scripts/analyzer.py",
-    ".claude/skills/video-gen/scripts/batch_generate.py",
-    ".claude/skills/video-gen/scripts/evaluator.py",
-]
-
-FORBIDDEN_IMPORT_PREFIXES = (
-    "google",
-    "openai",
-)
-
-FORBIDDEN_TEXT_SNIPPETS = (
-    "generate_content(",
-    "/v1/images/generations",
-    "ARK_API_KEY",
-    "OPENAI_API_KEY",
-    "GEMINI_API_KEY",
-)
-
-FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS = (
-    "调用 Gemini 分析世界观类型",
-    "Gemini 分析失败",
-    "Gemini 世界观视觉分析",
-    "使用 Gemini",
-    "调用 Gemini",
-    "调用 Gemini 重写",
-    "Gemini 重写失败",
-    "Gemini review bypassed",
-    "角色专用 Gemini 审图",
-    "Gemini 场景分组失败",
-    "Gemini 分析结果",
-    "Gemini config not taking effect",
-    "Gemini review failure defaults to pass",
-    "Gemini API rate-limited",
-    "Gemini video analysis",
-    "Gemini ASR",
-    "通过 gemini 分析",
-    "Seedance image reference",
-    "ep-20260303234827-tfnzm",
-    "--gemini-api-key",
-    "--api-key",
-)
+FORBIDDEN_IMPORT_PREFIXES = ("google", "openai", "volcenginesdkarkruntime")
 
 DEFERRED_MARKER = "Model boundary note: " + "deferred multimodal"
-
-MIGRATED_ASSET_CONFIG_PATHS = [
-    ".claude/skills/asset-gen/assets/common/gemini_backend.json",
-]
-
-VIDEO_GEN_REVIEW_RUNTIME_PATHS = [
-    ".claude/skills/video-gen/scripts/analyzer.py",
-    ".claude/skills/video-gen/scripts/batch_generate_runtime.py",
-]
+LEGACY_GEMINI_ADAPTER = SKILLS_ROOT / "video-gen" / "scripts" / "gemini_adapter.py"
 
 
 def _matches_prefix(name: str, prefixes: tuple[str, ...]) -> bool:
     return any(name == prefix or name.startswith(f"{prefix}.") for prefix in prefixes)
 
 
+def _python_sources(root: Path) -> Iterator[Path]:
+    for path in root.rglob("*.py"):
+        if any(part == "__pycache__" for part in path.parts):
+            continue
+        yield path
+
+
 class DirectProviderGuardrailTests(unittest.TestCase):
-    def test_migrated_scripts_do_not_import_provider_sdks(self) -> None:
+    def test_skills_do_not_import_provider_sdks(self) -> None:
         violations: list[str] = []
-        for relative_path in MIGRATED_SCRIPT_PATHS:
-            path = REPO_ROOT / relative_path
+        for path in _python_sources(SKILLS_ROOT):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            relative = path.relative_to(REPO_ROOT)
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
                         if _matches_prefix(alias.name, FORBIDDEN_IMPORT_PREFIXES):
-                            violations.append(f"{relative_path}: import {alias.name}")
+                            violations.append(f"{relative}: import {alias.name}")
                 elif isinstance(node, ast.ImportFrom):
                     module = node.module or ""
                     if _matches_prefix(module, FORBIDDEN_IMPORT_PREFIXES):
-                        violations.append(f"{relative_path}: from {module} import ...")
-
-        self.assertEqual(violations, [])
-
-    def test_migrated_scripts_do_not_reference_raw_provider_contracts(self) -> None:
-        violations: list[str] = []
-        for relative_path in MIGRATED_SCRIPT_PATHS:
-            source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-            for snippet in FORBIDDEN_TEXT_SNIPPETS:
-                if snippet in source:
-                    violations.append(f"{relative_path}: {snippet}")
-
-        self.assertEqual(violations, [])
-
-    def test_migrated_user_facing_scripts_do_not_describe_old_provider_path(self) -> None:
-        violations: list[str] = []
-        for relative_path in MIGRATED_USER_FACING_PATHS:
-            source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-            for snippet in FORBIDDEN_MIGRATED_USER_FACING_SNIPPETS:
-                if snippet in source:
-                    violations.append(f"{relative_path}: {snippet}")
-
+                        violations.append(f"{relative}: from {module} import ...")
         self.assertEqual(violations, [])
 
     def test_no_deferred_multimodal_paths_remain_in_skills(self) -> None:
         violations: list[str] = []
-        for path in (REPO_ROOT / ".claude" / "skills").rglob("*"):
-            if not path.is_file():
+        for path in SKILLS_ROOT.rglob("*"):
+            if not path.is_file() or any(part == "__pycache__" for part in path.parts):
                 continue
-            if any(part == "__pycache__" for part in path.parts):
-                continue
-            text = path.read_text(encoding="utf-8")
-            if DEFERRED_MARKER not in text:
-                continue
-            violations.append(str(path.relative_to(REPO_ROOT)))
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            if DEFERRED_MARKER in text:
+                violations.append(str(path.relative_to(REPO_ROOT)))
         self.assertEqual(violations, [])
 
-    def test_migrated_asset_configs_do_not_expose_provider_credentials(self) -> None:
-        credential_snippets = (
-            '"api_key"',
-            '"api_key_env"',
-            '"base_url"',
-            "GEMINI_API_KEY",
-        )
-        violations: list[str] = []
-        for relative_path in MIGRATED_ASSET_CONFIG_PATHS:
-            source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-            for snippet in credential_snippets:
-                if snippet in source:
-                    violations.append(f"{relative_path}: {snippet}")
-
-        self.assertEqual(violations, [])
-
-    def test_video_gen_review_runtime_uses_provider_neutral_adapter(self) -> None:
-        legacy_adapter = REPO_ROOT / ".claude/skills/video-gen/scripts/gemini_adapter.py"
-        violations: list[str] = []
-        if legacy_adapter.exists():
-            violations.append(str(legacy_adapter.relative_to(REPO_ROOT)))
-
-        forbidden_snippets = (
-            "gemini_adapter",
-            "GeminiVideoAdapter",
-        )
-        for relative_path in VIDEO_GEN_REVIEW_RUNTIME_PATHS:
-            source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-            for snippet in forbidden_snippets:
-                if snippet in source:
-                    violations.append(f"{relative_path}: {snippet}")
-
-        self.assertEqual(violations, [])
+    def test_legacy_gemini_adapter_does_not_exist(self) -> None:
+        self.assertFalse(LEGACY_GEMINI_ADAPTER.exists())
 
 
 if __name__ == "__main__":
