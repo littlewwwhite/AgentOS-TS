@@ -64,7 +64,7 @@ command -v ffmpeg >/dev/null
 | Step | Action | Details |
 |------|--------|---------|
 | 1 | Model selection | `seedance2` only |
-| 2 | Reference mode | Seedance image reference? (default: yes) |
+| 2 | Reference mode | Image reference? (default: yes) |
 | 3 | Generation params | Ratio (9:16/16:9/1:1), Quality (720p/1080p) |
 | 4 | Write config & run | Update `assets/config.json` then execute scripts |
 
@@ -198,9 +198,9 @@ Recovery order:
 
 ## Supported Models
 
-| Model | Code | Reference Mode | Duration |
-|-------|------|---------------|----------|
-| Seedance 2 | `ep-20260303234827-tfnzm` | Image ref | 3-15s |
+| Model | Reference Mode | Duration |
+|-------|---------------|----------|
+| `seedance2` | Image ref | 3-15s |
 
 ## Scripts
 
