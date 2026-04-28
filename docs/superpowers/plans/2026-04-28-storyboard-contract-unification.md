@@ -853,6 +853,16 @@ git add docs/superpowers/plans/2026-04-28-storyboard-contract-unification.md
 git commit -m "docs(plan): record Task 7 scene-metadata investigation outcome"
 ```
 
+**Task 7 finding (DELETE):** No consumer of `scene.actors` / `scene.locations` / `scene.props` / `scene.environment` exists at the STORYBOARD/VIDEO boundary. Investigation greps (commit `93a0e11` + repo state on `refactor/storyboard-contract`) found:
+
+- All `scene["actors"|"locations"|"props"]` references in `.claude/skills/script-adapt/scripts/parse_script.py` are internal SCRIPT-stage construction that writes to `script.json` itself — they never propagate into storyboard JSON.
+- `apply_storyboard_result.py:70` reads `episode.actors` (episode-level state catalog), not `scene.actors`.
+- `apply_storyboard_result.py:88-90` reads `output/{actors,locations,props}/*.json` asset manifests, not scene-embedded fields.
+- `storyboard_batch.py:248` reads top-level `script.actors` (the project actor catalog for prompt rendering), not `scene.actors`.
+- `batch_generate_runtime.py:190` reads `clip["location_num"]` — a path-derived integer, not a metadata field.
+
+Therefore Task 3's deletion in `iter_clips` and Task 6's per-scene payload (only `{scene_id, shots}`) carry zero downstream regression risk. The storyboard contract stays minimal: `{episode_id, status, scenes: [{scene_id, shots: [{id, duration, prompt}]}]}`. Task 8 executes Branch A (no further code change).
+
 ---
 
 ### Task 8: Apply the Phase 3 decision
