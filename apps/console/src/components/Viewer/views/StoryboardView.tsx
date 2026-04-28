@@ -833,12 +833,14 @@ function StoryboardPromptEditor({
   readOnly,
   dict,
   catalog,
+  actorStateOverrides,
 }: {
   unit: StoryboardGenerationUnit;
   patch: JsonPatch;
   readOnly: boolean;
   dict: Record<string, string>;
   catalog: PromptCatalog;
+  actorStateOverrides?: Map<string, string>;
 }) {
   return (
     <PromptChipEditor
@@ -848,6 +850,7 @@ function StoryboardPromptEditor({
       catalog={catalog}
       readOnly={readOnly}
       placeholder="用一段自然语言描述这一镜头要拍什么"
+      actorStateOverrides={actorStateOverrides}
       onChange={(next) => patch(unit.promptPath, next)}
     />
   );
@@ -893,12 +896,14 @@ function StoryboardPartBlock({
   readOnly,
   dict,
   catalog,
+  actorStateOverrides,
 }: {
   unit: StoryboardGenerationUnit;
   patch: JsonPatch;
   readOnly: boolean;
   dict: Record<string, string>;
   catalog: PromptCatalog;
+  actorStateOverrides?: Map<string, string>;
 }) {
   return (
     <div className="space-y-2">
@@ -912,6 +917,7 @@ function StoryboardPartBlock({
         readOnly={readOnly}
         dict={dict}
         catalog={catalog}
+        actorStateOverrides={actorStateOverrides}
       />
     </div>
   );
@@ -925,6 +931,7 @@ function StoryboardSceneGroup({
   readOnly,
   dict,
   catalog,
+  actorStateOverrides,
 }: {
   sceneId: string;
   units: StoryboardGenerationUnit[];
@@ -933,10 +940,18 @@ function StoryboardSceneGroup({
   readOnly: boolean;
   dict: Record<string, string>;
   catalog: PromptCatalog;
+  actorStateOverrides?: Map<string, string>;
 }) {
   const showScript = scriptScene !== null && scriptScene.actions.length > 0;
+  const sceneActorEntries: Array<{ actorId: string; name: string; stateId: string }> = [];
+  if (actorStateOverrides) {
+    for (const [actorId, stateId] of actorStateOverrides) {
+      if (!stateId || stateId === "default") continue;
+      sceneActorEntries.push({ actorId, name: dict[actorId] ?? actorId, stateId });
+    }
+  }
   const partsList = (
-    <div className="grid gap-4">
+    <div className="grid items-start gap-4">
       {units.map((unit) => (
         <StoryboardPartBlock
           key={unit.key}
@@ -945,6 +960,7 @@ function StoryboardSceneGroup({
           readOnly={readOnly}
           dict={dict}
           catalog={catalog}
+          actorStateOverrides={actorStateOverrides}
         />
       ))}
     </div>
@@ -952,12 +968,30 @@ function StoryboardSceneGroup({
 
   return (
     <article className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-4">
-      <header className="mb-3 border-b border-[var(--color-rule)] pb-2">
+      <header className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[var(--color-rule)] pb-2">
         <span className="font-serif text-[16px] text-[var(--color-ink)]">{sceneId}</span>
+        {sceneActorEntries.length > 0 && (
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-subtle)]">
+            <span className="font-mono uppercase tracking-wider text-[var(--color-ink-faint)]">
+              本场状态
+            </span>
+            {sceneActorEntries.map((entry) => (
+              <span
+                key={entry.actorId}
+                className="border border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-1.5 py-0.5"
+              >
+                <span className="text-[var(--color-ink)]">{entry.name}</span>
+                <span className="ml-1 font-mono text-[10px] text-[var(--color-ink-faint)]">
+                  ·{entry.stateId}
+                </span>
+              </span>
+            ))}
+          </span>
+        )}
       </header>
       {showScript ? (
         <div
-          className="grid gap-4 lg:gap-5"
+          className="grid items-start gap-4 lg:gap-5"
           style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.3fr)" }}
         >
           <ScriptSceneColumn scene={scriptScene} />
@@ -977,6 +1011,7 @@ function StoryboardGenerationUnitList({
   readOnly,
   dict,
   catalog,
+  sceneActorStateLookup,
 }: {
   units: StoryboardGenerationUnit[];
   sceneLookup: Map<string, ScriptSceneSnapshot>;
@@ -984,6 +1019,7 @@ function StoryboardGenerationUnitList({
   readOnly: boolean;
   dict: Record<string, string>;
   catalog: PromptCatalog;
+  sceneActorStateLookup: Map<string, Map<string, string>>;
 }) {
   const sceneGroups = useMemo(() => {
     const order: string[] = [];
@@ -1001,7 +1037,7 @@ function StoryboardGenerationUnitList({
   }, [units]);
 
   return (
-    <section className="grid gap-4">
+    <section className="grid items-start gap-4">
       {sceneGroups.map((group) => (
         <StoryboardSceneGroup
           key={group.sceneId}
@@ -1012,6 +1048,7 @@ function StoryboardGenerationUnitList({
           readOnly={readOnly}
           dict={dict}
           catalog={catalog}
+          actorStateOverrides={sceneActorStateLookup.get(group.sceneId)}
         />
       ))}
     </section>
@@ -1066,6 +1103,34 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     }
     return lookup;
   }, [dict, scenes, scriptData]);
+  const sceneActorStateLookup = useMemo(() => {
+    const lookup = new Map<string, Map<string, string>>();
+    const scriptSceneById = new Map<
+      string,
+      ReadonlyArray<{ actor_id: string; state_id?: string | null }>
+    >();
+    for (const ep of scriptData?.episodes ?? []) {
+      for (const sc of ep.scenes ?? []) {
+        if (sc.scene_id && sc.actors) scriptSceneById.set(sc.scene_id, sc.actors);
+      }
+    }
+    for (const scene of scenes) {
+      const sceneId = scene?.scene_id;
+      if (!sceneId) continue;
+      const map = new Map<string, string>();
+      for (const a of scene.actors ?? []) {
+        if (a.actor_id && a.state_id) map.set(a.actor_id, a.state_id);
+      }
+      // Backfill from script.json scenes for actors missing a state on the storyboard side.
+      for (const a of scriptSceneById.get(sceneId) ?? []) {
+        if (a.actor_id && a.state_id && !map.has(a.actor_id)) {
+          map.set(a.actor_id, a.state_id);
+        }
+      }
+      lookup.set(sceneId, map);
+    }
+    return lookup;
+  }, [scenes, scriptData]);
   const editorModel = useMemo(
     () => buildStoryboardEditorModel(path, scenes, dict, treePathList),
     [dict, path, scenes, treePathList],
@@ -1442,6 +1507,7 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
             readOnly={locked}
             dict={dict}
             catalog={promptCatalog}
+            sceneActorStateLookup={sceneActorStateLookup}
           />
 
           {!showPromptOnly && currentClip && currentClipData && currentScene && currentSummary && (

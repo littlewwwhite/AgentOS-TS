@@ -25,6 +25,9 @@ interface Props {
   ariaLabel: string;
   placeholder?: string;
   onChange: (next: string) => void;
+  // Scene-level actor states: { actorId → stateId }. When a chip has no inline
+  // state suffix, these supply the default state taken from the scene header.
+  actorStateOverrides?: Map<string, string>;
 }
 
 export function PromptChipEditor({
@@ -35,6 +38,7 @@ export function PromptChipEditor({
   ariaLabel,
   placeholder,
   onChange,
+  actorStateOverrides,
 }: Props) {
   const segments = useMemo(() => tokenizePrompt(value, dict), [value, dict]);
   const [showRaw, setShowRaw] = useState(false);
@@ -66,6 +70,7 @@ export function PromptChipEditor({
           catalog={catalog}
           readOnly={readOnly}
           placeholder={placeholder}
+          actorStateOverrides={actorStateOverrides}
           onSwap={(segment, newId) => onChange(replacePromptRef(value, segment, newId))}
         />
       )}
@@ -79,6 +84,7 @@ function ChipRender({
   catalog,
   readOnly,
   placeholder,
+  actorStateOverrides,
   onSwap,
 }: {
   ariaLabel: string;
@@ -86,6 +92,7 @@ function ChipRender({
   catalog: PromptCatalog;
   readOnly: boolean;
   placeholder?: string;
+  actorStateOverrides?: Map<string, string>;
   onSwap: (segment: Extract<PromptSegment, { kind: "ref" }>, newId: string) => void;
 }) {
   if (segments.length === 0) {
@@ -113,6 +120,11 @@ function ChipRender({
             segment={segment}
             options={catalog[segment.refKind]}
             readOnly={readOnly}
+            defaultStateId={
+              segment.refKind === "actor" && !segment.stateId
+                ? actorStateOverrides?.get(segment.id) ?? null
+                : null
+            }
             onSwap={(newId) => onSwap(segment, newId)}
           />
         ),
@@ -140,11 +152,13 @@ function RefChip({
   segment,
   options,
   readOnly,
+  defaultStateId,
   onSwap,
 }: {
   segment: Extract<PromptSegment, { kind: "ref" }>;
   options: PromptCatalogEntry[];
   readOnly: boolean;
+  defaultStateId?: string | null;
   onSwap: (newId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -170,12 +184,19 @@ function RefChip({
   const styleClass = REF_KIND_STYLES[segment.refKind];
   const label = REF_KIND_LABEL[segment.refKind];
   const hasOptions = options.length > 0;
+  const inlineState = segment.stateId;
+  const fallbackState = inlineState ? null : defaultStateId ?? null;
+  const stateForTitle = inlineState ?? fallbackState;
+  const stateForDisplay =
+    fallbackState && fallbackState !== "default" ? fallbackState : null;
 
   return (
     <span ref={containerRef} className="relative inline-block">
       <button
         type="button"
-        title={`${label} · ${segment.id}${segment.stateId ? `:${segment.stateId}` : ""}`}
+        title={`${label} · ${segment.id}${stateForTitle ? `:${stateForTitle}` : ""}${
+          fallbackState && !inlineState ? "（场景默认状态）" : ""
+        }`}
         disabled={readOnly || !hasOptions}
         className={
           "px-1 py-0 align-baseline transition-colors rounded-[1px] " +
@@ -190,6 +211,11 @@ function RefChip({
         }}
       >
         {segment.name}
+        {stateForDisplay && (
+          <span className="ml-0.5 font-mono text-[10px] text-[var(--color-ink-faint)]">
+            ·{stateForDisplay}
+          </span>
+        )}
       </button>
       {open && (
         <span
