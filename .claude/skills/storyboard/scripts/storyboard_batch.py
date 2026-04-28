@@ -33,9 +33,6 @@ if str(_SHARED_DIR) not in sys.path:
 
 from aos_cli_model import aos_cli_model_run
 from storyboard_contract import (
-    DURATION_MAX,
-    DURATION_MIN,
-    SHOT_ID_RE,
     StoryboardContractError,
     validate_scene_shots as _contract_validate_scene_shots,
     validate_shot,
@@ -152,7 +149,6 @@ def parse_storyboard_output_text(text: str) -> object:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
-    import re
     # Try ALL markdown-fenced blocks; prefer the LAST one (after model thinking/reasoning)
     fence_blocks = re.findall(r"```(?:json)?[ \t]*\n(.*?)\n?```", text, re.DOTALL)
     candidates = [b.strip() for b in reversed(fence_blocks) if b.strip()]
