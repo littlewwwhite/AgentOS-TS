@@ -54,6 +54,12 @@ class StoryboardBatchTest(unittest.TestCase):
         self.assertEqual(captured["cwd"], project_dir.resolve())
         self.assertEqual(captured["request"]["apiVersion"], "aos-cli.model/v1")
         self.assertEqual(captured["request"]["task"], "storyboard.batch")
+        self.assertEqual(captured["request"]["output"]["kind"], "json")
+        self.assertEqual(
+            captured["request"]["output"]["schema"]["items"]["required"],
+            ["id", "duration", "prompt"],
+        )
+        self.assertEqual(captured["request"]["options"]["maxOutputTokens"], 12000)
         self.assertEqual(captured["request"]["modelPolicy"], {"model": "storyboard-model"})
 
     def test_aos_cli_client_parses_text_fallback(self):
@@ -97,7 +103,7 @@ class StoryboardBatchTest(unittest.TestCase):
 
         os.environ.pop("STORYBOARD_TEXT_MODEL", None)
         os.environ.pop("GEMINI_TEXT_MODEL", None)
-        self.assertEqual(storyboard_batch.get_default_text_model(), "gemini-3.1-flash-lite")
+        self.assertEqual(storyboard_batch.get_default_text_model(), "gemini-3.1-pro-preview")
 
         os.environ["GEMINI_TEXT_MODEL"] = "gemini-3.1-pro-preview"
         self.assertEqual(storyboard_batch.get_default_text_model(), "gemini-3.1-pro-preview")
@@ -309,6 +315,36 @@ class ActorsCatalogTest(unittest.TestCase):
         )
         self.assertIn("角色状态目录", captured["user"])
         self.assertIn("act_001", captured["user"])
+
+    def test_generate_scene_prompt_frames_duration_as_request_parameter(self):
+        import storyboard_batch
+        captured = {}
+
+        class CapturingClient:
+            def generate(self, system_prompt, user_content, model):
+                captured["user"] = user_content
+                return [{"id": "scn_001_clip001", "duration": 12, "prompt": "中景|缓推\n\n总体描述：@act_001"}]
+
+        storyboard_batch.generate_scene_prompt(
+            CapturingClient(),
+            "system",
+            "notes",
+            {"scene_id": "scn_001", "beats": [{"beat_id": "beat_001"}]},
+            "model",
+        )
+
+        self.assertIn("实际提交给视频模型的时长参数", captured["user"])
+        self.assertIn("同时决定 prompt 和 duration", captured["user"])
+        self.assertIn("不要因为 [4,15] 是合法范围就贴下限", captured["user"])
+        self.assertNotIn("不要全部填 5", captured["user"])
+
+    def test_storyboard_system_prompt_frames_duration_as_request_parameter(self):
+        import storyboard_batch
+        system_prompt = storyboard_batch.PROMPT_FILE.read_text(encoding="utf-8")
+        self.assertIn("actual video request duration", system_prompt)
+        self.assertIn("author the `prompt` and `duration` together", system_prompt)
+        self.assertIn("Do not anchor on the lower bound", system_prompt)
+        self.assertNotIn("Do NOT default everything to 5", system_prompt)
 
 
 if __name__ == "__main__":

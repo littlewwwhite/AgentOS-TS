@@ -112,6 +112,15 @@ class AosCliModelAdapterTest(unittest.TestCase):
 
         self.assertEqual(env["PYTHONPATH"].split(os.pathsep)[0], str(REPO_ROOT / "aos-cli" / "src"))
 
+    def test_repo_local_cli_uses_repo_root_env_file_when_present(self):
+        with mock.patch.object(aos_cli_model, "find_repo_root", return_value=REPO_ROOT):
+            args = aos_cli_model._aos_cli_env_file_args(REPO_ROOT / "workspace" / "project")
+
+        if (REPO_ROOT / ".env").is_file():
+            self.assertEqual(args, ["--env-file", str(REPO_ROOT / ".env")])
+        else:
+            self.assertEqual(args, [])
+
     def test_command_falls_back_to_global_cli_when_repo_root_missing(self):
         with mock.patch.object(aos_cli_model, "find_repo_root", side_effect=RuntimeError("missing repo root")), mock.patch.object(
             aos_cli_model.shutil, "which", return_value="/usr/local/bin/aos-cli"

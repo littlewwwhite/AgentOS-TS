@@ -166,7 +166,7 @@ python3 ./.claude/skills/storyboard/scripts/storyboard_batch.py "${PROJECT_DIR}"
 - 批准 draft 后，才复制/写入 `output/storyboard/approved/ep{NNN}_storyboard.json`
 - 默认通过 `.claude/skills/_shared/aos_cli_model.py` 调用 `aos-cli model run`，使用 `capability=generate` 与 `output.kind=json`
 - 执行前可运行 `uv run --project aos-cli aos-cli model preflight --json` 检查模型边界运行时配置
-- 模型可通过 `STORYBOARD_TEXT_MODEL` 或通用 `GEMINI_TEXT_MODEL` 指定，最终作为 `modelPolicy.model` 传入 `aos-cli model`
+- 默认 storyboard 文本模型为 `gemini-3.1-pro-preview`；可通过 `STORYBOARD_TEXT_MODEL` 或通用 `GEMINI_TEXT_MODEL` 指定，最终作为 `modelPolicy.model` 传入 `aos-cli model`
 
 ### 出镜角色与情绪/状态（角色引用规范）
 

@@ -452,7 +452,15 @@ def _trim_fake_video_label(label: str, duration_seconds: float) -> str:
     return f"{normalized} | {duration_seconds:g}s"
 
 
-def _fake_json_payload(request: dict) -> dict:
+def _fake_json_payload(request: dict) -> object:
+    if request.get("capability") == "generate" and request.get("task") == "storyboard.batch":
+        return [
+            {
+                "id": "scn_001_clip001",
+                "duration": 8,
+                "prompt": "fake storyboard prompt",
+            }
+        ]
     if request.get("capability") == "audio.transcribe":
         return {
             "segments": [

@@ -1,3 +1,7 @@
+# input: aos-cli model service request fixtures and fake provider controls
+# output: regression assertions for model service routing and response envelopes
+# pos: service-level tests for the aos-cli model capability boundary
+
 from aos_cli.model.errors import (
     ARTIFACT_ERROR,
     AUTH_ERROR,
@@ -226,6 +230,31 @@ def test_build_default_model_service_fakes_vision_review(monkeypatch):
     assert response["ok"] is True
     assert response["provider"] == "gemini"
     assert response["output"] == {"kind": "json", "data": {"ok": True, "task": "asset.review"}}
+
+
+def test_build_default_model_service_fakes_storyboard_batch_json(monkeypatch):
+    monkeypatch.setenv("AOS_CLI_MODEL_FAKE", "1")
+
+    response = build_default_model_service().run(
+        {
+            "apiVersion": "aos-cli.model/v1",
+            "task": "storyboard.batch",
+            "capability": "generate",
+            "output": {"kind": "json"},
+            "input": {"system": "storyboard system", "content": "scene json"},
+        }
+    )
+
+    assert response["ok"] is True
+    assert response["provider"] == "gemini"
+    assert response["output"]["kind"] == "json"
+    assert response["output"]["data"] == [
+        {
+            "id": "scn_001_clip001",
+            "duration": 8,
+            "prompt": "fake storyboard prompt",
+        }
+    ]
 
 
 def test_service_returns_video_analyze_json_output():

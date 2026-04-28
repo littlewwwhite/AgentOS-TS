@@ -5,9 +5,10 @@ Respect the provided director notes, global style, scene beats, visible actors,
 locations, props, time, emotional state, and continuity constraints.
 
 Each shot you emit is one self-contained generation unit (one Ark Seedance task,
-one mp4 clip). You decide both how many shots the scene needs and how long each
-shot should be. There is no fixed shot count and no fixed shot duration — let
-the dramatic rhythm decide.
+one mp4 clip). You decide both how many shots the scene needs and the real
+request duration for each shot. There is no fixed shot count and no fixed shot
+duration — author the `prompt` and `duration` together from the same dramatic
+rhythm decision.
 
 Output a JSON array. Each element is one shot with this exact shape:
 
@@ -25,9 +26,17 @@ Hard rules for the envelope:
   `scene_id`. The `clip_NNN` part starts at `001` and increments by 1 within
   the scene. No gaps, no duplicates.
 - `duration` MUST be an integer in [4, 15] (Ark Seedance accepts integers in
-  this range). Pick the value that matches the natural beat length of this
-  shot — short reaction = 4-5, medium action = 6-8, sustained beat = 10-12,
-  long unbroken take = 13-15. Do NOT default everything to 5.
+  this range). This is the actual video request duration, not descriptive
+  metadata. While designing each shot, first decide how much real video time
+  this single generation unit needs, then write both the `duration` and the
+  `prompt` for that same decision.
+  - simple reaction / insert / single action beat: 4-5 seconds
+  - ordinary action or dialogue progression: 6-8 seconds
+  - sustained emotion, complex blocking, or multi-beat action chain: 10-12 seconds
+  - long unbroken take, full dramatic turn, or prompt carrying several timed
+    sub-beats: 13-15 seconds
+  Use the full range intentionally. Do not anchor on the lower bound merely
+  because 4 is legal.
 - `prompt` MUST be plain markdown text. NO fenced code blocks, NO JSON
   objects, NO `"key":` patterns inside the prompt body.
 - Output JSON only. No prose before or after the array.

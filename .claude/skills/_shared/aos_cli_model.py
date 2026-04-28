@@ -67,7 +67,7 @@ def run_aos_cli(
     working_dir = Path(cwd).resolve() if cwd is not None else Path.cwd().resolve()
     command = _aos_cli_command(working_dir)
     return subprocess.run(
-        [*command, *args],
+        [*command, *_aos_cli_env_file_args(working_dir), *args],
         cwd=working_dir,
         env=_aos_cli_env(working_dir),
         text=True,
@@ -85,6 +85,17 @@ def _aos_cli_command(start: Path) -> list[str]:
         raise
 
     return [sys.executable, "-m", "aos_cli.cli"]
+
+
+def _aos_cli_env_file_args(start: Path) -> list[str]:
+    try:
+        repo_root = find_repo_root(start)
+    except RuntimeError:
+        return []
+    env_file = repo_root / ".env"
+    if not env_file.is_file():
+        return []
+    return ["--env-file", str(env_file)]
 
 
 def _aos_cli_env(start: Path) -> dict[str, str]:

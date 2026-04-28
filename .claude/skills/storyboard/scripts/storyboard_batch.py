@@ -26,7 +26,28 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 PROMPT_FILE = SCRIPT_DIR / "prompts" / "storyboard_system.txt"
-DEFAULT_TEXT_MODEL = "gemini-3.1-flash-lite"
+DEFAULT_TEXT_MODEL = "gemini-3.1-pro-preview"
+STORYBOARD_OUTPUT_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "duration": {"type": "integer"},
+            "prompt": {"type": "string"},
+        },
+        "required": ["id", "duration", "prompt"],
+    },
+}
+DURATION_FIELD_INSTRUCTION = (
+    "实际提交给视频模型的时长参数，整数秒，范围 [4,15]。"
+    "在构思每个 shot 时同时决定 prompt 和 duration："
+    "先判断这个独立视频生成单元真实需要多少秒，再填写对应整数。"
+    "简单反应或插入镜头用 4-5 秒；普通动作/对话推进用 6-8 秒；"
+    "持续情绪、复杂调度或多拍动作链用 10-12 秒；"
+    "一个 prompt 内承载完整长镜头、多段动作节拍或强戏剧转折时用 13-15 秒。"
+    "不要因为 [4,15] 是合法范围就贴下限。"
+)
 _SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
 if str(_SHARED_DIR) not in sys.path:
     sys.path.insert(0, str(_SHARED_DIR))
@@ -57,7 +78,7 @@ class StoryboardModelClient:
             "apiVersion": "aos-cli.model/v1",
             "task": "storyboard.batch",
             "capability": "generate",
-            "output": {"kind": "text"},
+            "output": {"kind": "json", "schema": STORYBOARD_OUTPUT_SCHEMA},
             "input": {
                 "system": system_prompt,
                 "content": user_content,
@@ -72,7 +93,7 @@ class StoryboardModelClient:
                 "maxOutputTokens": int(
                     os.environ.get(
                         "STORYBOARD_TEXT_MAX_OUTPUT_TOKENS",
-                        os.environ.get("GEMINI_TEXT_MAX_OUTPUT_TOKENS", "6000"),
+                        os.environ.get("GEMINI_TEXT_MAX_OUTPUT_TOKENS", "12000"),
                     )
                 ),
             },
@@ -304,8 +325,7 @@ def generate_scene_prompt(client, system_prompt: str, ep_notes: str, scene: dict
         f"为本场（scene_id={scene_id}）输出一个 shot 数组。每个 shot 是一个独立的视频生成单元，"
         "字段固定为 `id` / `duration` / `prompt` 三项：\n"
         f"- id: 形如 `{scene_id}_clip001`，clip 序号从 001 开始顺序递增\n"
-        "- duration: 整数秒，范围 [4,15]，根据该 shot 的戏剧节奏选择 (短反应 4-5 / 中等动作 6-8 / "
-        "持续节拍 10-12 / 长镜 13-15)，不要全部填 5\n"
+        f"- duration: {DURATION_FIELD_INSTRUCTION}\n"
         "- prompt: 单条镜头的 markdown 提示词，遵守 system 中规定的 `景别|运镜 / 总体描述 / 动作 / "
         "角色状态 / 音效 / 对白` 块结构与 token 规则\n"
         "shot 数量由你根据剧本节奏决定，没有固定下限或上限。\n"

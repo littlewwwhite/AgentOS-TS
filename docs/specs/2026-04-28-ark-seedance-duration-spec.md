@@ -56,10 +56,10 @@ result = generate_video(
 4. `video_api.submit_video(duration=4)` → Ark Seedance 2.0 严格按 4s 渲染。
 5. 用户看到 4s 视频，认为"没有生成 15s"。
 
-**provider 行为完全正确**。问题位于 storyboard schema 的正交分解失败：
-- `prompt` 文本里的 `[0-3] / [3-6] / ... / [12-15]` 多拍时间戳是创意层装饰
-- `duration` 字段是技术请求
-- 两者在 schema 层无任何关联，LLM 可独立填写矛盾值
+**provider 行为完全正确**。问题位于 storyboard 生成提示词质量，而不是 schema 或 video-gen：
+- `duration` 字段是 Ark Seedance 的实际请求时长，唯一控制最终视频秒数
+- `prompt` 文本里的 `[0-3] / [3-6] / ... / [12-15]` 多拍时间戳可以保留，它们是给视频模型参考的镜头内节奏描述
+- storyboard LLM 本来就应该在生成 prompt 的同时生成 `duration`；此前失败是因为提示词把 `[4,15]` 范围放在前面，又只用"不要全部填 5"这种弱否定规则兜底，导致模型贴合法下限 `4`
 
 ### 该修正/作废的论断
 
@@ -76,36 +76,24 @@ result = generate_video(
 
 ## Recommended Actions（按半衰期）
 
-### 长半衰期：消除字段间无约束
+### 长半衰期：保持最小 shot contract
 
-**核心**：让 `duration` 与 prompt 内多拍语义在 schema 层挂钩，而不是用自然语言警告补丁。
+**核心**：继续保持 `{id, duration, prompt}` 三字段 contract。不要为了这次生成质量问题新增 `beats` / `pace` / prompt 时间戳解析器，也不要禁止 prompt 内时间戳。
 
-候选方案 A — 拆 beats 为结构化字段：
-```jsonc
-{
-  "id": "scn_001_clip001",
-  "duration": 15,
-  "beats": [
-    {"start": 0,  "end": 3,  "desc": "..."},
-    {"start": 3,  "end": 6,  "desc": "..."},
-    {"start": 12, "end": 15, "desc": "..."}
-  ],
-  "prompt": "..."  // 由 beats + 描述模板拼出
-}
-```
-契约校验：`sum(b.end - b.start for b in beats) == duration`。LLM 不可能再写出矛盾值。
+`duration` 是视频请求参数，`prompt` 是创作提示词；两者由同一次 storyboard 生成共同产出。contract 层只负责结构正确性：id 格式、duration 范围、prompt 非空。审美节奏选择留在 storyboard 生成提示词里解决。
 
-候选方案 B — 让 LLM 不写时间戳：
-- system prompt 改为"不要在 prompt 内写 [0-3] / 0:00-0:03 这类时间戳，节奏交给视频模型自动安排"
-- 配套地把 duration 决策移到一个独立 LLM 调用，输入 = beat 数 + 戏剧节奏建议
+### 中半衰期：修正 storyboard 生成提示词
 
-A 长半衰期更高但实现成本大；B 是较轻的纠偏。
+1. 把 `duration` 描述为"实际提交给视频模型的时长参数"，不是普通元数据。
+2. 要求模型在构思每个 shot 时同时决定 prompt 与 duration：先判断这个独立视频生成单元真实需要多少秒，再填写整数。
+3. 用正向分档替换弱否定句：简单反应/插入镜头 4-5 秒；普通动作/对话推进 6-8 秒；持续情绪、复杂调度或多拍动作链 10-12 秒；完整长镜头、多段节拍或强戏剧转折 13-15 秒。
+4. 避免把 `[4,15]` 写成最显眼的决策锚点；明确提醒不要因为 `4` 合法就贴下限。
 
 ### 短半衰期：立即清理
 
 1. `video_api.py:37-41` `_parse_duration_seconds` 删掉 `return 6` 兜底，改为 `raise ValueError`
 2. `video_api.py:205, 242` `duration: str = "5"` → `duration: int = 5`，与契约一致
-3. `storyboard_batch.py:304-310` system prompt 删除"不要全部填 5"句，改成更结构化的 duration 约束（取决于上面候选方案选 A 还是 B）
+3. `storyboard_batch.py:304-310` 与 `prompts/storyboard_system.txt` 删除"不要全部填 5"句，改成"prompt 与 duration 同时生成"的正向 duration 决策规则
 
 ## Sources
 
