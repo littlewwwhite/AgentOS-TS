@@ -394,7 +394,7 @@ def generate_all_storyboards(project_dir: Path, bible: dict, script: dict,
                 "shots": shots,
             }
             apply_storyboard_result(project_dir, payload, finalize_stage=False)
-            print(f"  -> wrote {ep_id}/{scene_id} via apply_storyboard_result")
+            print(f"  -> persisted {ep_id}/{scene_id}")
 
     return True, f"OK ({total_scenes} scenes, {elapsed:.0f}s)"
 
