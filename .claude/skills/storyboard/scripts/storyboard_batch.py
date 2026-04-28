@@ -37,6 +37,7 @@ from storyboard_contract import (
     validate_scene_shots as _contract_validate_scene_shots,
     validate_shot,
 )
+from apply_storyboard_result import apply_storyboard_result
 
 
 def get_default_text_model() -> str:
@@ -380,31 +381,20 @@ def generate_all_storyboards(project_dir: Path, bible: dict, script: dict,
     if failures:
         return False, f"FAILED ({len(failures)} scene failures, {elapsed:.0f}s): " + "; ".join(failures)
 
-    draft_root = output_dir / "storyboard" / "draft"
-    draft_root.mkdir(parents=True, exist_ok=True)
     for ep in episodes:
         ep_id = ep.get("episode_id") or ep.get("ep_id", "unknown")
-        scene_payloads = []
         for scene in ep.get("scenes", []):
             scene_id = scene.get("scene_id", "unknown")
             shots = storyboards.get((ep_id, scene_id), [])
-            scene_payloads.append({
+            if not shots:
+                continue
+            payload = {
+                "episode_id": ep_id,
                 "scene_id": scene_id,
-                "actors": scene.get("actors", []),
-                "locations": scene.get("locations", []),
-                "props": scene.get("props", []),
-                "environment": scene.get("environment", {}),
                 "shots": shots,
-            })
-        sb_path = draft_root / f"{ep_id}_storyboard.json"
-        with open(sb_path, "w") as f:
-            json.dump(
-                {"episode_id": ep_id, "status": "draft", "scenes": scene_payloads},
-                f,
-                indent=2,
-                ensure_ascii=False,
-            )
-        print(f"  -> {sb_path}")
+            }
+            apply_storyboard_result(project_dir, payload, finalize_stage=False)
+            print(f"  -> wrote {ep_id}/{scene_id} via apply_storyboard_result")
 
     return True, f"OK ({total_scenes} scenes, {elapsed:.0f}s)"
 

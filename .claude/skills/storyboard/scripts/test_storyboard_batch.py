@@ -199,9 +199,20 @@ class GenerateAllStoryboardsTest(unittest.TestCase):
         }
         bible = {"global_style": {"tone": "冷峻"}, "episodes": {"ep001": {"note": "近景压迫"}}}
 
+        script_fixture = {
+            "episodes": [{
+                "episode_id": "ep001",
+                "scenes": [{"scene_id": "scn_001"}],
+            }]
+        }
+
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)
-            (project_dir / "output").mkdir()
+            output_dir = project_dir / "output"
+            output_dir.mkdir()
+            (output_dir / "script.json").write_text(
+                json.dumps(script_fixture, ensure_ascii=False), encoding="utf-8"
+            )
             with patch.object(storyboard_batch, "load_storyboard_client", return_value=FakeClient()):
                 ok, status = storyboard_batch.generate_all_storyboards(
                     project_dir=project_dir, bible=bible, script=script, model="storyboard-model",
@@ -218,6 +229,12 @@ class GenerateAllStoryboardsTest(unittest.TestCase):
             self.assertEqual(shot["id"], "scn_001_clip001")
             self.assertEqual(shot["duration"], 8)
             self.assertEqual(shot["prompt"], sample_prompt)
+
+            state_path = project_dir / "pipeline-state.json"
+            self.assertTrue(state_path.exists(), "apply_storyboard_result must sync pipeline-state")
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn("STORYBOARD", state["stages"])
+            self.assertEqual(state["stages"]["STORYBOARD"]["status"], "partial")
 
     def test_generation_failure_does_not_write_success_draft(self):
         import storyboard_batch
