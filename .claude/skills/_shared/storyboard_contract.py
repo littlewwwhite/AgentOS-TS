@@ -53,13 +53,23 @@ def validate_shot(shot: Any, label: str) -> None:
         raise StoryboardContractError(f"{label}.prompt must be a non-empty string")
 
 
-def validate_scene_shots(shots: Any, label: str) -> None:
+def validate_scene_shots(
+    shots: Any, label: str, expected_scene_id: str | None = None
+) -> None:
     if not isinstance(shots, list) or not shots:
         raise StoryboardContractError(f"{label}.shots[] missing or empty")
     expected = 1
     for index, shot in enumerate(shots):
         validate_shot(shot, f"{label}.shots[{index}]")
         m = SHOT_ID_RE.match(shot["id"])
+        assert m is not None  # validate_shot guarantees this; explicit for refactor safety
+        if expected_scene_id is not None:
+            shot_scn_prefix = f"scn_{m.group(1)}"
+            if shot_scn_prefix != expected_scene_id:
+                raise StoryboardContractError(
+                    f"{label}.shots[{index}].id={shot['id']!r} does not belong to "
+                    f"scene_id={expected_scene_id!r}"
+                )
         clip_num = int(m.group(2))
         if clip_num != expected:
             raise StoryboardContractError(
@@ -88,4 +98,5 @@ def validate_storyboard(data: Any, label: str) -> None:
         validate_scene_shots(
             scene.get("shots"),
             f"{label}.scenes[{index}]({scene_id})",
+            expected_scene_id=scene_id,
         )

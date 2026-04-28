@@ -102,6 +102,17 @@ class ValidateStoryboardTest(unittest.TestCase):
         with self.assertRaisesRegex(StoryboardContractError, "scene_id must"):
             validate_storyboard(data, "doc")
 
+    def test_rejects_shot_id_with_wrong_scene_prefix(self) -> None:
+        data = {
+            "episode_id": "ep001",
+            "scenes": [{
+                "scene_id": "scn_002",
+                "shots": [{"id": "scn_999_clip001", "duration": 5, "prompt": "x"}],
+            }],
+        }
+        with self.assertRaisesRegex(StoryboardContractError, "does not belong to"):
+            validate_storyboard(data, "doc")
+
 
 class ConstantsTest(unittest.TestCase):
     def test_duration_bounds(self) -> None:
