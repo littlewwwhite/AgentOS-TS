@@ -12,11 +12,11 @@ This module rewrites the tokens and assembles the ordered reference list.
 """
 
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
-# Match @act_001 OR {act_001} OR @prp_002 OR {loc_003}; act/loc/prp only.
+# Match @act_001 OR @act_001:st_002 OR {act_001} OR @prp_002 OR {loc_003}.
 # Trailing `}` is optional so the same regex captures both forms.
-_TOKEN_RE = re.compile(r"[@{]((?:act|loc|prp)_\d+)\}?")
+_TOKEN_RE = re.compile(r"[@{]((?:act|loc|prp)_\d+(?::st_\d+)?)\}?")
 
 
 def extract_subject_tokens(prompt: str) -> List[str]:
@@ -40,6 +40,8 @@ def extract_subject_tokens(prompt: str) -> List[str]:
 def resolve_subject_tokens(
     prompt: str,
     assets_mapping: Dict[str, Dict],
+    allowed_types: Optional[set[str]] = None,
+    name_fallback_for_skipped: bool = False,
 ) -> Tuple[str, List[Dict]]:
     """Rewrite tokens to [图N] and return the matching ordered reference dicts.
 
@@ -48,6 +50,11 @@ def resolve_subject_tokens(
         assets_mapping: Flat dict from load_assets_subject_mapping(), keyed by
             id (act_001, loc_002, prp_003) with entries
             {"subject_id": str, "name": str, "type": str, "image_url": str}.
+
+    Returns:
+        allowed_types: Optional asset types allowed to become [图N] refs.
+        name_fallback_for_skipped: Replace skipped known tokens with display
+          names instead of leaving raw @tokens.
 
     Returns:
         Tuple of (rewritten_prompt, ordered_reference_image_dicts).
@@ -62,6 +69,8 @@ def resolve_subject_tokens(
     for token in tokens:
         entry = assets_mapping.get(token)
         if not entry:
+            continue
+        if allowed_types is not None and entry.get("type") not in allowed_types:
             continue
         url = entry.get("image_url") or ""
         if not url:
@@ -79,6 +88,10 @@ def resolve_subject_tokens(
         token = match.group(1)
         idx = token_to_index.get(token)
         if idx is None:
+            if name_fallback_for_skipped:
+                entry = assets_mapping.get(token)
+                if entry:
+                    return entry.get("display_name") or entry.get("name") or token
             return match.group(0)
         return f"[图{idx}]"
 

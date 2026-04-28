@@ -59,6 +59,27 @@ class TestSubmitVideoBoundary(unittest.TestCase):
         self.assertEqual(len(refs), 2)
         self.assertTrue(all(r["role"] == "reference_image" for r in refs))
 
+    def test_asset_uri_reference_image_passes_through(self):
+        self.video_api.submit_video_generation(
+            prompt="[图1] turns around",
+            duration=5,
+            ratio="16:9",
+            quality="720p",
+            project_dir=".",
+            task="video.test",
+            reference_images=[
+                {
+                    "url": "asset://asset-20260222234430-mxpgh",
+                    "role": "reference_image",
+                    "name": "act_001",
+                },
+            ],
+            first_frame_url=None,
+        )
+
+        refs = self._captured["envelope"]["input"]["referenceImages"]
+        self.assertEqual(refs[0]["url"], "asset://asset-20260222234430-mxpgh")
+
     def test_data_uri_first_frame_passes_through(self):
         data_uri = "data:image/jpeg;base64,/9j/4AAQSk"
         self.video_api.submit_video_generation(

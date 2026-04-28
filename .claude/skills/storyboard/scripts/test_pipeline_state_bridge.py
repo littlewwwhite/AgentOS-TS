@@ -98,6 +98,52 @@ class StoryboardPipelineStateBridgeTest(unittest.TestCase):
                 "output/storyboard/draft/ep001_storyboard.json",
             )
 
+    def test_apply_storyboard_result_compacts_underscore_episode_file_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            output_dir = project_dir / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "script.json").write_text(
+                json.dumps(
+                    {
+                        "episodes": [
+                            {
+                                "episode": 1,
+                                "episode_id": "ep_001",
+                                "scenes": [{"scene_id": "scn_001", "actions": []}],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            payload_path = project_dir / "draft" / "payload.json"
+            payload_path.parent.mkdir(parents=True, exist_ok=True)
+            payload_path.write_text(
+                json.dumps(
+                    {
+                        "episode_id": "ep_001",
+                        "scene_id": "scn_001",
+                        "shots": [{"id": "scn_001_clip001", "duration": 8, "prompt": "镜头提示词"}],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            helper = Path(__file__).resolve().parent / "apply_storyboard_result.py"
+            result = subprocess.run(
+                [sys.executable, str(helper), "--project-dir", str(project_dir),
+                 "--input-json", str(payload_path)],
+                capture_output=True, text=True, cwd=helper.parent,
+            )
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertTrue((output_dir / "storyboard" / "draft" / "ep001_storyboard.json").exists())
+            self.assertFalse((output_dir / "storyboard" / "draft" / "ep_001_storyboard.json").exists())
+
     def test_apply_storyboard_result_can_finalize_stage(self):
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)
@@ -354,6 +400,64 @@ class StoryboardPipelineStateBridgeTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, msg=result.stderr)
             self.assertTrue((output_dir / "storyboard" / "approved" / "ep001_storyboard.json").exists())
+
+    def test_finalize_accepts_top_level_actor_state_catalog(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            output_dir = project_dir / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "script.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [
+                            {"actor_id": "act_001", "states": [{"state_id": "st_001"}]}
+                        ],
+                        "episodes": [
+                            {
+                                "episode": 1,
+                                "episode_id": "ep001",
+                                "scenes": [{"scene_id": "scn_001", "actions": []}],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (output_dir / "actors").mkdir()
+            (output_dir / "actors" / "actors.json").write_text(
+                json.dumps({"act_001": {"name": "Alice"}}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            payload_path = project_dir / "draft" / "payload.json"
+            payload_path.parent.mkdir(parents=True, exist_ok=True)
+            payload_path.write_text(
+                json.dumps(
+                    {
+                        "episode_id": "ep001",
+                        "scene_id": "scn_001",
+                        "shots": [
+                            {
+                                "id": "scn_001_clip001",
+                                "duration": 8,
+                                "prompt": "@act_001:st_001 走入",
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            helper = Path(__file__).resolve().parent / "apply_storyboard_result.py"
+            result = subprocess.run(
+                [sys.executable, str(helper), "--project-dir", str(project_dir),
+                 "--input-json", str(payload_path), "--finalize-stage"],
+                capture_output=True, text=True, cwd=helper.parent,
+            )
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
 
 
 if __name__ == "__main__":

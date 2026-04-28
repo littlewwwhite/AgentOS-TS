@@ -65,9 +65,9 @@ def image_path_to_data_uri(path: str | Path) -> str:
 def _public_url(url: str) -> str:
     if not url:
         return url
-    if url.startswith(("http://", "https://", "data:")):
+    if url.startswith(("http://", "https://", "data:", "asset://")):
         return url
-    raise RuntimeError(f"reference URL must be public http(s), got: {url}")
+    raise RuntimeError(f"reference URL must be public http(s), data:, or asset://, got: {url}")
 
 
 def _normalize_reference_images(reference_images: Optional[List[Dict]]) -> List[Dict[str, Any]]:

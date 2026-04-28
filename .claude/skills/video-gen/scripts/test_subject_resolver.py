@@ -35,6 +35,15 @@ class ExtractSubjectTokensTest(unittest.TestCase):
         prompt = "{act_001} 与 @act_002 在 @loc_003"
         self.assertEqual(extract_subject_tokens(prompt), ["act_001", "act_002", "loc_003"])
 
+    def test_extracts_state_aware_actor_tokens_as_one_subject(self):
+        from subject_resolver import extract_subject_tokens
+
+        prompt = "@act_001:st_002 走向 @act_002:st_005"
+        self.assertEqual(
+            extract_subject_tokens(prompt),
+            ["act_001:st_002", "act_002:st_005"],
+        )
+
 
 class ResolveSubjectTokensTest(unittest.TestCase):
     def _mapping(self):
@@ -62,6 +71,12 @@ class ResolveSubjectTokensTest(unittest.TestCase):
                 "name": "银锭",
                 "type": "prop",
                 "image_url": "https://x/P.png",
+            },
+            "act_001:st_002": {
+                "subject_id": "s1-state",
+                "name": "白行风(血衣)",
+                "type": "actor",
+                "image_url": "https://x/a1-state.png",
             },
         }
 
@@ -131,6 +146,29 @@ class ResolveSubjectTokensTest(unittest.TestCase):
         self.assertEqual(rewritten, "[图1] 拿起 [图2]")
         self.assertEqual(refs[1]["url"], "https://x/P.png")
 
+    def test_state_aware_actor_token_rewrites_without_suffix_leakage(self):
+        from subject_resolver import resolve_subject_tokens
+
+        prompt = "@act_001:st_002 走入 @loc_003"
+        rewritten, refs = resolve_subject_tokens(prompt, self._mapping())
+        self.assertEqual(rewritten, "[图1] 走入 [图2]")
+        self.assertEqual(refs[0]["name"], "act_001:st_002")
+        self.assertEqual(refs[0]["url"], "https://x/a1-state.png")
+
+    def test_can_skip_actor_refs_and_fallback_to_names(self):
+        from subject_resolver import resolve_subject_tokens
+
+        prompt = "@act_001:st_002 走入 @loc_003，拿起 @prp_004"
+        rewritten, refs = resolve_subject_tokens(
+            prompt,
+            self._mapping(),
+            allowed_types={"location", "prop"},
+            name_fallback_for_skipped=True,
+        )
+
+        self.assertEqual(rewritten, "白行风(血衣) 走入 [图1]，拿起 [图2]")
+        self.assertEqual([ref["name"] for ref in refs], ["loc_003", "prp_004"])
+
 
 class ResolveSubjectTokensToNamesTest(unittest.TestCase):
     """Coverage for the first/last-frame mode prompt rewriter (no [图N])."""
@@ -154,6 +192,12 @@ class ResolveSubjectTokensToNamesTest(unittest.TestCase):
                 "name": "寝宫",
                 "type": "location",
                 "image_url": "https://x/L.png",
+            },
+            "act_001:st_002": {
+                "subject_id": "s1-state",
+                "name": "白行风(血衣)",
+                "type": "actor",
+                "image_url": "https://x/a1-state.png",
             },
         }
 
@@ -191,6 +235,12 @@ class ResolveSubjectTokensToNamesTest(unittest.TestCase):
         prompt = "@act_001 凝视 @act_002"
         out = resolve_subject_tokens_to_names(prompt, self._mapping())
         self.assertNotIn("[图", out)
+
+    def test_state_aware_token_replaced_with_state_display_name(self):
+        from subject_resolver import resolve_subject_tokens_to_names
+
+        out = resolve_subject_tokens_to_names("@act_001:st_002 出场", self._mapping())
+        self.assertEqual(out, "白行风(血衣) 出场")
 
 
 if __name__ == "__main__":

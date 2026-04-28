@@ -688,7 +688,7 @@ def _process_scene_clips(
                 if best_version and version.get("version") != best_version:
                     continue
                 video_url = version.get("video_url")
-                if video_url:
+                if video_url and video_url.startswith(("http://", "https://")):
                     next_video_url = video_url
                     break
             if next_video_url:

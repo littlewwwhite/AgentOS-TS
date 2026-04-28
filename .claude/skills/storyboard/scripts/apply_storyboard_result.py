@@ -56,6 +56,15 @@ def locate_episode(episodes: list[dict[str, Any]], episode_id: str) -> dict[str,
     raise ValueError(f"episode not found in script.json: {episode_id}")
 
 
+def compact_episode_slug(episode_id: str) -> str:
+    """Return canonical artifact slug such as ep001 for ep001 or ep_001."""
+    normalized = episode_id.lower().replace("_", "")
+    match = re.match(r"ep(\d+)$", normalized)
+    if match:
+        return f"ep{int(match.group(1)):03d}"
+    return normalized
+
+
 def _load_asset_manifest(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -64,18 +73,20 @@ def _load_asset_manifest(path: Path) -> dict[str, Any]:
 
 
 def _collect_declared_actor_states(script_data: dict[str, Any]) -> dict[str, set[str]]:
-    """Map actor_id -> set of declared state_ids, scanning script.json globally."""
+    """Map actor_id -> declared state_ids from top-level and episode-local actors."""
     declared: dict[str, set[str]] = {}
+    actor_sources = list(script_data.get("actors", []) or [])
     for episode in script_data.get("episodes", []) or []:
-        for actor in episode.get("actors") or []:
-            actor_id = actor.get("actor_id")
-            if not isinstance(actor_id, str):
-                continue
-            states = declared.setdefault(actor_id, set())
-            for state in actor.get("states") or []:
-                state_id = state.get("state_id")
-                if isinstance(state_id, str):
-                    states.add(state_id)
+        actor_sources.extend(episode.get("actors") or [])
+    for actor in actor_sources:
+        actor_id = actor.get("actor_id") if isinstance(actor, dict) else None
+        if not isinstance(actor_id, str):
+            continue
+        states = declared.setdefault(actor_id, set())
+        for state in actor.get("states") or []:
+            state_id = state.get("state_id") if isinstance(state, dict) else None
+            if isinstance(state_id, str):
+                states.add(state_id)
     return declared
 
 
@@ -141,7 +152,8 @@ def apply_storyboard_result(project_dir: Path, payload: dict[str, Any], finalize
     if not isinstance(target_scene, dict):
         raise ValueError(f"scene not found in script.json: {payload['scene_id']}")
 
-    draft_path = project_dir / "output" / "storyboard" / "draft" / f"{payload['episode_id']}_storyboard.json"
+    episode_slug = compact_episode_slug(payload["episode_id"])
+    draft_path = project_dir / "output" / "storyboard" / "draft" / f"{episode_slug}_storyboard.json"
     draft_path.parent.mkdir(parents=True, exist_ok=True)
     if draft_path.exists():
         draft_data = json.loads(draft_path.read_text(encoding="utf-8"))
@@ -187,7 +199,7 @@ def apply_storyboard_result(project_dir: Path, payload: dict[str, Any], finalize
 
     if finalize_stage:
         _validate_tokens(draft_data, project_dir, script_data)
-        approved_path = project_dir / "output" / "storyboard" / "approved" / f"{payload['episode_id']}_storyboard.json"
+        approved_path = project_dir / "output" / "storyboard" / "approved" / f"{episode_slug}_storyboard.json"
         approved_path.parent.mkdir(parents=True, exist_ok=True)
         approved_data = dict(draft_data)
         approved_data["status"] = "approved"

@@ -55,6 +55,7 @@ if str(_SHARED_DIR) not in sys.path:
 
 from storyboard_contract import StoryboardContractError, validate_shot
 from batch_generate_runtime import _process_scene_clips, process_scenes_parallel
+from prompt_compiler import compile_video_prompt
 from subject_resolver import resolve_subject_tokens
 from production_types import ClipIntent
 from video_api import DEFAULT_MODEL_CODE, image_path_to_data_uri
@@ -185,6 +186,8 @@ def convert_prompt_brackets(full_prompt: str) -> str:
     """
     def _replace(m):
         raw = m.group(1)
+        if "｜" in raw or "|" in raw:
+            return m.group(0)
         base_name = _PAREN_SUFFIX.sub('', raw).strip()
         return f'{{{base_name}}}'
 
@@ -304,6 +307,137 @@ def _coerce_asset_url(url: str, fallback_rel_path: str, assets_base: Path) -> st
     return url
 
 
+def _normalize_asset_uri(value: object, label: str) -> str:
+    """Normalize an Ark trusted asset value to asset:// form."""
+    if not value:
+        return ""
+    if isinstance(value, str):
+        raw = value.strip()
+    elif isinstance(value, dict):
+        raw = str(
+            value.get("asset_uri")
+            or value.get("asset_url")
+            or value.get("uri")
+            or value.get("url")
+            or value.get("asset_id")
+            or ""
+        ).strip()
+    else:
+        raise ValueError(f"invalid asset registry value for {label}: {type(value).__name__}")
+
+    if not raw:
+        return ""
+    if raw.startswith("asset://"):
+        return raw
+    if raw.startswith("asset-"):
+        return f"asset://{raw}"
+    raise ValueError(
+        f"invalid Ark asset URI for {label}: expected asset://asset-... or asset-..., got {raw!r}"
+    )
+
+
+def _load_asset_registry_overrides(assets_path: Path) -> Dict[str, str]:
+    """Load optional project-level trusted asset overrides."""
+    registry_path = assets_path / "asset_registry.json"
+    if not registry_path.exists():
+        return {}
+    try:
+        registry_data = json.loads(registry_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"failed to read asset registry: {registry_path}: {exc}") from exc
+    if not isinstance(registry_data, dict):
+        raise ValueError(f"asset registry must be a JSON object: {registry_path}")
+
+    overrides: Dict[str, str] = {}
+
+    def add_mapping(token: str, value: object) -> None:
+        if isinstance(token, str) and token:
+            asset_uri = _normalize_asset_uri(value, token)
+            if asset_uri:
+                overrides[token] = asset_uri
+
+    for section_name in ("subjects", "actor_states", "locations", "props"):
+        section = registry_data.get(section_name) or {}
+        if isinstance(section, dict):
+            for token, value in section.items():
+                add_mapping(token, value)
+
+    actors = registry_data.get("actors") or {}
+    if isinstance(actors, dict):
+        for actor_id, actor_entry in actors.items():
+            if isinstance(actor_entry, str):
+                add_mapping(actor_id, actor_entry)
+                continue
+            if not isinstance(actor_entry, dict):
+                continue
+            add_mapping(actor_id, actor_entry)
+            states = actor_entry.get("states") or {}
+            if isinstance(states, dict):
+                for state_id, state_entry in states.items():
+                    add_mapping(f"{actor_id}:{state_id}", state_entry)
+
+    print(f"[ASSETS] Loaded {len(overrides)} trusted asset overrides from {registry_path}")
+    return overrides
+
+
+def _asset_type_from_token(token: str) -> str:
+    if token.startswith("act_"):
+        return "actor"
+    if token.startswith("loc_"):
+        return "location"
+    if token.startswith("prp_"):
+        return "prop"
+    return "subject"
+
+
+def _apply_asset_registry_overrides(mapping: Dict[str, Dict], overrides: Dict[str, str]) -> None:
+    """Prefer approved Ark asset URIs over generated local/public images."""
+    for token, asset_uri in overrides.items():
+        entry = mapping.setdefault(
+            token,
+            {
+                "subject_id": "",
+                "name": token,
+                "type": _asset_type_from_token(token),
+                "image_url": "",
+            },
+        )
+        entry["image_url"] = asset_uri
+        entry["asset_uri"] = asset_uri
+        entry["trusted_asset"] = True
+
+
+def _load_script_state_name_index(assets_path: Path) -> Dict[str, Dict[str, str]]:
+    """Return actor_id -> state_name -> state_id from output/script.json."""
+    script_path = assets_path / "script.json"
+    if not script_path.exists():
+        return {}
+    try:
+        script_data = json.loads(script_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    index: Dict[str, Dict[str, str]] = {}
+    actor_sources = list(script_data.get("actors", []) or [])
+    for episode in script_data.get("episodes", []) or []:
+        actor_sources.extend(episode.get("actors") or [])
+    for actor in actor_sources:
+        if not isinstance(actor, dict):
+            continue
+        actor_id = actor.get("actor_id")
+        if not isinstance(actor_id, str):
+            continue
+        state_index = index.setdefault(actor_id, {})
+        for state in actor.get("states") or []:
+            if not isinstance(state, dict):
+                continue
+            state_id = state.get("state_id")
+            state_name = state.get("state_name")
+            if isinstance(state_id, str) and isinstance(state_name, str) and state_name:
+                state_index[state_name] = state_id
+    return index
+
+
 def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
     """Load subject mapping from output/actors/actors.json and locations/locations.json.
 
@@ -320,6 +454,8 @@ def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
     """
     mapping = {}
     assets_path = Path(assets_dir)
+    script_state_name_index = _load_script_state_name_index(assets_path)
+    asset_registry_overrides = _load_asset_registry_overrides(assets_path)
 
     # Load actors from actors/actors.json
     actors_file = assets_path / "actors" / "actors.json"
@@ -368,6 +504,31 @@ def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
                 mapping[f"{actor_id}:{state_id}"] = {
                     "subject_id": st_subject,
                     "name": f"{name}({state_entry.get('state_name', state_id)})",
+                    "type": "actor",
+                    "image_url": st_url,
+                }
+                state_count += 1
+
+            # Asset-gen stores actor states as sibling keys named by state_name
+            # (for example "Laundry Slave Attire"), while storyboard tokens use
+            # stable state_id values from script.json (for example st_001).
+            for key, value in actor_data.items():
+                if key in ("name", "voice", "voice_url", "states", "default"):
+                    continue
+                if not isinstance(value, dict):
+                    continue
+                stable_state_id = script_state_name_index.get(actor_id, {}).get(key)
+                if not stable_state_id:
+                    continue
+                st_subject = value.get("subject_id", "")
+                st_url = value.get("three_view_url") or value.get("face_view_url", "")
+                st_fallback = value.get("three_view") or value.get("face_view") or ""
+                st_url = _coerce_asset_url(st_url, st_fallback, assets_path)
+                if not (st_subject or st_url):
+                    continue
+                mapping[f"{actor_id}:{stable_state_id}"] = {
+                    "subject_id": st_subject,
+                    "name": f"{name}({key})",
                     "type": "actor",
                     "image_url": st_url,
                 }
@@ -433,6 +594,9 @@ def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
         print(f"[ASSETS] Loaded {prop_count} props from {props_file}")
     else:
         print(f"[INFO] props.json not found: {props_file} (props/* tokens will pass through unresolved)")
+
+    if asset_registry_overrides:
+        _apply_asset_registry_overrides(mapping, asset_registry_overrides)
 
     return mapping
 
@@ -618,6 +782,7 @@ def run_batch_generate(
     skip_review: bool = False,
     resume: bool = False,
     no_ref: bool = False,
+    no_actor_ref: bool = False,
 ) -> list:
     """Main entry: iterate all clips and generate videos.
 
@@ -692,9 +857,21 @@ def run_batch_generate(
     assets_dir = find_assets_dir(output_root)
     assets_mapping = {}
 
+    if no_ref and no_actor_ref:
+        raise ValueError("--no-ref and --no-actor-ref are mutually exclusive")
+
+    allowed_ref_types = None
+    name_fallback_for_skipped_refs = False
     if no_ref:
-        print("[INFO] no_ref=True: skipping all reference images (plain-text prompt mode).")
-    elif assets_dir:
+        allowed_ref_types = set()
+        name_fallback_for_skipped_refs = True
+        print("[INFO] no_ref=True: replacing known tokens with names; no reference images submitted.")
+    elif no_actor_ref:
+        allowed_ref_types = {"location", "prop"}
+        name_fallback_for_skipped_refs = True
+        print("[INFO] no_actor_ref=True: actor tokens become names; location/prop refs remain [图N].")
+
+    if assets_dir:
         print(f"[MAP] Found assets directory: {assets_dir}")
         assets_mapping = load_assets_subject_mapping(str(assets_dir))
         print(f"[MAP] Loaded {len(assets_mapping)} subjects from local assets")
@@ -717,18 +894,25 @@ def run_batch_generate(
             ls_id = ls['clip_id']
             scene_id = ls.get('scene_id', '?')
             pv = ls.get('prompt_version', 0)
+            video_prompt = compile_video_prompt(ls['full_prompts'])
             prompt_with_indices, resolved_refs = resolve_subject_tokens(
-                ls['full_prompts'], assets_mapping
+                video_prompt,
+                assets_mapping,
+                allowed_types=allowed_ref_types,
+                name_fallback_for_skipped=name_fallback_for_skipped_refs,
             )
+            prompt = convert_prompt_brackets(prompt_with_indices)
             print(f"  [{ls_id}] pv={pv} [DRY-RUN] Skipping")
             results.append({
                 "clip_id": ls_id,
                 "scene_id": scene_id,
                 "prompt_version": pv,
-                "prompt": convert_prompt_brackets(prompt_with_indices),
+                "prompt": prompt,
+                "source_prompt_chars": len(ls['full_prompts']),
+                "compiled_prompt_chars": len(prompt),
                 "success": True,
                 "dry_run": True,
-                "subjects_found": len(extract_subject_ids(ls['full_prompts'])),
+                "subjects_found": len(extract_subject_ids(video_prompt)),
                 "subjects_mapped": len(resolved_refs),
             })
     else:
@@ -756,9 +940,13 @@ def run_batch_generate(
                     file=sys.stderr,
                 )
 
-            subject_ids = extract_subject_ids(ls['full_prompts'])
+            video_prompt = compile_video_prompt(ls['full_prompts'])
+            subject_ids = extract_subject_ids(video_prompt)
             prompt_with_indices, reference_images = resolve_subject_tokens(
-                ls['full_prompts'], assets_mapping
+                video_prompt,
+                assets_mapping,
+                allowed_types=allowed_ref_types,
+                name_fallback_for_skipped=name_fallback_for_skipped_refs,
             )
             if reference_images:
                 print(
@@ -799,6 +987,8 @@ def run_batch_generate(
                         "scene_id": scene_id,
                         "prompt_version": pv,
                         "prompt": prompt,
+                        "source_prompt_chars": len(ls['full_prompts']),
+                        "compiled_prompt_chars": len(prompt),
                         "success": True,
                         "passed": True,
                         "skipped_resume": True,
@@ -832,6 +1022,8 @@ def run_batch_generate(
                 'reference_images': reference_images,
                 'first_frame_url': clip_first_frame_url,
                 'prompt': prompt,
+                'source_prompt_chars': len(ls['full_prompts']),
+                'compiled_prompt_chars': len(prompt),
                 'dur_api': dur_api,
                 'location_num': location_num,
                 'clip_num': clip_num,
@@ -883,6 +1075,8 @@ def run_batch_generate(
                 "scene_id": clip['scene_id'],
                 "prompt_version": clip['prompt_version'],
                 "prompt": clip['prompt'],
+                "source_prompt_chars": clip.get('source_prompt_chars'),
+                "compiled_prompt_chars": clip.get('compiled_prompt_chars'),
                 "success": any(v.get("success") for v in clip['versions']),
                 "passed": clip['passed'],
                 "best_version": clip['best_version'],
@@ -1114,6 +1308,12 @@ def main():
         action="store_true",
         help="Skip all reference images; use text-only prompt mode"
     )
+    parser.add_argument(
+        "--no-actor-ref",
+        dest="no_actor_ref",
+        action="store_true",
+        help="Skip actor reference images; keep location/prop refs and replace actor tokens with names"
+    )
 
     args = parser.parse_args()
 
@@ -1132,6 +1332,7 @@ def main():
         resume=args.resume,
         skip_review=args.skip_review,
         no_ref=getattr(args, "no_ref", False),
+        no_actor_ref=getattr(args, "no_actor_ref", False),
     )
 
 
