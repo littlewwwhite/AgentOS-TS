@@ -17,6 +17,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -31,6 +32,14 @@ if str(_SHARED_DIR) not in sys.path:
     sys.path.insert(0, str(_SHARED_DIR))
 
 from aos_cli_model import aos_cli_model_run
+from storyboard_contract import (
+    DURATION_MAX,
+    DURATION_MIN,
+    SHOT_ID_RE,
+    StoryboardContractError,
+    validate_scene_shots as _contract_validate_scene_shots,
+    validate_shot,
+)
 
 
 def get_default_text_model() -> str:
@@ -171,65 +180,58 @@ def parse_storyboard_output_text(text: str) -> object:
     return text
 
 
-_SHOT_ID_RE = __import__("re").compile(r"^scn_(\d{3})_clip(\d{3})$")
-_DURATION_MIN, _DURATION_MAX = 4, 15
-
-
 def normalize_scene_shots(raw_output, scene: dict | None = None) -> list[dict]:
     """Coerce LLM output into a clean [{id, duration, prompt}] list.
 
     Accepts a list of dicts (canonical) or a single dict; rejects anything else.
     Strips unknown fields; backfills `id` from scene_id + ordinal when missing.
+    Final structural validation is delegated to storyboard_contract.validate_shot.
     """
     if isinstance(raw_output, dict):
         raw_items = raw_output.get("shots", [raw_output])
     elif isinstance(raw_output, list):
         raw_items = raw_output
     else:
-        raise ValueError(f"storyboard output must be a JSON array; got {type(raw_output).__name__}")
+        raise ValueError(
+            f"storyboard output must be a JSON array; got {type(raw_output).__name__}"
+        )
 
     scene_id_raw = (scene or {}).get("scene_id", "")
-    m = __import__("re").match(r"scn_?(\d+)", str(scene_id_raw))
+    m = re.match(r"scn_?(\d+)", str(scene_id_raw))
     scene_num = f"{int(m.group(1)):03d}" if m else "000"
 
     normalized = []
     for index, item in enumerate(raw_items, start=1):
         if not isinstance(item, dict):
-            raise ValueError(f"shot[{index - 1}] must be an object, got {type(item).__name__}")
-        prompt = item.get("prompt")
-        if not isinstance(prompt, str) or not prompt.strip():
-            raise ValueError(f"shot[{index - 1}].prompt must be a non-empty string")
-        duration = item.get("duration")
-        if not isinstance(duration, int) or isinstance(duration, bool):
-            raise ValueError(f"shot[{index - 1}].duration must be an int, got {duration!r}")
-        if not (_DURATION_MIN <= duration <= _DURATION_MAX):
             raise ValueError(
-                f"shot[{index - 1}].duration={duration} out of range [{_DURATION_MIN},{_DURATION_MAX}]"
+                f"shot[{index - 1}] must be an object, got {type(item).__name__}"
             )
-        shot_id = item.get("id") or f"scn_{scene_num}_clip{index:03d}"
-        if not _SHOT_ID_RE.match(shot_id):
-            raise ValueError(f"shot[{index - 1}].id={shot_id!r} does not match scn_NNN_clipNNN")
-        normalized.append({"id": shot_id, "duration": duration, "prompt": prompt})
+        candidate = {
+            "id": item.get("id") or f"scn_{scene_num}_clip{index:03d}",
+            "duration": item.get("duration"),
+            "prompt": item.get("prompt"),
+        }
+        try:
+            validate_shot(candidate, f"shot[{index - 1}]")
+        except StoryboardContractError as exc:
+            raise ValueError(str(exc)) from exc
+        normalized.append(candidate)
 
     return normalized
 
 
 def validate_scene_shots(shots: list[dict], scene: dict | None) -> tuple[bool, str]:
-    """Final post-normalization check: id sequence + non-empty.
+    """Final post-normalization check returning a (ok, message) tuple.
 
-    Type / duration / id format are already enforced by normalize_scene_shots;
-    this runs invariants that need the full list (sequential clip numbering).
+    Delegates structural rules (id format, duration range, sequence) to
+    storyboard_contract.validate_scene_shots; this wrapper preserves the
+    legacy tuple-return signature used by generate_all_storyboards logging.
     """
-    if not shots:
-        return False, "no shots produced"
-    expected = 1
-    for sh in shots:
-        m = _SHOT_ID_RE.match(sh["id"])
-        if not m:
-            return False, f"id {sh['id']!r} malformed"
-        if int(m.group(2)) != expected:
-            return False, f"clip ids out of sequence at {sh['id']}, expected clip{expected:03d}"
-        expected += 1
+    label = f"scene({(scene or {}).get('scene_id', '?')})"
+    try:
+        _contract_validate_scene_shots(shots, label)
+    except StoryboardContractError as exc:
+        return False, str(exc)
     total = sum(sh["duration"] for sh in shots)
     return True, f"shots={len(shots)} total_duration={total}s"
 

@@ -133,7 +133,7 @@ class NormalizeShotsTest(unittest.TestCase):
 
     def test_rejects_out_of_range_duration(self):
         import storyboard_batch
-        with self.assertRaisesRegex(ValueError, "out of range"):
+        with self.assertRaisesRegex(ValueError, r"duration must be int in \[4, 15\]"):
             storyboard_batch.normalize_scene_shots(
                 [{"id": "scn_001_clip001", "duration": 16, "prompt": "p"}], {"scene_id": "scn_001"},
             )
@@ -147,7 +147,7 @@ class NormalizeShotsTest(unittest.TestCase):
 
     def test_rejects_malformed_id(self):
         import storyboard_batch
-        with self.assertRaisesRegex(ValueError, "scn_NNN_clipNNN"):
+        with self.assertRaisesRegex(ValueError, r"id must match \^scn_"):
             storyboard_batch.normalize_scene_shots(
                 [{"id": "scn1_clip1", "duration": 8, "prompt": "p"}], {"scene_id": "scn_001"},
             )
