@@ -10,7 +10,7 @@ export interface ScriptActor {
   actor_id: string;
   actor_name: string;
   description?: string;
-  states?: ReadonlyArray<{ state_id: string; description: string }>;
+  states?: ReadonlyArray<{ state_id: string; state_name?: string; description?: string }>;
 }
 
 export interface ScriptLocation {

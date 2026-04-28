@@ -114,6 +114,9 @@ export interface StoryboardGenerationUnit {
   promptPath: string;
   prompt: string;
   rawPrompt: string;
+  // Indices into the script scene's actions[] array that this prompt covers.
+  // Empty when the storyboard shot did not declare source_refs.
+  sourceRefs: number[];
 }
 
 export interface DraftStoryboardShotSummary {
@@ -647,6 +650,11 @@ export function buildStoryboardGenerationUnits(
       .map((shot, index) => {
         const partId = `part_${String(index + 1).padStart(3, "0")}`;
         const rawPrompt = shot.prompt ?? "";
+        const refs = Array.isArray(shot.source_refs)
+          ? (shot.source_refs as unknown[])
+              .map((value) => (typeof value === "number" ? value : Number(value)))
+              .filter((value) => Number.isInteger(value) && value >= 0)
+          : [];
 
         return {
           key: `${scene.scene_id}::${partId}`,
@@ -655,6 +663,7 @@ export function buildStoryboardGenerationUnits(
           promptPath: `scenes.${sceneIndex}.shots.${index}.prompt`,
           prompt: storyboardGenerationPromptText(rawPrompt),
           rawPrompt,
+          sourceRefs: refs,
         } satisfies StoryboardGenerationUnit;
       }),
   );
