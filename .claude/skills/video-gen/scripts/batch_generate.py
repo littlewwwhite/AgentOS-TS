@@ -784,12 +784,7 @@ def run_batch_generate(
                 )
 
             prompt = convert_prompt_brackets(prompt_with_indices)
-            duration_value = ls['duration_seconds']
-            if not isinstance(duration_value, int) or isinstance(duration_value, bool):
-                raise ValueError(
-                    f"clip {ls_id} duration_seconds must be int from iter_clips, got {duration_value!r}"
-                )
-            dur_api = duration_value
+            dur_api = ls['duration_seconds']
             location_num, clip_num = parse_clip_id(ls_id)
 
             # Resume mode: skip clips that already have .mp4 output files
