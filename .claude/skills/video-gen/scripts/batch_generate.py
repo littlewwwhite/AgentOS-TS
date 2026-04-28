@@ -49,7 +49,11 @@ SCRIPT_DIR = Path(__file__).parent
 sys.path.insert(0, str(SCRIPT_DIR))
 REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
+if str(_SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(_SHARED_DIR))
 
+from storyboard_contract import StoryboardContractError, validate_shot
 from batch_generate_runtime import _process_scene_clips, process_scenes_parallel
 from subject_resolver import resolve_subject_tokens
 from production_types import ClipIntent
@@ -91,46 +95,38 @@ def load_storyboard_json(json_path: str) -> dict:
 
 
 def iter_clips(data: dict) -> list:
-    """Iterate all generation units from storyboard JSON.
+    """Iterate generation units from a runtime storyboard.
 
-    Each shot in `scene.shots[]` is one generation unit. Required shot fields:
-    `id` (e.g. "scn_001_clip001"), `duration` (int seconds), `prompt` (str).
-
-    Returns one dict per shot — the runtime no longer produces multiple prompt
-    versions per shot.
+    The runtime storyboard has already passed validate_storyboard at the
+    prepare_runtime_storyboard_export boundary. This function only re-validates
+    each shot to surface a clip-scoped error label and to extract the runtime
+    fields (lsi etc.) that the contract module deliberately ignores.
     """
     result = []
-    for scene in data['scenes']:
-        scene_id = scene['scene_id']
-        scene_actors = [a['actor_id'] for a in scene.get('actors', [])]
-        locations = scene.get('locations') or []
-        scene_location = locations[0]['location_id'] if locations else ''
+    for scene in data["scenes"]:
+        scene_id = scene["scene_id"]
+        for shot in scene["shots"]:
+            label = f"{scene_id}/{shot.get('id', '?')}"
+            try:
+                validate_shot(shot, label)
+            except StoryboardContractError as exc:
+                raise ValueError(str(exc)) from exc
 
-        for shot in scene.get('shots') or scene.get('clips') or []:
-            shot_id = shot.get('id') or shot.get('clip_id')
-            if not shot_id:
-                raise KeyError(f"shot in {scene_id} missing id")
-            normalized_clip_id = re.sub(r'[_\-]', '', shot_id)
-            normalized_clip_id = re.sub(r'(scn\d+)(clip\d+)', r'\1_\2', normalized_clip_id)
+            shot_id = shot["id"]
+            normalized_clip_id = re.sub(r"[_\-]", "", shot_id)
+            normalized_clip_id = re.sub(
+                r"(scn\d+)(clip\d+)", r"\1_\2", normalized_clip_id
+            )
 
-            prompt_text = shot.get('prompt')
-            if not prompt_text:
-                raise KeyError(f"shot {shot_id} missing prompt")
-            duration = shot.get('duration')
-            if not isinstance(duration, int) or isinstance(duration, bool):
-                raise ValueError(f"shot {shot_id} duration must be int, got {duration!r}")
-
-            lsi_dict = shot.get('lsi') or {}
+            lsi_dict = shot.get("lsi") or {}
             result.append({
-                'clip_id': normalized_clip_id,
-                'scene_id': scene_id,
-                'full_prompts': prompt_text,
-                'duration_seconds': duration,
-                'actors': scene_actors,
-                'location': scene_location,
-                'prompt_version': 0,
-                'lsi_url': lsi_dict.get('url', '') or '',
-                'lsi_video_url': lsi_dict.get('video_url', '') or '',
+                "clip_id": normalized_clip_id,
+                "scene_id": scene_id,
+                "full_prompts": shot["prompt"],
+                "duration_seconds": shot["duration"],
+                "prompt_version": 0,
+                "lsi_url": lsi_dict.get("url", "") or "",
+                "lsi_video_url": lsi_dict.get("video_url", "") or "",
             })
 
     return result
