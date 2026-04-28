@@ -115,6 +115,94 @@ class AnalyzerAosCliBoundaryTest(unittest.TestCase):
                 api_key=None,
             )
 
+    def test_provider_rejection_retries_with_sanitized_review_prompt(self) -> None:
+        analyzer = self.import_module()
+
+        captured_requests: list[dict[str, object]] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            video_path = tmp_dir / "clip.mp4"
+            video_path.write_bytes(b"fake-mp4")
+
+            def fake_run(request_path, response_path, cwd=None):
+                request = json.loads(Path(request_path).read_text(encoding="utf-8"))
+                captured_requests.append(request)
+                if len(captured_requests) == 1:
+                    Path(response_path).write_text(
+                        json.dumps(
+                            {
+                                "ok": False,
+                                "apiVersion": "aos-cli.model/v1",
+                                "task": request["task"],
+                                "capability": request["capability"],
+                                "error": {
+                                    "code": "PROVIDER_REJECTED",
+                                    "message": "Gemini response missing candidates[0].content.parts[0].text",
+                                    "retryable": True,
+                                    "provider": "gemini",
+                                },
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                    return subprocess.CompletedProcess(["aos-cli"], 2, "", "")
+
+                Path(response_path).write_text(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "task": request["task"],
+                            "capability": request["capability"],
+                            "output": {
+                                "kind": "json",
+                                "data": {
+                                    "reference_consistency": {
+                                        "actor_consistency": 10,
+                                        "location_consistency": 9,
+                                        "props_consistency": 8,
+                                        "actor_issues": [],
+                                        "location_issues": [],
+                                        "props_issues": [],
+                                        "overall_consistency_note": "stable",
+                                    },
+                                    "prompt_compliance": {
+                                        "content_compliance_score": 8,
+                                        "matched_elements": ["staging"],
+                                        "missing_elements": [],
+                                        "incorrect_elements": [],
+                                        "deviation_description": "",
+                                        "overall_compliance_note": "matched",
+                                    },
+                                },
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(["aos-cli"], 0, "", "")
+
+            with patch.object(analyzer, "aos_cli_model_run", side_effect=fake_run):
+                result = analyzer.call_video_review_analyze(
+                    video_path=video_path,
+                    segment_id="ep004_scn001_clip002",
+                    expected_duration=8.0,
+                    original_prompt=(
+                        "镜头：中景，固定机位。\n"
+                        "在宫廷花园阴影中，两名女性角色注视前方。\n"
+                        "对白：【反派｜尖锐】\"You wretched seductress.\""
+                    ),
+                    model="gemini-3-flash-preview",
+                )
+
+        self.assertEqual(len(captured_requests), 2)
+        self.assertEqual(captured_requests[0]["task"], "video-gen.review.ep004_scn001_clip002")
+        self.assertEqual(captured_requests[1]["task"], "video-gen.review.ep004_scn001_clip002.safe")
+        retry_prompt = captured_requests[1]["input"]["content"]["prompt"]
+        self.assertIn("在宫廷花园阴影中，两名女性角色注视前方", retry_prompt)
+        self.assertIn("dialogue text omitted for review safety", retry_prompt)
+        self.assertNotIn("wretched seductress", retry_prompt)
+        self.assertEqual(result["prompt_compliance"]["content_compliance_score"], 8)
+
 
 if __name__ == "__main__":
     unittest.main()

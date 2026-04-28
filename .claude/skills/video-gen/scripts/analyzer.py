@@ -13,6 +13,7 @@ import sys
 import json
 import time
 import tempfile
+import subprocess
 from pathlib import Path
 from typing import Any, List, Dict, Optional
 
@@ -132,32 +133,67 @@ def call_video_review_analyze(
     if not path.exists():
         raise FileNotFoundError(f"Missing video input: {path}")
 
-    request = {
+    with tempfile.TemporaryDirectory(prefix="video-gen-review-aos-cli-") as tmp:
+        tmp_dir = Path(tmp)
+        request_path = tmp_dir / "request.json"
+        response_path = tmp_dir / "response.json"
+        request = _build_video_review_request(
+            path,
+            segment_id,
+            expected_duration,
+            original_prompt,
+            model=model,
+        )
+        request_path.write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
+        completed = aos_cli_model_run(request_path, response_path, cwd=cwd or Path.cwd())
+        if completed.returncode == 0:
+            try:
+                return _read_json_output(response_path)
+            except RuntimeError as exc:
+                if not _should_retry_with_sanitized_prompt(response_path, exc):
+                    raise
+
+        if _should_retry_with_sanitized_prompt(response_path, completed):
+            safe_request = _build_video_review_request(
+                path,
+                f"{segment_id}.safe",
+                expected_duration,
+                _sanitize_prompt_for_review(original_prompt),
+                model=model,
+            )
+            request_path.write_text(json.dumps(safe_request, ensure_ascii=False, indent=2), encoding="utf-8")
+            response_path.unlink(missing_ok=True)
+            completed = aos_cli_model_run(request_path, response_path, cwd=cwd or Path.cwd())
+
+        if completed.returncode != 0:
+            raise RuntimeError(_format_aos_cli_failure(completed, response_path))
+        if not response_path.exists():
+            raise RuntimeError("aos-cli did not write a video review response envelope")
+        return _read_json_output(response_path)
+
+
+def _build_video_review_request(
+    video_path: Path,
+    segment_id: str,
+    expected_duration: float,
+    prompt: str,
+    *,
+    model: str | None = None,
+) -> dict[str, Any]:
+    return {
         "apiVersion": "aos-cli.model/v1",
         "task": f"video-gen.review.{segment_id}",
         "capability": "video.analyze",
         "modelPolicy": {"model": model or DEFAULT_REVIEW_MODEL},
         "input": {
             "content": {
-                "prompt": _build_review_prompt(original_prompt, expected_duration),
-                "videos": [path.resolve().as_uri()],
+                "prompt": _build_review_prompt(prompt, expected_duration),
+                "videos": [video_path.resolve().as_uri()],
             }
         },
         "output": {"kind": "json"},
         "options": {"expectedDuration": expected_duration},
     }
-
-    with tempfile.TemporaryDirectory(prefix="video-gen-review-aos-cli-") as tmp:
-        tmp_dir = Path(tmp)
-        request_path = tmp_dir / "request.json"
-        response_path = tmp_dir / "response.json"
-        request_path.write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
-        completed = aos_cli_model_run(request_path, response_path, cwd=cwd or Path.cwd())
-        if completed.returncode != 0:
-            raise RuntimeError(completed.stderr or f"aos-cli failed with exit code {completed.returncode}")
-        if not response_path.exists():
-            raise RuntimeError("aos-cli did not write a video review response envelope")
-        return _read_json_output(response_path)
 
 
 def _build_review_prompt(original_prompt: str, expected_duration: float) -> str:
@@ -175,6 +211,65 @@ def _build_review_prompt(original_prompt: str, expected_duration: float) -> str:
             *reviewer_prompts,
         ]
     )
+
+
+def _sanitize_prompt_for_review(original_prompt: str) -> str:
+    safe_lines: list[str] = []
+    omitted_dialogue = False
+    for line in original_prompt.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("对白") or stripped.lower().startswith("dialogue"):
+            if not omitted_dialogue:
+                safe_lines.append("对白：<dialogue text omitted for review safety; evaluate speaker, tone, action, and visible staging only>")
+                omitted_dialogue = True
+            continue
+        safe_lines.append(line)
+
+    safe_lines.append("")
+    safe_lines.append(
+        "Review safety note: do not quote or paraphrase omitted dialogue; judge only visible story intent, "
+        "character roles, staging, camera behavior, environment, and non-sensitive audio cues."
+    )
+    return "\n".join(safe_lines).strip()
+
+
+def _should_retry_with_sanitized_prompt(
+    response_path: Path,
+    failure: subprocess.CompletedProcess | RuntimeError,
+) -> bool:
+    if isinstance(failure, RuntimeError) and "output.data must be an object" in str(failure):
+        return True
+    if not response_path.exists():
+        return False
+    try:
+        response = json.loads(response_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+    error = response.get("error") or {}
+    message = str(error.get("message") or "")
+    code = str(error.get("code") or "")
+    return bool(
+        error.get("retryable")
+        and (
+            code == "PROVIDER_REJECTED"
+            or "missing candidates" in message
+            or "response missing" in message
+        )
+    )
+
+
+def _format_aos_cli_failure(completed: subprocess.CompletedProcess, response_path: Path) -> str:
+    if completed.stderr:
+        return completed.stderr
+    if response_path.exists():
+        try:
+            response = json.loads(response_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return f"aos-cli failed with exit code {completed.returncode}"
+        error = response.get("error") or {}
+        if error.get("message"):
+            return str(error["message"])
+    return f"aos-cli failed with exit code {completed.returncode}"
 
 
 def _read_json_output(response_path: Path) -> dict[str, Any]:
