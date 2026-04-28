@@ -197,6 +197,101 @@ export function resolveRefs(
 }
 
 // ---------------------------------------------------------------------------
+// tokenizePrompt — split a storyboard prompt into text + reference segments
+// ---------------------------------------------------------------------------
+
+export type PromptRefKind = "actor" | "location" | "prop";
+
+export type PromptSegment =
+  | { kind: "text"; value: string }
+  | {
+      kind: "ref";
+      refKind: PromptRefKind;
+      id: string;
+      stateId: string | null;
+      name: string;
+      raw: string;
+      start: number;
+      end: number;
+    };
+
+// Match @act_001 / @loc_002 / @prp_003 (optionally with :st_xxx suffix) AND
+// legacy {act_001} / {{act_001}} braces. Subject prefix limited to act|loc|prp.
+const PROMPT_REF_PATTERN =
+  /\{\{((?:act|loc|prp)_\d+(?::st_\w+)?)\}\}|\{((?:act|loc|prp)_\d+(?::st_\w+)?)\}|@((?:act|loc|prp)_\d+(?::st_\w+)?)/g;
+
+function refKindFromId(id: string): PromptRefKind {
+  if (id.startsWith("act_")) return "actor";
+  if (id.startsWith("loc_")) return "location";
+  return "prop";
+}
+
+/**
+ * Split a storyboard prompt into a flat list of segments. Each `@act_001`,
+ * `@loc_002`, `@prp_003` (with optional `:st_xxx` suffix) and the legacy
+ * brace forms become a `ref` segment carrying the resolved name. Unknown
+ * ids fall back to using the bare id as the display name so users still
+ * see something readable.
+ */
+export function tokenizePrompt(
+  text: string,
+  dict: Record<string, string>,
+): PromptSegment[] {
+  if (!text) return [];
+  const segments: PromptSegment[] = [];
+  let lastIndex = 0;
+  for (const match of text.matchAll(PROMPT_REF_PATTERN)) {
+    const idx = match.index ?? 0;
+    if (idx > lastIndex) {
+      segments.push({ kind: "text", value: text.slice(lastIndex, idx) });
+    }
+    const raw = match[0];
+    const token = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+    const colonIdx = token.indexOf(":");
+    const baseId = colonIdx >= 0 ? token.slice(0, colonIdx) : token;
+    const stateId = colonIdx >= 0 ? token.slice(colonIdx + 1) : null;
+    const name = dict[baseId] ?? baseId;
+    segments.push({
+      kind: "ref",
+      refKind: refKindFromId(baseId),
+      id: baseId,
+      stateId,
+      name,
+      raw,
+      start: idx,
+      end: idx + raw.length,
+    });
+    lastIndex = idx + raw.length;
+  }
+  if (lastIndex < text.length) {
+    segments.push({ kind: "text", value: text.slice(lastIndex) });
+  }
+  return segments;
+}
+
+/**
+ * Replace one ref segment in the prompt with a new id of the same kind,
+ * preserving any state suffix on the original token. Returns the rewritten
+ * prompt string. The segment must come from `tokenizePrompt(text, ...)`
+ * called on the same input.
+ */
+export function replacePromptRef(
+  text: string,
+  segment: Extract<PromptSegment, { kind: "ref" }>,
+  newId: string,
+): string {
+  const before = text.slice(0, segment.start);
+  const after = text.slice(segment.end);
+  const stateSuffix = segment.stateId ? `:${segment.stateId}` : "";
+  const replacement = segment.raw.startsWith("@")
+    ? `@${newId}${stateSuffix}`
+    : segment.raw.startsWith("{{")
+      ? `{{${newId}${stateSuffix}}}`
+      : `{${newId}${stateSuffix}}`;
+  return before + replacement + after;
+}
+
+// ---------------------------------------------------------------------------
 // buildFountainTokens — internal helpers
 // ---------------------------------------------------------------------------
 

@@ -40,6 +40,7 @@ import {
 import { EditableText } from "../../common/EditableText";
 import { SaveStatusDot } from "../../common/SaveStatusDot";
 import { ArtifactLifecycleActions } from "../../common/ArtifactLifecycleActions";
+import { PromptChipEditor, type PromptCatalog } from "./PromptChipEditor";
 
 interface ShotRef extends StoryboardShotLike {
   shot_id: string;
@@ -792,27 +793,62 @@ function projectTreePaths(tree: unknown): string[] {
 
 type JsonPatch = (path: string, value: unknown) => void;
 
+function buildPromptCatalog(
+  ...sources: Array<ScriptJson | undefined | null>
+): PromptCatalog {
+  const actorMap = new Map<string, string>();
+  const locationMap = new Map<string, string>();
+  const propMap = new Map<string, string>();
+  for (const source of sources) {
+    for (const actor of source?.actors ?? []) {
+      const id = actor.actor_id;
+      const name = actor.actor_name;
+      if (id && name && !actorMap.has(id)) actorMap.set(id, name);
+    }
+    for (const loc of source?.locations ?? []) {
+      const id = loc.location_id;
+      const name = loc.location_name;
+      if (id && name && !locationMap.has(id)) locationMap.set(id, name);
+    }
+    for (const prop of source?.props ?? []) {
+      const id = prop.prop_id;
+      const name = prop.prop_name;
+      if (id && name && !propMap.has(id)) propMap.set(id, name);
+    }
+  }
+  const toEntries = (map: Map<string, string>) =>
+    Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    actor: toEntries(actorMap),
+    location: toEntries(locationMap),
+    prop: toEntries(propMap),
+  };
+}
+
 function StoryboardPromptEditor({
   unit,
   patch,
   readOnly,
+  dict,
+  catalog,
 }: {
   unit: StoryboardGenerationUnit;
   patch: JsonPatch;
   readOnly: boolean;
+  dict: Record<string, string>;
+  catalog: PromptCatalog;
 }) {
-  const markdown = useMemo(() => storyboardPromptAsMarkdown(unit.rawPrompt), [unit.rawPrompt]);
-
   return (
-    <textarea
-      aria-label={`${unit.sceneId} ${unit.partId} 生成视频 prompt`}
-      className="block min-h-[260px] w-full resize-y border border-[var(--color-rule)] bg-[var(--color-paper-soft)] p-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] outline-none transition-colors focus:border-[var(--color-accent)] disabled:opacity-70"
+    <PromptChipEditor
+      ariaLabel={`${unit.sceneId} ${unit.partId} 生成视频 prompt`}
+      value={unit.rawPrompt}
+      dict={dict}
+      catalog={catalog}
       readOnly={readOnly}
-      value={markdown}
       placeholder="用一段自然语言描述这一镜头要拍什么"
-      onChange={(event) => {
-        patch(unit.promptPath, event.target.value);
-      }}
+      onChange={(next) => patch(unit.promptPath, next)}
     />
   );
 }
@@ -855,10 +891,14 @@ function StoryboardPartBlock({
   unit,
   patch,
   readOnly,
+  dict,
+  catalog,
 }: {
   unit: StoryboardGenerationUnit;
   patch: JsonPatch;
   readOnly: boolean;
+  dict: Record<string, string>;
+  catalog: PromptCatalog;
 }) {
   return (
     <div className="space-y-2">
@@ -866,7 +906,13 @@ function StoryboardPartBlock({
         <span className="font-serif text-[14px] text-[var(--color-ink)]">{unit.partId}</span>
         <FieldLabel>生成视频 prompt</FieldLabel>
       </div>
-      <StoryboardPromptEditor unit={unit} patch={patch} readOnly={readOnly} />
+      <StoryboardPromptEditor
+        unit={unit}
+        patch={patch}
+        readOnly={readOnly}
+        dict={dict}
+        catalog={catalog}
+      />
     </div>
   );
 }
@@ -877,18 +923,29 @@ function StoryboardSceneGroup({
   scriptScene,
   patch,
   readOnly,
+  dict,
+  catalog,
 }: {
   sceneId: string;
   units: StoryboardGenerationUnit[];
   scriptScene: ScriptSceneSnapshot | null;
   patch: JsonPatch;
   readOnly: boolean;
+  dict: Record<string, string>;
+  catalog: PromptCatalog;
 }) {
   const showScript = scriptScene !== null && scriptScene.actions.length > 0;
   const partsList = (
     <div className="grid gap-4">
       {units.map((unit) => (
-        <StoryboardPartBlock key={unit.key} unit={unit} patch={patch} readOnly={readOnly} />
+        <StoryboardPartBlock
+          key={unit.key}
+          unit={unit}
+          patch={patch}
+          readOnly={readOnly}
+          dict={dict}
+          catalog={catalog}
+        />
       ))}
     </div>
   );
@@ -918,11 +975,15 @@ function StoryboardGenerationUnitList({
   sceneLookup,
   patch,
   readOnly,
+  dict,
+  catalog,
 }: {
   units: StoryboardGenerationUnit[];
   sceneLookup: Map<string, ScriptSceneSnapshot>;
   patch: JsonPatch;
   readOnly: boolean;
+  dict: Record<string, string>;
+  catalog: PromptCatalog;
 }) {
   const sceneGroups = useMemo(() => {
     const order: string[] = [];
@@ -949,6 +1010,8 @@ function StoryboardGenerationUnitList({
           scriptScene={sceneLookup.get(group.sceneId) ?? null}
           patch={patch}
           readOnly={readOnly}
+          dict={dict}
+          catalog={catalog}
         />
       ))}
     </section>
@@ -979,6 +1042,10 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
       ...buildRefDict(catalogData ?? {}),
       ...buildRefDict(scriptData ?? {}),
     }),
+    [catalogData, scriptData],
+  );
+  const promptCatalog = useMemo(
+    () => buildPromptCatalog(catalogData, scriptData),
     [catalogData, scriptData],
   );
 
@@ -1368,7 +1435,14 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[var(--color-paper-sunk)] px-4 py-3 lg:px-6 lg:py-4">
         <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-3 lg:gap-4">
-          <StoryboardGenerationUnitList units={generationUnits} sceneLookup={scriptSceneLookup} patch={patch} readOnly={locked} />
+          <StoryboardGenerationUnitList
+            units={generationUnits}
+            sceneLookup={scriptSceneLookup}
+            patch={patch}
+            readOnly={locked}
+            dict={dict}
+            catalog={promptCatalog}
+          />
 
           {!showPromptOnly && currentClip && currentClipData && currentScene && currentSummary && (
             <section className="grid gap-2 lg:gap-3">
