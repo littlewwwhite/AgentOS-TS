@@ -6,11 +6,17 @@ Asserts prepare_runtime_storyboard_export rejects legacy storyboard shapes
 Ark with a default duration.
 """
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from path_manager import _validate_minimal_shots, prepare_runtime_storyboard_export
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
+if str(_SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(_SHARED_DIR))
+
+from storyboard_contract import StoryboardContractError, validate_storyboard
+from path_manager import prepare_runtime_storyboard_export
 
 
 def _valid_shot(idx: int) -> dict:
@@ -30,7 +36,7 @@ def _valid_storyboard() -> dict:
 
 class ValidateMinimalShotsTest(unittest.TestCase):
     def test_accepts_valid_minimal_schema(self) -> None:
-        _validate_minimal_shots(_valid_storyboard(), "valid")
+        validate_storyboard(_valid_storyboard(), "valid")
 
     def test_rejects_legacy_source_refs_shape(self) -> None:
         legacy = {
@@ -39,30 +45,30 @@ class ValidateMinimalShotsTest(unittest.TestCase):
                 {"scene_id": "scn_001", "shots": [{"source_refs": [0, 1], "prompt": "x"}]}
             ],
         }
-        with self.assertRaisesRegex(ValueError, "id must match"):
-            _validate_minimal_shots(legacy, "legacy")
+        with self.assertRaisesRegex(StoryboardContractError, "id must match"):
+            validate_storyboard(legacy, "legacy")
 
     def test_rejects_missing_duration(self) -> None:
         sb = _valid_storyboard()
         del sb["scenes"][0]["shots"][0]["duration"]
-        with self.assertRaisesRegex(ValueError, "duration must be int"):
-            _validate_minimal_shots(sb, "missing-dur")
+        with self.assertRaisesRegex(StoryboardContractError, "duration must be int"):
+            validate_storyboard(sb, "missing-dur")
 
     def test_rejects_out_of_range_duration(self) -> None:
         sb = _valid_storyboard()
         sb["scenes"][0]["shots"][0]["duration"] = 3
-        with self.assertRaisesRegex(ValueError, r"\[4, 15\]"):
-            _validate_minimal_shots(sb, "below-range")
+        with self.assertRaisesRegex(StoryboardContractError, r"\[4, 15\]"):
+            validate_storyboard(sb, "below-range")
 
     def test_rejects_empty_prompt(self) -> None:
         sb = _valid_storyboard()
         sb["scenes"][0]["shots"][0]["prompt"] = "   "
-        with self.assertRaisesRegex(ValueError, "prompt must be"):
-            _validate_minimal_shots(sb, "blank-prompt")
+        with self.assertRaisesRegex(StoryboardContractError, "prompt must be"):
+            validate_storyboard(sb, "blank-prompt")
 
     def test_rejects_empty_scenes(self) -> None:
-        with self.assertRaisesRegex(ValueError, "scenes\\[\\] missing or empty"):
-            _validate_minimal_shots({"episode_id": "ep001", "scenes": []}, "empty")
+        with self.assertRaisesRegex(StoryboardContractError, "scenes\\[\\] missing or empty"):
+            validate_storyboard({"episode_id": "ep001", "scenes": []}, "empty")
 
 
 class PrepareRuntimeExportGateTest(unittest.TestCase):

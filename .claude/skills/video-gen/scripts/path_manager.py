@@ -13,55 +13,17 @@ Path structure:
 import json
 import re
 import shutil
+import sys
 import urllib.request
 import ssl
 from pathlib import Path
 from typing import Optional, Dict
 
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
+if str(_SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(_SHARED_DIR))
 
-_MINIMAL_SHOT_ID_RE = re.compile(r"^scn_\d{3}_clip\d{3}$")
-
-
-def _validate_minimal_shots(data: dict, source_label: str) -> None:
-    """Reject legacy storyboard shapes before VIDEO API calls.
-
-    Shot contract is exhaustive: {id, duration, prompt}. See
-    .claude/skills/video-gen/references/STORYBOARD_SCHEMA.md.
-
-    This is the read-side gate complementing the storyboard finalize gate.
-    Any storyboard predating the minimal-schema migration (e.g. shapes
-    carrying source_refs / partial_prompt / complete_prompt only) is
-    rejected here so it cannot silently fall through to Ark with a
-    missing duration.
-    """
-    scenes = data.get("scenes")
-    if not isinstance(scenes, list) or not scenes:
-        raise ValueError(f"{source_label}: scenes[] missing or empty")
-    for sc_idx, scene in enumerate(scenes):
-        scene_id = scene.get("scene_id") or f"<unnamed scene #{sc_idx}>"
-        shots = scene.get("shots")
-        if not isinstance(shots, list) or not shots:
-            raise ValueError(f"{source_label}: scene {scene_id}.shots[] missing or empty")
-        for sh_idx, shot in enumerate(shots):
-            label = f"{source_label}: scene {scene_id} shots[{sh_idx}]"
-            sid = shot.get("id")
-            if not isinstance(sid, str) or not _MINIMAL_SHOT_ID_RE.match(sid):
-                raise ValueError(
-                    f"{label}: id must match ^scn_\\d{{3}}_clip\\d{{3}}$ (got {sid!r}). "
-                    "Legacy storyboard schema — regenerate via storyboard finalize gate."
-                )
-            duration = shot.get("duration")
-            if not isinstance(duration, int) or isinstance(duration, bool) or duration < 4 or duration > 15:
-                raise ValueError(
-                    f"{label}: duration must be int in [4, 15] (got {duration!r}). "
-                    "Legacy storyboard schema — regenerate via storyboard finalize gate."
-                )
-            prompt = shot.get("prompt")
-            if not isinstance(prompt, str) or not prompt.strip():
-                raise ValueError(
-                    f"{label}: prompt must be non-empty string. "
-                    "Legacy storyboard schema — regenerate via storyboard finalize gate."
-                )
+from storyboard_contract import StoryboardContractError, validate_storyboard
 
 
 class VideoNameParser:
@@ -359,8 +321,15 @@ def prepare_runtime_storyboard_export(
     try:
         runtime_data = json.loads(runtime_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Runtime storyboard {runtime_path} is not valid JSON: {exc}") from exc
-    _validate_minimal_shots(runtime_data, str(runtime_path))
+        raise ValueError(
+            f"Runtime storyboard {runtime_path} is not valid JSON: {exc}"
+        ) from exc
+    try:
+        validate_storyboard(runtime_data, str(runtime_path))
+    except StoryboardContractError as exc:
+        raise ValueError(
+            f"{exc}. Legacy storyboard schema — regenerate via storyboard finalize gate."
+        ) from exc
 
     return runtime_path, source_kind
 
