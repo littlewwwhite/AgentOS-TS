@@ -341,7 +341,7 @@ def poll_multiple_tasks(
                     # still pending, continue next iteration
                     continue
                 status = str(output.get("status") or "UNKNOWN").upper()
-                if status == "SUCCESS":
+                if status in {"SUCCESS", "SUCCEEDED"}:
                     artifact = _extract_video_artifact(envelope)
                     video_url = artifact.get("uri") or artifact.get("remoteUrl")
                     last_frame_url = (

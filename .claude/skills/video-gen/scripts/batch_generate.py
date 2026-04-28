@@ -783,6 +783,7 @@ def run_batch_generate(
     resume: bool = False,
     no_ref: bool = False,
     no_actor_ref: bool = False,
+    no_continuity: bool = False,
 ) -> list:
     """Main entry: iterate all clips and generate videos.
 
@@ -930,7 +931,7 @@ def run_batch_generate(
             # ("first/last frame content cannot be mixed with reference media
             # content"). The first_frame channel remains opt-in via direct
             # video_api calls.
-            lsi_url_raw = (ls.get('lsi_url') or '').strip()
+            lsi_url_raw = "" if no_continuity else (ls.get('lsi_url') or '').strip()
             usable_lsi = bool(lsi_url_raw) and lsi_url_raw.startswith(
                 ('http://', 'https://', 'data:')
             )
@@ -958,7 +959,7 @@ def run_batch_generate(
                     f"  [{ls_id}] 跨次续帧（lsi.url）将作为追加 reference_image 注入: "
                     f"{clip_first_frame_url[:60]}"
                 )
-            lsi_video_url_raw = (ls.get('lsi_video_url') or '').strip()
+            lsi_video_url_raw = "" if no_continuity else (ls.get('lsi_video_url') or '').strip()
             usable_lsi_video = bool(lsi_video_url_raw) and lsi_video_url_raw.startswith(
                 ('http://', 'https://')
             )
@@ -1054,6 +1055,7 @@ def run_batch_generate(
                 scene_id, clips, episode, paths, model_code,
                 quality, ratio, poll_interval, timeout, gemini_api_key,
                 get_clip_review_config(), data, str(runtime_json_path), json_lock, skip_review,
+                continuity_enabled=not no_continuity,
             )
 
         def report_scene_error(scene_id, err):
@@ -1314,6 +1316,12 @@ def main():
         action="store_true",
         help="Skip actor reference images; keep location/prop refs and replace actor tokens with names"
     )
+    parser.add_argument(
+        "--no-continuity",
+        dest="no_continuity",
+        action="store_true",
+        help="Disable clip-to-clip last-frame/video references; useful when generated frames trigger provider input-image moderation"
+    )
 
     args = parser.parse_args()
 
@@ -1333,6 +1341,7 @@ def main():
         skip_review=args.skip_review,
         no_ref=getattr(args, "no_ref", False),
         no_actor_ref=getattr(args, "no_actor_ref", False),
+        no_continuity=getattr(args, "no_continuity", False),
     )
 
 

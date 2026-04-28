@@ -613,6 +613,7 @@ def _process_scene_clips(
     json_path: Optional[str] = None,
     json_lock=None,
     skip_review: bool = False,
+    continuity_enabled: bool = True,
 ) -> None:
     """Process all clips in one scene with the minimal default continuity path."""
     from collections import defaultdict
@@ -629,7 +630,7 @@ def _process_scene_clips(
         clip_group = clips_by_num[clip_num]
         scn_label = clip_group[0]["ls_id"].split("_")[0]
 
-        if prev_frame_filename and first_frame_url:
+        if continuity_enabled and prev_frame_filename and first_frame_url:
             for clip in clip_group:
                 clip["prev_frame_url"] = first_frame_url
                 clip["prev_frame_description"] = None
@@ -652,12 +653,18 @@ def _process_scene_clips(
             poll_interval=poll_interval,
             timeout=timeout,
             gemini_api_key=gemini_api_key,
-            first_frame_url=first_frame_url,
+            first_frame_url=first_frame_url if continuity_enabled else None,
             first_frame_text=None,
-            prev_video_url=prev_video_url,
+            prev_video_url=prev_video_url if continuity_enabled else None,
             on_first_video_ready=None,
             skip_review=skip_review,
         )
+
+        if not continuity_enabled:
+            first_frame_url = None
+            prev_frame_filename = None
+            prev_video_url = None
+            continue
 
         if provider_last_frame_url:
             next_frame_url = provider_last_frame_url

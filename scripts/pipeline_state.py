@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -91,9 +92,24 @@ def load_or_init(project_dir: str) -> tuple[Path, dict[str, Any]]:
 
 
 def write_state(path: Path, state: dict[str, Any]) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(state, ensure_ascii=False, indent=2) + "\n"
+    tmp_path: Path | None = None
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as tmp:
+        tmp.write(payload)
+        tmp_path = Path(tmp.name)
+    try:
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
 
 
 def ensure_state(project_dir: str) -> dict[str, Any]:

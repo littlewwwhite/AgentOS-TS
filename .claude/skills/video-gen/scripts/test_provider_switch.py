@@ -177,6 +177,52 @@ class ProviderSwitchTest(unittest.TestCase):
         self.assertEqual(results[0]["actual_duration_seconds"], 8.0)
         self.assertEqual(results[0]["video_path"], "/tmp/out.mp4")
 
+    def test_poll_multiple_tasks_treats_ark_succeeded_status_as_complete(self):
+        import video_api
+
+        envelope_seed = {
+            "ok": True,
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video.generate",
+            "capability": "video.generate",
+            "output": {"kind": "task", "taskId": "task-poll-succeeded"},
+            "warnings": [],
+        }
+
+        result_envelope = {
+            "ok": True,
+            "apiVersion": "aos-cli.model/v1",
+            "task": "video.generate",
+            "capability": "video.generate",
+            "output": {
+                "kind": "task_result",
+                "status": "SUCCEEDED",
+                "artifacts": [
+                    {
+                        "kind": "video",
+                        "uri": "https://cdn.example.com/succeeded.mp4",
+                    }
+                ],
+            },
+            "warnings": [],
+        }
+
+        with patch.object(video_api, "poll_video_generation", return_value=result_envelope), \
+             patch.object(video_api, "download_video", return_value="/tmp/succeeded.mp4"):
+            results = video_api.poll_multiple_tasks(
+                tasks=[{
+                    "task_id": "task-poll-succeeded",
+                    "task_envelope": envelope_seed,
+                    "output_path": "/tmp/succeeded.mp4",
+                    "model_code": "ep-20260303234827-tfnzm",
+                }],
+                interval=0,
+                timeout=1,
+            )
+
+        self.assertTrue(results[0]["success"])
+        self.assertEqual(results[0]["video_path"], "/tmp/succeeded.mp4")
+
 
 def test_video_submit_uses_aos_cli_task_boundary(tmp_path, monkeypatch):
     import video_api

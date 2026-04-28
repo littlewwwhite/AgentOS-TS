@@ -80,3 +80,50 @@ def test_process_scene_clips_runs_clips_in_order_and_carries_provider_tail_frame
 
     assert calls == [(1, None), (2, "tail-1")]
     assert clips[0]["prev_frame_url"] == "tail-1"
+
+
+def test_process_scene_clips_can_disable_continuity(monkeypatch):
+    import batch_generate_runtime as runtime
+
+    calls = []
+
+    def fake_run_generation_rounds(**kwargs):
+        clip_group = kwargs["clip_group"]
+        calls.append(
+            (
+                clip_group[0]["clip_num"],
+                kwargs["first_frame_url"],
+                kwargs["prev_video_url"],
+            )
+        )
+        return f"/tmp/clip-{clip_group[0]['clip_num']}.mp4", f"tail-{clip_group[0]['clip_num']}"
+
+    monkeypatch.setattr(runtime, "_run_generation_rounds", fake_run_generation_rounds)
+    monkeypatch.setattr(
+        runtime,
+        "_extract_and_upload_frame",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("continuity extraction should be disabled")),
+    )
+
+    clips = [
+        {"ls_id": "scn001_clip001", "scene_id": "scn_001", "clip_num": 1},
+        {"ls_id": "scn001_clip002", "scene_id": "scn_001", "clip_num": 2},
+    ]
+
+    runtime._process_scene_clips(
+        scene_id="scn_001",
+        scene_clip_states=clips,
+        episode=1,
+        paths=None,
+        model_code="fake-model",
+        quality="720",
+        ratio="16:9",
+        poll_interval=0,
+        timeout=1,
+        gemini_api_key=None,
+        skip_review=True,
+        continuity_enabled=False,
+    )
+
+    assert calls == [(1, None, None), (2, None, None)]
+    assert "prev_frame_url" not in clips[1]
