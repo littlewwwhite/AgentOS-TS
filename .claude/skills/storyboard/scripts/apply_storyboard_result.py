@@ -17,7 +17,12 @@ TOKEN_PATTERN = re.compile(r"@(act|loc|prp)_([A-Za-z0-9]+)(?::(st_[A-Za-z0-9]+))
 REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "_shared"
+if str(_SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(_SHARED_DIR))
+
 from pipeline_state import ensure_state, update_artifact, update_episode, update_stage
+from storyboard_contract import StoryboardContractError, validate_shot
 
 
 def load_payload(path: Path) -> dict[str, Any]:
@@ -32,17 +37,10 @@ def load_payload(path: Path) -> dict[str, Any]:
     if not isinstance(shots, list) or len(shots) == 0:
         raise ValueError("storyboard payload.shots must be a non-empty array")
     for index, shot in enumerate(shots):
-        if not isinstance(shot, dict):
-            raise ValueError(f"storyboard payload.shots[{index}] must be an object")
-        if not isinstance(shot.get("id"), str) or not shot["id"].strip():
-            raise ValueError(f"storyboard payload.shots[{index}].id must be a non-empty string")
-        duration = shot.get("duration")
-        if not isinstance(duration, int) or isinstance(duration, bool) or not (4 <= duration <= 15):
-            raise ValueError(
-                f"storyboard payload.shots[{index}].duration must be int in [4,15]; got {duration!r}"
-            )
-        if not isinstance(shot.get("prompt"), str) or not shot["prompt"].strip():
-            raise ValueError(f"storyboard payload.shots[{index}].prompt must be a non-empty string")
+        try:
+            validate_shot(shot, f"storyboard payload.shots[{index}]")
+        except StoryboardContractError as exc:
+            raise ValueError(str(exc)) from exc
     return payload
 
 
