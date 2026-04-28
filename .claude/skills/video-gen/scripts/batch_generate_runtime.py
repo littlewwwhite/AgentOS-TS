@@ -460,9 +460,16 @@ def _write_lsi_to_json(
         for scene in data["scenes"]:
             if scene["scene_id"] != target_scene_id:
                 continue
-            for clip_item in scene["clips"]:
-                match = re.match(r"clip[_]?(\d+)", clip_item["clip_id"], re.IGNORECASE)
-                if not match or int(match.group(1)) != target_clip_num:
+            units_key = "clips" if scene.get("clips") else "shots"
+            units = scene.get(units_key) or []
+            for unit_index, clip_item in enumerate(units):
+                unit_id = clip_item.get("clip_id") if isinstance(clip_item, dict) else None
+                if unit_id:
+                    match = re.match(r"clip[_]?(\d+)", unit_id, re.IGNORECASE)
+                    unit_num = int(match.group(1)) if match else unit_index + 1
+                else:
+                    unit_num = unit_index + 1
+                if unit_num != target_clip_num:
                     continue
 
                 frame_ref_value: Dict[str, str] = {"url": url}
@@ -704,23 +711,28 @@ def _process_scene_clips(
             for scene in data["scenes"]:
                 if scene["scene_id"] != scene_id:
                     continue
-                scene_clip_ids = scene["clips"]
-                for clip_index, clip_item in enumerate(scene_clip_ids):
-                    match = re.match(
-                        r"clip[_]?(\d+)", clip_item["clip_id"], re.IGNORECASE
-                    )
-                    if (
-                        match
-                        and int(match.group(1)) == clip_num
-                        and clip_index + 1 < len(scene_clip_ids)
-                    ):
-                        next_match = re.match(
-                            r"clip[_]?(\d+)",
-                            scene_clip_ids[clip_index + 1]["clip_id"],
-                            re.IGNORECASE,
+                units = scene.get("clips") or scene.get("shots") or []
+                for unit_index, unit in enumerate(units):
+                    unit_id = unit.get("clip_id") if isinstance(unit, dict) else None
+                    if unit_id:
+                        match = re.match(r"clip[_]?(\d+)", unit_id, re.IGNORECASE)
+                        unit_num = int(match.group(1)) if match else unit_index + 1
+                    else:
+                        unit_num = unit_index + 1
+                    if unit_num == clip_num and unit_index + 1 < len(units):
+                        next_unit = units[unit_index + 1]
+                        next_unit_id = (
+                            next_unit.get("clip_id") if isinstance(next_unit, dict) else None
                         )
-                        if next_match:
-                            next_in_json = int(next_match.group(1))
+                        if next_unit_id:
+                            next_match = re.match(r"clip[_]?(\d+)", next_unit_id, re.IGNORECASE)
+                            next_in_json = (
+                                int(next_match.group(1))
+                                if next_match
+                                else unit_index + 2
+                            )
+                        else:
+                            next_in_json = unit_index + 2
                         break
                 break
 

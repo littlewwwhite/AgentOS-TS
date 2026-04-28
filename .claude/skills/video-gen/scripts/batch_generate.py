@@ -53,7 +53,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from batch_generate_runtime import _process_scene_clips, process_scenes_parallel
 from subject_resolver import resolve_subject_tokens
 from production_types import ClipIntent
-from video_api import DEFAULT_MODEL_CODE
+from video_api import DEFAULT_MODEL_CODE, image_path_to_data_uri
 from path_manager import VideoReviewPaths, prepare_runtime_storyboard_export
 from config_loader import get_generation_config, get_clip_review_config
 from pipeline_state import ensure_state, update_episode, update_stage
@@ -93,80 +93,47 @@ def load_storyboard_json(json_path: str) -> dict:
 def iter_clips(data: dict) -> list:
     """Iterate all generation units from storyboard JSON.
 
-    Reads prompt from either simplified scene-level shots or current runtime clips.
-    `complete_prompt` / `complete_prompt_v2` remain the current exporter fallback.
+    Each shot in `scene.shots[]` is one generation unit. Required shot fields:
+    `id` (e.g. "scn_001_clip001"), `duration` (int seconds), `prompt` (str).
 
-    Returns:
-        List of dicts, each containing (normalized):
-        - clip_id: str (e.g., "scn001_clip001")
-        - scene_id: str (e.g., "scn_001")
-        - full_prompts: str
-        - duration_seconds: str (e.g., "13s")
-        - actors: list[str]
-        - location: str
-        - prompt_version: int (0 for v1, 1 for v2)
+    Returns one dict per shot — the runtime no longer produces multiple prompt
+    versions per shot.
     """
     result = []
     for scene in data['scenes']:
-        scene_id = scene['scene_id']  # e.g., "scn_001"
-        # Extract actor IDs from scene-level actors list
-        scene_actors = [a['actor_id'] for a in scene['actors']]
-        # Extract location from scene-level locations list
-        scene_location = scene['locations'][0]['location_id'] if scene['locations'] else ''
+        scene_id = scene['scene_id']
+        scene_actors = [a['actor_id'] for a in scene.get('actors', [])]
+        locations = scene.get('locations') or []
+        scene_location = locations[0]['location_id'] if locations else ''
 
-        units = scene.get('shots') or scene.get('clips') or []
-        for index, clip in enumerate(units, start=1):
-            clip_id_raw = clip.get('clip_id', f"clip_{index:03d}")  # e.g., "clip_001"
-            # Normalize scene_id: "scn_001" -> "scn001"
-            scn_num = re.sub(r'[_\-]', '', scene_id)  # "scn001"
-            # Normalize clip_id: "clip_001" -> "clip001"
-            clip_num = re.sub(r'[_\-]', '', clip_id_raw)  # "clip001"
-            normalized_clip_id = f"{scn_num}_{clip_num}"  # "scn001_clip001"
+        for shot in scene.get('shots') or scene.get('clips') or []:
+            shot_id = shot.get('id') or shot.get('clip_id')
+            if not shot_id:
+                raise KeyError(f"shot in {scene_id} missing id")
+            normalized_clip_id = re.sub(r'[_\-]', '', shot_id)
+            normalized_clip_id = re.sub(r'(scn\d+)(clip\d+)', r'\1_\2', normalized_clip_id)
 
-            prompts = _extract_clip_prompts(clip)
-            # lsi.url：上一个 clip 最后镜头首帧的 COS 路径（可能为 None）
-            # lsi.video_url：上一个 clip 远端 mp4 URL（可能为 None）
-            lsi_dict = clip.get('lsi') or {}
-            lsi_url = lsi_dict.get('url', '') or ''
-            lsi_video_url = lsi_dict.get('video_url', '') or ''
+            prompt_text = shot.get('prompt')
+            if not prompt_text:
+                raise KeyError(f"shot {shot_id} missing prompt")
+            duration = shot.get('duration')
+            if not isinstance(duration, int) or isinstance(duration, bool):
+                raise ValueError(f"shot {shot_id} duration must be int, got {duration!r}")
 
-            # Generate one entry per prompt version
-            for pv_idx, prompt_text in enumerate(prompts):
-                entry = {
-                    'clip_id': normalized_clip_id,
-                    'scene_id': scene_id,
-                    'full_prompts': prompt_text,
-                    'duration_seconds': clip.get('expected_duration', '5s'),
-                    'actors': scene_actors,
-                    'location': scene_location,
-                    'prompt_version': pv_idx,
-                    'lsi_url': lsi_url,
-                    'lsi_video_url': lsi_video_url,
-                }
-                result.append(entry)
+            lsi_dict = shot.get('lsi') or {}
+            result.append({
+                'clip_id': normalized_clip_id,
+                'scene_id': scene_id,
+                'full_prompts': prompt_text,
+                'duration_seconds': duration,
+                'actors': scene_actors,
+                'location': scene_location,
+                'prompt_version': 0,
+                'lsi_url': lsi_dict.get('url', '') or '',
+                'lsi_video_url': lsi_dict.get('video_url', '') or '',
+            })
 
     return result
-
-
-def _extract_clip_prompts(clip: dict) -> list[str]:
-    """Extract generation prompts from one clip.
-
-    Simplified upstream contract: one shot/clip -> one `prompt`.
-    Current exporter contract: `complete_prompt` / `complete_prompt_v2`.
-    """
-    prompt = clip.get('prompt')
-    if prompt:
-        return [prompt]
-
-    v1_prompt = clip.get('complete_prompt')
-    if not v1_prompt:
-        raise KeyError("prompt")
-
-    prompts = [v1_prompt]
-    v2_prompt = clip.get('complete_prompt_v2')
-    if v2_prompt and v2_prompt != v1_prompt:
-        prompts.append(v2_prompt)
-    return prompts
 
 
 # ============================================================
@@ -174,9 +141,11 @@ def _extract_clip_prompts(clip: dict) -> list[str]:
 # ============================================================
 
 # Pattern: matches @act_xxx / {act_xxx} / @loc_xxx / {loc_xxx} / @prp_xxx / {prp_xxx}
+# Storyboard skill v1.5.0+ may append :st_xxx for state-aware actor refs:
+#   @act_001:st_002 → actor act_001 in state st_002
 # Storyboard skill v1.4.0 emits @-form; legacy storyboards still use {-form.
 # Note: prop ids use the `prp_` prefix to match asset-gen / props.json conventions.
-_SUBJECT_ID_PATTERN = re.compile(r'[@{]((?:act|loc|prp)_\d+)\}?')
+_SUBJECT_ID_PATTERN = re.compile(r'[@{]((?:act|loc|prp)_\d+(?::st_\d+)?)\}?')
 
 # Legacy patterns: matches 【xxx】 or 【xxx（yyy）】
 _SUBJECT_PATTERN = re.compile(r'【([^】]+)】')
@@ -305,6 +274,40 @@ def _find_actor_image_url(actor_data: dict) -> str:
     return ""
 
 
+
+def _coerce_asset_url(url: str, fallback_rel_path: str, assets_base: Path) -> str:
+    """Convert a file:// asset URL to a usable URL for the video API.
+
+    Priority:
+    1. If url is already http(s) or data: → return as-is
+    2. If url starts with file:// → try converting the actual local asset file
+       (using fallback_rel_path relative to project root, since temp _temp/ may be gone)
+    3. If no usable URL found → return empty string
+    """
+    if not url:
+        return url
+    if url.startswith(("http://", "https://", "data:")):
+        return url
+    if url.startswith("file://"):
+        # Try the fallback relative path first (more reliable than _temp/)
+        if fallback_rel_path:
+            candidate = (assets_base.parent / fallback_rel_path).resolve()
+            if candidate.exists():
+                try:
+                    return image_path_to_data_uri(candidate)
+                except Exception:
+                    pass
+        # Try extracting local path from file:// URL
+        local_path = Path(url[7:])  # strip file://
+        if local_path.exists():
+            try:
+                return image_path_to_data_uri(local_path)
+            except Exception:
+                pass
+        return ""
+    return url
+
+
 def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
     """Load subject mapping from output/actors/actors.json and locations/locations.json.
 
@@ -328,10 +331,19 @@ def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
         with open(actors_file, 'r', encoding='utf-8') as f:
             actors = json.load(f)
         actor_count = 0
+        state_count = 0
         for actor_id, actor_data in actors.items():
+            name = actor_data.get("name", actor_id)
+            # Default entry (used for bare @act_xxx tokens)
             subject_id = _find_actor_subject_id(actor_data)
             image_url = _find_actor_image_url(actor_data)
-            name = actor_data.get("name", actor_id)
+            fallback_path = ""
+            for key, value in actor_data.items():
+                if key in ("name", "voice", "voice_url", "states") or not isinstance(value, dict):
+                    continue
+                fallback_path = value.get("three_view") or value.get("face_view") or ""
+                break
+            image_url = _coerce_asset_url(image_url, fallback_path, assets_path)
             if subject_id or image_url:
                 mapping[actor_id] = {
                     "subject_id": subject_id,
@@ -343,7 +355,28 @@ def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
             else:
                 print(f"  [WARN] Actor '{actor_id}' ({name}) has no subject_id or image_url, skipping",
                       file=sys.stderr)
-        print(f"[ASSETS] Loaded {actor_count} actors from {actors_file}")
+
+            # State-specific entries (used for @act_xxx:st_yyy tokens)
+            states_map = actor_data.get("states") or {}
+            if not isinstance(states_map, dict):
+                states_map = {}
+            for state_id, state_entry in states_map.items():
+                if not isinstance(state_entry, dict) or not state_id:
+                    continue
+                st_subject = state_entry.get("subject_id", "")
+                st_url = state_entry.get("three_view_url") or state_entry.get("face_view_url", "")
+                st_fallback = state_entry.get("three_view") or state_entry.get("face_view") or ""
+                st_url = _coerce_asset_url(st_url, st_fallback, assets_path)
+                if not (st_subject or st_url):
+                    continue
+                mapping[f"{actor_id}:{state_id}"] = {
+                    "subject_id": st_subject,
+                    "name": f"{name}({state_entry.get('state_name', state_id)})",
+                    "type": "actor",
+                    "image_url": st_url,
+                }
+                state_count += 1
+        print(f"[ASSETS] Loaded {actor_count} actors + {state_count} actor-state aliases from {actors_file}")
     else:
         print(f"[WARN] actors.json not found: {actors_file}", file=sys.stderr)
 
@@ -357,6 +390,8 @@ def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
             subject_id = loc_data.get("subject_id", "")
             image_url = loc_data.get("three_view_url") or loc_data.get("main_url", "")
             name = loc_data.get("name", loc_id)
+            fallback_path = loc_data.get("three_view") or loc_data.get("main") or ""
+            image_url = _coerce_asset_url(image_url, fallback_path, assets_path)
             if subject_id or image_url:
                 mapping[loc_id] = {
                     "subject_id": subject_id,
@@ -386,6 +421,8 @@ def load_assets_subject_mapping(assets_dir: str) -> Dict[str, Dict]:
                 or prop_data.get("image_url", "")
             )
             name = prop_data.get("name", prop_id)
+            fallback_path = prop_data.get("three_view") or prop_data.get("main") or ""
+            image_url = _coerce_asset_url(image_url, fallback_path, assets_path)
             if subject_id or image_url:
                 mapping[prop_id] = {
                     "subject_id": subject_id,
@@ -420,22 +457,30 @@ def map_subject_ids_to_images(
     """
     mapped = []
     for sid in subject_ids:
-        if sid in assets_mapping:
-            entry = assets_mapping[sid]
-            url = entry.get("image_url", "")
-            if url:
-                mapped.append({
-                    "url": url,
-                    "name": sid,
-                    "display_name": entry.get("name", sid),
-                    "subject_id": entry.get("subject_id", ""),
-                })
-            else:
-                print(f"  [WARN] Subject ID '{sid}' ({entry.get('name', sid)}) has no image_url, skipping",
-                      file=sys.stderr)
-        else:
+        entry = assets_mapping.get(sid)
+        # Fallback: actor:state token → strip :state suffix when no state-specific entry
+        if entry is None and ":st_" in sid:
+            base = sid.split(":", 1)[0]
+            fallback = assets_mapping.get(base)
+            if fallback is not None:
+                print(f"  [INFO] Subject ID '{sid}' has no state-specific entry; "
+                      f"falling back to base '{base}'", file=sys.stderr)
+                entry = fallback
+        if entry is None:
             print(f"  [WARN] Subject ID '{sid}' not found in assets mapping, skipping",
                   file=sys.stderr)
+            continue
+        url = entry.get("image_url", "")
+        if not url:
+            print(f"  [WARN] Subject ID '{sid}' ({entry.get('name', sid)}) has no image_url, skipping",
+                  file=sys.stderr)
+            continue
+        mapped.append({
+            "url": url,
+            "name": sid,
+            "display_name": entry.get("name", sid),
+            "subject_id": entry.get("subject_id", ""),
+        })
     return mapped
 
 
@@ -456,28 +501,6 @@ def parse_clip_id(ls_id: str) -> Tuple[int, int]:
     if not m:
         raise ValueError(f"Cannot parse clip_id: {ls_id}")
     return int(m.group(1)), int(m.group(2))
-
-
-def parse_duration(dur_str) -> int:
-    """Parse duration string like '14s', '14', or numeric to integer seconds.
-
-    Handles floats like '12.5s' correctly (rounds to nearest int).
-    Clamps to [3, 15] range.
-
-    Args:
-        dur_str: Duration (e.g., "14s", "8s", "15", 12, 12.5, "12.5s")
-
-    Returns:
-        Duration in seconds, clamped to 3-15
-    """
-    try:
-        # Try direct float conversion first (handles numeric types and plain numeric strings)
-        num = round(float(dur_str))
-    except (TypeError, ValueError):
-        # String with unit suffix — extract numeric part including decimal
-        m = re.search(r'(\d+(?:\.\d+)?)', str(dur_str))
-        num = round(float(m.group(1))) if m else 5
-    return max(3, min(15, num))
 
 
 def _select_default_clip_entries(clips: List[dict]) -> List[dict]:
@@ -598,6 +621,7 @@ def run_batch_generate(
     gemini_api_key: str = None,
     skip_review: bool = False,
     resume: bool = False,
+    no_ref: bool = False,
 ) -> list:
     """Main entry: iterate all clips and generate videos.
 
@@ -672,7 +696,9 @@ def run_batch_generate(
     assets_dir = find_assets_dir(output_root)
     assets_mapping = {}
 
-    if assets_dir:
+    if no_ref:
+        print("[INFO] no_ref=True: skipping all reference images (plain-text prompt mode).")
+    elif assets_dir:
         print(f"[MAP] Found assets directory: {assets_dir}")
         assets_mapping = load_assets_subject_mapping(str(assets_dir))
         print(f"[MAP] Loaded {len(assets_mapping)} subjects from local assets")
@@ -762,7 +788,12 @@ def run_batch_generate(
                 )
 
             prompt = convert_prompt_brackets(prompt_with_indices)
-            dur_api = parse_duration(ls.get('duration_seconds', '5'))
+            duration_value = ls['duration_seconds']
+            if not isinstance(duration_value, int) or isinstance(duration_value, bool):
+                raise ValueError(
+                    f"clip {ls_id} duration_seconds must be int from iter_clips, got {duration_value!r}"
+                )
+            dur_api = duration_value
             location_num, clip_num = parse_clip_id(ls_id)
 
             # Resume mode: skip clips that already have .mp4 output files
@@ -1086,6 +1117,12 @@ def main():
         action="store_true",
         help="Skip aos-cli video review, mark all generated clips as passed"
     )
+    parser.add_argument(
+        "--no-ref",
+        dest="no_ref",
+        action="store_true",
+        help="Skip all reference images; use text-only prompt mode"
+    )
 
     args = parser.parse_args()
 
@@ -1103,6 +1140,7 @@ def main():
         shot_filter=args.shot,
         resume=args.resume,
         skip_review=args.skip_review,
+        no_ref=getattr(args, "no_ref", False),
     )
 
 

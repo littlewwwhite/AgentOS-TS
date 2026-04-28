@@ -1,101 +1,95 @@
-# Storyboard JSON Schema
+# Storyboard JSON Schema (VIDEO 视角)
 
-本文件明确区分两个相邻但不同的契约层：
+本文件描述 VIDEO 阶段所看到的 storyboard JSON 字段契约。**权威 schema 在
+storyboard skill 内**：`.claude/skills/storyboard/references/schema.md`。
+设计原则见 `docs/superpowers/specs/2026-04-28-storyboard-shot-schema-design.md`。
 
-1. **STORYBOARD 层**：`storyboard` skill 产出的 draft/approved 简化结构
-2. **VIDEO 导出层**：`video-gen/generate_episode_json.py` 从 approved canonical 导出的 `ep{NNN}_storyboard.json` 运行时结构
-3. **导演锁版 canonical 路径**：`output/storyboard/approved/ep{NNN}_storyboard.json`
+VIDEO 阶段的职责：
 
-STORYBOARD 层与 VIDEO 导出层都有效，但**不要把它们误认为同一个字段层级**；导演锁版文件也**不要**被 VIDEO 运行时直接改写。
+1. 读取 approved canonical（`output/storyboard/approved/ep{NNN}_storyboard.json`）
+2. 拷贝为 runtime 副本（`output/ep{NNN}/ep{NNN}_storyboard.json`）
+3. 在 runtime 副本上注入运行时字段（`lsi`、首末帧 URL 等），**绝不回写
+   approved canonical**
 
-## 1. STORYBOARD 层（draft / approved artifact）
+## 1. Approved Canonical Shape (storyboard skill 输出)
 
-### Data Hierarchy
-
-```
-Episode (集)
-└── Scene (场)
-    └── Shot (视频片段, 3-15s)
-```
-
-### Top-level Fields
-
-- `title`: Episode title/summary
-- `scenes`: Array of scenes
-
-### Scene Level
-
-| Field | Description |
-|-------|-------------|
-| `scene_id` | Scene ID |
-| `actors` | All actor IDs in scene |
-| `locations` | All location IDs in scene |
-| `props` | All prop IDs in scene |
-| `shots` | Array of generated-video shots |
-
-### Shot Level
-
-| Field | Description |
-|-------|-------------|
-| `source_refs` | 0-based action indexes from `scene.actions[]` used to build this shot |
-| `prompt` | Canonical storyboard text for exactly one generated video, following the storyboard skill template |
-
-### STORYBOARD 层规则
-
-- `source_refs` 是 STORYBOARD 阶段的可追溯性字段
-- `prompt` 是 STORYBOARD 阶段唯一必须保留的视频提示词字段
-- 在这一层**不要引入** `layout_prompt`、`sfx_prompt`、`complete_prompt_v2` 等 VIDEO 导出字段
-
-## 2. VIDEO 导出层（`ep{NNN}_storyboard.json`）
-
-### Data Hierarchy
-
-```
-Episode (集)
-└── Scene (场)
-    └── Clip (运行时生成单元)
-        └── Shot (clip 内部镜头拆分)
+```jsonc
+{
+  "episode_id": "ep001",
+  "title": "...",
+  "scenes": [
+    {
+      "scene_id": "scn_001",
+      "shots": [
+        {
+          "id":       "scn_001_clip001",     // ^scn_\d{3}_clip\d{3}$
+          "duration": 15,                    // int [4, 15]
+          "prompt":   "...markdown text..."  // 含 @act_xxx / @loc_xxx / @prp_xxx token
+        }
+      ]
+    }
+  ]
+}
 ```
 
-### Scene Level
+`shots[]` 字段集合是**穷尽的**：只有 `id` / `duration` / `prompt`。
 
-| Field | Description |
-|-------|-------------|
-| `scene_id` | Scene ID |
-| `actors` | All actor IDs in scene |
-| `locations` | All location IDs in scene |
-| `props` | All prop IDs in scene |
-| `clips` | Runtime generation units consumed by current video pipeline |
+- `id` — 跨阶段寻址；`batch_generate` 用其归一化形式作为 `clip_id`
+- `duration` — 直接映射 Ark Seedance 2.0 `duration` API 参数
+- `prompt` — 自由 markdown，承载所有自然语言内容，并以 `@xxx` token 作为
+  视觉资产引用的**唯一声明渠道**
 
-### Clip Level
+VIDEO 阶段**不得**期望或要求 `source_refs` / `actors[]` / `clips[]` /
+`expected_duration` / `complete_prompt` / `complete_prompt_v2` /
+`layout_prompt` / `sfx_prompt` / `partial_prompt` 等历史字段；它们已在
+schema 设计中正式移除。
 
-| Field | Description |
-|-------|-------------|
-| `clip_id` | Clip ID |
-| `expected_duration` | Planned duration |
-| `layout_prompt` | Scene layout / position prefix |
-| `sfx_prompt` | SFX-only suffix |
-| `complete_prompt` | Current runtime v1 generation prompt |
-| `complete_prompt_v2` | Optional runtime v2 generation prompt |
-| `shots` | Internal shot breakdown used to assemble clip-level prompts |
+## 2. Runtime-only Fields (VIDEO 注入，不进 approved)
 
-### Shot-in-Clip Level
+`output/ep{NNN}/ep{NNN}_storyboard.json` runtime 副本可能在生成过程中被
+注入以下字段。这些只在 runtime 层有效，**永不写回 approved canonical**：
 
-| Field | Description |
-|-------|-------------|
-| `shot_id` | Internal shot ID |
-| `time_range` | Time span inside clip |
-| `partial_prompt` | Per-shot prompt fragment |
-| `partial_prompt_v2` | Optional v2 fragment |
+| Field | Owner | Purpose |
+|-------|-------|---------|
+| `shots[].lsi.url` | batch_generate runtime | 上一镜首帧 URL（image-reference 续帧通道） |
+| `shots[].lsi.video_url` | batch_generate runtime | 上一镜整段视频 URL（video-reference 续帧通道） |
+| `shots[].first_frame_url` / `shots[].last_frame_url` | batch_generate runtime | i2v 通道（与 reference_image 互斥） |
 
-## 3. Compatibility Rules
+mode 互斥规则在 `video_api._normalize_reference_images` / `submit_video_generation`
+里强制执行：`referenceImages[]` 与 `first_frame_url` 不可同时出现，否则
+fail-fast。
 
-- VIDEO 阶段必须读取 `output/storyboard/approved/ep{NNN}_storyboard.json`
-- `generate_episode_json.py` 只负责把 approved canonical 导出为 runtime storyboard，不再从 `script.json` 重写该集 storyboard
-- `batch_generate.py` 进入时会先把 approved canonical 同步/导出到 `output/ep{NNN}/ep{NNN}_storyboard.json`
-- 后续 `lsi`、评审元数据、运行时补写都落在 VIDEO 导出层，不回写 approved canonical
-- `batch_generate.py` **同时接受**：
-  - 简化输入：`scenes[].shots[].prompt`
-  - 当前运行时输入：`scenes[].clips[].complete_prompt`
-- `generate_episode_json.py` 当前默认产出的是 **VIDEO 导出层 runtime copy**，原因是后续评审、首帧衔接、v1/v2 prompt 选择仍依赖 `clips[]`
-- 如果未来完成 VIDEO 导出层瘦身，再把 `prompt` 提升为唯一运行时字段；在那之前，不要把 `clips[]` 误标为“历史文件专用”
+## 3. Token Resolution Boundary (Ark API 真相)
+
+**Ark Seedance 2.0 不接受任何项目内部 ID。** API 入参的视觉参考形态只有：
+
+- 公网 `http(s)://...` URL
+- `data:image/...;base64,...` URI
+
+`@act_xxx[:st_yyy]` / `@loc_xxx` / `@prp_xxx` 是**项目内部别名**，
+对 Ark 不可见。`@xxx → URL` 解析必须在 VIDEO 阶段完成，由
+`scripts/subject_resolver.py` 查询：
+
+- actors → `output/actors/actors.json`（带 `:st_yyy` 时取对应 state 的图）
+- locations → `output/locations/locations.json`
+- props → `output/props/props.json`
+
+解析得到的 URL 注入 `referenceImages[]`，并把 prompt 内的 `@xxx` 替换为
+`[图N]` 标记与 `referenceImages[i].name` 对齐（Ark 端是纯字符串绑定，
+不查任何外部库）。
+
+storyboard finalize gate（`apply_storyboard_result.py --finalize-stage`）
+已对所有 `@token` 做静态存在性校验，进入 VIDEO 阶段时假定每个 token 都
+能在当前 asset 库中解析；若 runtime 解析失败（asset 文件被删 / 未 ready），
+则按现有 fail-fast 路径报错。
+
+## 4. Field Discipline Rules
+
+- **不得**因为 runtime 注入字段缺失而要求改写 approved canonical：
+  runtime 注入是 batch_generate 的职责
+- **不得**在 VIDEO 层用补丁式字符串拼接修复上游结构问题；如果 approved
+  canonical 缺失必填字段，回到 STORYBOARD 阶段重新批准
+- **不得**新增脱离 `{id, duration, prompt}` 三字段的"导演侧"字段；任何
+  长期需要的结构化值都应在 storyboard schema 设计 spec 中先经过审议
+- runtime 副本与 approved canonical 同名，但**生命周期不同**：approved
+  是模板，runtime 是实例

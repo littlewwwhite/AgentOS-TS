@@ -50,7 +50,7 @@ class StoryboardModelClient:
             "apiVersion": "aos-cli.model/v1",
             "task": "storyboard.batch",
             "capability": "generate",
-            "output": {"kind": "json"},
+            "output": {"kind": "text"},
             "input": {
                 "system": system_prompt,
                 "content": user_content,
@@ -65,7 +65,7 @@ class StoryboardModelClient:
                 "maxOutputTokens": int(
                     os.environ.get(
                         "STORYBOARD_TEXT_MAX_OUTPUT_TOKENS",
-                        os.environ.get("GEMINI_TEXT_MAX_OUTPUT_TOKENS", "2000"),
+                        os.environ.get("GEMINI_TEXT_MAX_OUTPUT_TOKENS", "6000"),
                     )
                 ),
             },
@@ -108,126 +108,220 @@ def _read_response_envelope(response_path: Path) -> dict:
         raise RuntimeError(f"Invalid aos-cli response envelope: {response_path}") from exc
 
 
+def _repair_json_strings(text: str) -> str:
+    """Escape literal newlines/tabs inside JSON string values."""
+    result = []
+    in_string = False
+    escape_next = False
+    for ch in text:
+        if escape_next:
+            result.append(ch)
+            escape_next = False
+        elif ch == "\\" and in_string:
+            result.append(ch)
+            escape_next = True
+        elif ch == '"':
+            result.append(ch)
+            in_string = not in_string
+        elif in_string and ch == "\n":
+            result.append("\\n")
+        elif in_string and ch == "\r":
+            result.append("\\r")
+        elif in_string and ch == "\t":
+            result.append("\\t")
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
 def parse_storyboard_output_text(text: str) -> object:
     text = (text or "").strip()
     if not text:
         raise RuntimeError("aos-cli response missing storyboard content")
+    # Try direct parse first
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        import re
+        pass
+    import re
+    # Try ALL markdown-fenced blocks; prefer the LAST one (after model thinking/reasoning)
+    fence_blocks = re.findall(r"```(?:json)?[ \t]*\n(.*?)\n?```", text, re.DOTALL)
+    candidates = [b.strip() for b in reversed(fence_blocks) if b.strip()]
+    # Also try from last then first JSON bracket (handles thinking preamble)
+    for rfind_char in ("[", "{"):
+        idx = text.rfind(rfind_char)
+        if idx >= 0:
+            candidates.append(text[idx:])
+    for find_char in ("[", "{"):
+        idx = text.find(find_char)
+        if idx >= 0:
+            candidates.append(text[idx:])
+    for source in candidates:
+        # Try as-is
+        try:
+            return json.loads(source)
+        except json.JSONDecodeError:
+            pass
+        # Repair literal control characters inside JSON strings, then retry
+        try:
+            return json.loads(_repair_json_strings(source))
+        except json.JSONDecodeError:
+            pass
+    # Final fallback: return raw text
+    return text
 
-        match = re.search(r"```(?:json)?\s*(\[.*?\]|\{.*?\})\s*```", text, re.DOTALL)
-        if match:
-            return json.loads(match.group(1))
-        return text
+
+_SHOT_ID_RE = __import__("re").compile(r"^scn_(\d{3})_clip(\d{3})$")
+_DURATION_MIN, _DURATION_MAX = 4, 15
 
 
 def normalize_scene_shots(raw_output, scene: dict | None = None) -> list[dict]:
+    """Coerce LLM output into a clean [{id, duration, prompt}] list.
+
+    Accepts a list of dicts (canonical) or a single dict; rejects anything else.
+    Strips unknown fields; backfills `id` from scene_id + ordinal when missing.
+    """
     if isinstance(raw_output, dict):
         raw_items = raw_output.get("shots", [raw_output])
     elif isinstance(raw_output, list):
         raw_items = raw_output
     else:
-        raw_items = [raw_output]
+        raise ValueError(f"storyboard output must be a JSON array; got {type(raw_output).__name__}")
+
+    scene_id_raw = (scene or {}).get("scene_id", "")
+    m = __import__("re").match(r"scn_?(\d+)", str(scene_id_raw))
+    scene_num = f"{int(m.group(1)):03d}" if m else "000"
 
     normalized = []
-    for item in raw_items:
-        if isinstance(item, str):
-            normalized.append({
-                "source_refs": [],
-                "prompt": item,
-            })
-            continue
-
-        if isinstance(item, dict):
-            prompt = item.get("prompt")
-            if prompt:
-                normalized.append({
-                    "source_refs": normalize_source_refs(item.get("source_refs", []), scene),
-                    "prompt": prompt,
-                })
-                continue
-
-        normalized.append({
-            "source_refs": [],
-            "prompt": json.dumps(item, ensure_ascii=False) if not isinstance(item, str) else item,
-        })
-
-    return normalized
-
-
-def normalize_source_refs(raw_refs, scene: dict | None = None) -> list[int]:
-    if raw_refs is None:
-        return []
-    if not isinstance(raw_refs, list):
-        raw_refs = [raw_refs]
-
-    index_by_id = scene_source_index(scene or {})
-    source_count = scene_source_count(scene or {})
-    normalized = []
-    for raw_ref in raw_refs:
-        if isinstance(raw_ref, bool):
-            raise ValueError(f"Invalid source_ref: {raw_ref}")
-        if isinstance(raw_ref, int):
-            index = raw_ref
-        elif isinstance(raw_ref, str) and raw_ref in index_by_id:
-            index = index_by_id[raw_ref]
-        elif isinstance(raw_ref, str) and raw_ref.isdigit():
-            index = int(raw_ref)
-        else:
-            raise ValueError(f"Unknown source_ref: {raw_ref}")
-        if source_count == 0 or index < 0 or index >= source_count:
-            raise ValueError(f"source_ref out of range: {raw_ref}")
-        if index not in normalized:
-            normalized.append(index)
-    return normalized
-
-
-def scene_source_index(scene: dict) -> dict[str, int]:
-    items = scene_source_items(scene)
-    index_by_id = {}
-    for index, item in enumerate(items):
+    for index, item in enumerate(raw_items, start=1):
         if not isinstance(item, dict):
-            continue
-        for key in ("action_id", "beat_id", "id"):
-            value = item.get(key)
-            if isinstance(value, str) and value:
-                index_by_id[value] = index
-    return index_by_id
+            raise ValueError(f"shot[{index - 1}] must be an object, got {type(item).__name__}")
+        prompt = item.get("prompt")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError(f"shot[{index - 1}].prompt must be a non-empty string")
+        duration = item.get("duration")
+        if not isinstance(duration, int) or isinstance(duration, bool):
+            raise ValueError(f"shot[{index - 1}].duration must be an int, got {duration!r}")
+        if not (_DURATION_MIN <= duration <= _DURATION_MAX):
+            raise ValueError(
+                f"shot[{index - 1}].duration={duration} out of range [{_DURATION_MIN},{_DURATION_MAX}]"
+            )
+        shot_id = item.get("id") or f"scn_{scene_num}_clip{index:03d}"
+        if not _SHOT_ID_RE.match(shot_id):
+            raise ValueError(f"shot[{index - 1}].id={shot_id!r} does not match scn_NNN_clipNNN")
+        normalized.append({"id": shot_id, "duration": duration, "prompt": prompt})
+
+    return normalized
 
 
-def scene_source_count(scene: dict) -> int:
-    return len(scene_source_items(scene))
+def validate_scene_shots(shots: list[dict], scene: dict | None) -> tuple[bool, str]:
+    """Final post-normalization check: id sequence + non-empty.
 
-
-def scene_source_items(scene: dict) -> list:
-    actions = scene.get("actions")
-    if isinstance(actions, list) and actions:
-        return actions
-    beats = scene.get("beats")
-    if isinstance(beats, list):
-        return beats
-    return []
+    Type / duration / id format are already enforced by normalize_scene_shots;
+    this runs invariants that need the full list (sequential clip numbering).
+    """
+    if not shots:
+        return False, "no shots produced"
+    expected = 1
+    for sh in shots:
+        m = _SHOT_ID_RE.match(sh["id"])
+        if not m:
+            return False, f"id {sh['id']!r} malformed"
+        if int(m.group(2)) != expected:
+            return False, f"clip ids out of sequence at {sh['id']}, expected clip{expected:03d}"
+        expected += 1
+    total = sum(sh["duration"] for sh in shots)
+    return True, f"shots={len(shots)} total_duration={total}s"
 
 
 def load_storyboard_client(project_dir: Path):
     return StoryboardModelClient(project_dir=project_dir)
 
 
-def generate_scene_prompt(client, system_prompt: str, ep_notes: str, scene: dict, model: str) -> dict:
+def build_actors_catalog(script: dict) -> list[dict]:
+    """Project script.actors[] into a compact catalog for storyboard prompts.
+
+    Each entry only carries (actor_id, actor_name, states[]) where states is
+    a list of {state_id, state_name}. This is what the LLM needs to decide
+    whether to emit `@act_xxx` (single state) vs `@act_xxx:st_yyy` (multi-state).
+    """
+    out = []
+    for actor in script.get("actors", []) or []:
+        if not isinstance(actor, dict):
+            continue
+        actor_id = actor.get("actor_id")
+        if not actor_id:
+            continue
+        states_in = actor.get("states") or []
+        states_out = []
+        for st in states_in:
+            if not isinstance(st, dict):
+                continue
+            sid = st.get("state_id")
+            sname = st.get("state_name") or ""
+            if sid:
+                states_out.append({"state_id": sid, "state_name": sname})
+        out.append({
+            "actor_id": actor_id,
+            "actor_name": actor.get("actor_name", ""),
+            "states": states_out,
+        })
+    return out
+
+
+def render_actors_catalog(catalog: list[dict]) -> str:
+    if not catalog:
+        return ""
+    lines = []
+    for actor in catalog:
+        states = actor.get("states") or []
+        if not states:
+            lines.append(f"- {actor['actor_id']} ({actor.get('actor_name', '')}): 单状态，引用写 @{actor['actor_id']}")
+            continue
+        state_str = "; ".join(f"{s['state_id']}={s['state_name']}" for s in states)
+        lines.append(
+            f"- {actor['actor_id']} ({actor.get('actor_name', '')}): 多状态[{state_str}]，"
+            f"引用必须写 @{actor['actor_id']}:st_xxx"
+        )
+    return "\n".join(lines)
+
+
+def generate_scene_prompt(client, system_prompt: str, ep_notes: str, scene: dict, model: str,
+                           actors_catalog: list[dict] | None = None) -> list[dict]:
+    catalog_block = ""
+    if actors_catalog:
+        catalog_block = (
+            "\n本剧本注册的角色状态目录（写 token 时遵守此约束）：\n"
+            f"{render_actors_catalog(actors_catalog)}\n"
+            "规则：当一个角色注册了多个 state 时，引用必须写成 `@act_xxx:st_yyy` 形式；"
+            "只有一个 state 或无 state 时使用 `@act_xxx` 即可。"
+            "禁止跨越目录虚构 state_id。\n"
+        )
+    scene_id = scene.get("scene_id", "scn_000")
+    user_content = (
+        f"导演笔记:\n{ep_notes}\n"
+        f"{catalog_block}\n"
+        f"场景 JSON:\n{json.dumps(scene, ensure_ascii=False)}\n\n"
+        f"为本场（scene_id={scene_id}）输出一个 shot 数组。每个 shot 是一个独立的视频生成单元，"
+        "字段固定为 `id` / `duration` / `prompt` 三项：\n"
+        f"- id: 形如 `{scene_id}_clip001`，clip 序号从 001 开始顺序递增\n"
+        "- duration: 整数秒，范围 [4,15]，根据该 shot 的戏剧节奏选择 (短反应 4-5 / 中等动作 6-8 / "
+        "持续节拍 10-12 / 长镜 13-15)，不要全部填 5\n"
+        "- prompt: 单条镜头的 markdown 提示词，遵守 system 中规定的 `景别|运镜 / 总体描述 / 动作 / "
+        "角色状态 / 音效 / 对白` 块结构与 token 规则\n"
+        "shot 数量由你根据剧本节奏决定，没有固定下限或上限。\n"
+        "输出严格 JSON 数组，不要 markdown fence，不要解释文字。"
+    )
     raw = client.generate(
         system_prompt=system_prompt,
-        user_content=(
-            f"导演笔记:\n{ep_notes}\n\n"
-            f"场景 JSON:\n{json.dumps(scene, ensure_ascii=False)}\n\n"
-            "请只输出 JSON 数组或对象，source_refs 必须使用当前场 actions[] 的 0-based 整数下标；"
-            "若场景只有 beats[]，则使用 beats[] 的 0-based 整数下标。"
-            "格式为 [{\"source_refs\": [0], \"prompt\": \"...\"}]。"
-        ),
+        user_content=user_content,
         model=model,
     )
-    return normalize_scene_shots(raw, scene)
+    shots = normalize_scene_shots(raw, scene)
+    ok, msg = validate_scene_shots(shots, scene)
+    if not ok:
+        raise RuntimeError(f"storyboard validation failed: {msg}")
+    return shots
 
 
 def generate_all_storyboards(project_dir: Path, bible: dict, script: dict,
@@ -242,7 +336,7 @@ def generate_all_storyboards(project_dir: Path, bible: dict, script: dict,
 
     if dry_run:
         for ep in episodes:
-            ep_id = ep.get("ep_id", "?")
+            ep_id = ep.get("episode_id") or ep.get("ep_id", "?")
             n_scenes = len(ep.get("scenes", []))
             print(f"  DRY RUN: {ep_id} -> {n_scenes} scenes")
         return True, f"DRY RUN ({total_scenes} scenes)"
@@ -254,19 +348,21 @@ def generate_all_storyboards(project_dir: Path, bible: dict, script: dict,
 
     ep_notes_map = bible.get("episodes", {})
     global_style = json.dumps(bible.get("global_style", {}), ensure_ascii=False)
+    actors_catalog = build_actors_catalog(script)
 
     t0 = time.time()
 
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = {}
         for ep in episodes:
-            ep_id = ep.get("ep_id", "unknown")
+            ep_id = ep.get("episode_id") or ep.get("ep_id", "unknown")
             ep_notes = json.dumps(ep_notes_map.get(ep_id, {}), ensure_ascii=False)
             full_notes = f"全局风格: {global_style}\n\n本集导演笔记: {ep_notes}"
 
             for scene in ep.get("scenes", []):
                 future = pool.submit(
-                    generate_scene_prompt, client, system_prompt, full_notes, scene, model
+                    generate_scene_prompt, client, system_prompt, full_notes,
+                    scene, model, actors_catalog
                 )
                 futures[future] = (ep_id, scene.get("scene_id", "unknown"))
 
@@ -289,13 +385,17 @@ def generate_all_storyboards(project_dir: Path, bible: dict, script: dict,
     draft_root = output_dir / "storyboard" / "draft"
     draft_root.mkdir(parents=True, exist_ok=True)
     for ep in episodes:
-        ep_id = ep.get("ep_id", "unknown")
+        ep_id = ep.get("episode_id") or ep.get("ep_id", "unknown")
         scene_payloads = []
         for scene in ep.get("scenes", []):
             scene_id = scene.get("scene_id", "unknown")
             shots = storyboards.get((ep_id, scene_id), [])
             scene_payloads.append({
                 "scene_id": scene_id,
+                "actors": scene.get("actors", []),
+                "locations": scene.get("locations", []),
+                "props": scene.get("props", []),
+                "environment": scene.get("environment", {}),
                 "shots": shots,
             })
         sb_path = draft_root / f"{ep_id}_storyboard.json"
@@ -328,7 +428,7 @@ def main():
 
     if args.episodes:
         ep_filter = set(args.episodes.split(","))
-        script["episodes"] = [ep for ep in script["episodes"] if ep.get("ep_id") in ep_filter]
+        script["episodes"] = [ep for ep in script["episodes"] if (ep.get("episode_id") or ep.get("ep_id")) in ep_filter]
 
     ok, status = generate_all_storyboards(
         project_dir, bible, script,

@@ -1,6 +1,6 @@
 # Shot Validation Rules
 
-> Status: lightweight, audit-first  
+> Status: lightweight, audit-first
 > Scope: preflight validation before expensive video generation
 
 ## Purpose
@@ -8,30 +8,30 @@
 在真正跑视频之前，先做一次**轻量结构校验**，目的是尽早发现：
 
 - 空 prompt
-- 缺失 scene / clip / shot
-- 时长非法
-- 角色 / 地点锚点缺失
-- 上下游契约层级混淆
+- 缺失 scene / shot
+- duration 非法
+- shot id 格式错误
+- prompt 中嵌入了非法 JSON / 代码块结构
 
-这个校验当前首先是**规则文档**，后续再落成轻量 validator。
+这个校验当前首先是**规则文档**，后续可落成轻量 validator。重型 `@token`
+解析校验已在 storyboard finalize gate 完成（见
+`.claude/skills/storyboard/references/schema.md` §finalize-gate）。
 
-## Accepted Input Shapes
+## Accepted Input Shape
 
-`video-gen` 当前接受两类输入：
+VIDEO 阶段只接受 storyboard skill 产出的 minimal 形态：
 
-### A. STORYBOARD Canonical Shape
-
-```json
+```jsonc
 {
+  "episode_id": "ep001",
   "scenes": [
     {
       "scene_id": "scn_001",
-      "actors": ["act_001"],
-      "locations": ["loc_001"],
       "shots": [
         {
-          "source_refs": [0],
-          "prompt": "..."
+          "id":       "scn_001_clip001",
+          "duration": 15,
+          "prompt":   "..."
         }
       ]
     }
@@ -39,32 +39,13 @@
 }
 ```
 
-### B. VIDEO Runtime Shape
+`shots[]` 字段集合是**穷尽的**：`id` / `duration` / `prompt`。
+其它字段（`source_refs` / `actors[]` / `clips[]` / `complete_prompt` /
+`expected_duration` / `partial_prompt` 等）都是历史遗留，不再支持。
 
-```json
-{
-  "scenes": [
-    {
-      "scene_id": "scn_001",
-      "actors": ["act_001"],
-      "locations": ["loc_001"],
-      "clips": [
-        {
-          "clip_id": "clip_001",
-          "expected_duration": 5,
-          "complete_prompt": "...",
-          "shots": [
-            {
-              "shot_id": "shot_001",
-              "partial_prompt": "..."
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
+> 兼容性说明：`batch_generate.py:iter_clips` 仍保留 `scene.get('shots') or
+> scene.get('clips')` fallback 用于读取极旧的运行时副本；新生成的 storyboard
+> 一律走 `shots[]` 通道。
 
 ## Blocking Rules
 
@@ -72,42 +53,37 @@
 
 1. 顶层缺失 `scenes[]`
 2. 任一 `scene` 缺失 `scene_id`
-3. 任一 `scene` 同时没有 `shots[]` 且没有 `clips[]`
-4. STORYBOARD shape 下任一 `shots[].prompt` 为空
-5. VIDEO runtime shape 下任一 `clips[].complete_prompt` 为空
-6. 任一 `clip.expected_duration` 不在 3-15 秒范围内
-7. 任一 `scene` 缺失 `actors` 或 `locations` 数组
-8. 传入文件既不像 canonical storyboard，也不像 runtime storyboard
+3. 任一 `scene` 缺失 `shots[]`，或 `shots[]` 为空
+4. 任一 `shots[].id` 缺失或不匹配 `^scn_\d{3}_clip\d{3}$`
+5. 任一 `shots[].id` 的 `scn_NNN` 段与父 `scene_id` 不一致
+6. 任一 `shots[].duration` 不是整数，或不在 `[4, 15]` 区间内
+7. 任一 `shots[].prompt` 缺失或 strip 后为空
+8. `shots[].prompt` 内嵌 fenced 代码块（``` ``` 或 ```` ```json ````）或
+   `"key":` JSON 键值对结构（违反 storyboard skill 输出格式约束）
 
 ## Warning Rules
 
 以下问题先给 warning，不必立即阻断：
 
-1. `source_refs` 缺失或为空
-2. `props` 缺失
-3. `shots[]` / `clips[]` 数量明显偏少，但仍可生成
-4. prompt 过长，接近或超过当前模型建议上限
-5. 同一 scene 下 clip/shot 编号不连续
+1. 同一 scene 下 shot 编号不连续（应从 001 顺序递增）
+2. shot prompt 长度接近或超过当前模型建议上限
+3. shots 数量明显偏少（例如全集只有一两镜），但仍可生成
+4. prompt 内 `@token` 不带 `:st_yyy` 后缀但对应 actor 在 script.json 注册了
+   多个 state（runtime resolver 会按 default 处理，但语义可能不准）
 
-## Contract Discipline
+## Token Validation Boundary
 
-### If Input Is STORYBOARD Canonical
+VIDEO 阶段**不再**承担 `@token → asset URL` 的存在性校验：
 
-- 允许只有 `shots[].prompt`
-- 不要求出现 `complete_prompt`
-- 进入 VIDEO 时需要导出为 runtime storyboard
-
-### If Input Is VIDEO Runtime
-
-- 应优先存在 `clips[].complete_prompt`
-- `shots[]` 作为 clip 内部细分结构
-- 评审、`lsi`、运行时补写都只应写在这一层
+- 静态存在性校验已在 storyboard finalize gate 完成
+- runtime 解析失败（asset 文件被删 / 未 ready）由 `subject_resolver` 报错
+- 本 SHOT 校验只看结构，不查 asset 库
 
 ## Continuity Validation
 
 轻量连续性规则如下：
 
-1. 同一 scene 内多 clip → 可启用 clip-to-clip 连续性参考
+1. 同一 scene 内多 shot → 可启用 shot-to-shot 连续性参考（首末帧注入）
 2. 跨 scene → 默认不要求连续性继承
 3. 不得因为缺少跨 scene 连续性信息而阻断生成
 
@@ -123,7 +99,6 @@
   "warnings": [],
   "stats": {
     "scene_count": 1,
-    "clip_count": 2,
     "shot_count": 4
   }
 }
@@ -133,7 +108,7 @@
 
 如果 blocking issue 来自：
 
-- canonical storyboard 缺失必填字段 → 回到 STORYBOARD 层修正
-- runtime export 缺字段但 canonical 完整 → 允许重新导出 runtime storyboard
+- approved canonical 缺失必填字段 → 回到 STORYBOARD 阶段重新生成/批准
+- runtime export 缺字段但 canonical 完整 → 重新跑 `prepare_runtime_storyboard_export`
 
 不要在 VIDEO 层用补丁式字符串拼接修复上游结构问题。

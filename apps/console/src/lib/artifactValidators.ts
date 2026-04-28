@@ -151,15 +151,18 @@ function validateScript(data: unknown): ArtifactValidationResult {
 function validateDraftShot(shot: unknown, label: string): ArtifactValidationResult {
   const object = asObject(shot, label);
   if (!object.ok) return object;
+  if (!isNonEmptyString(object.value.id)) {
+    return fail(`${label}.id must be a non-empty string`);
+  }
+  if (typeof object.value.duration !== "number" || !Number.isInteger(object.value.duration)) {
+    return fail(`${label}.duration must be an integer`);
+  }
+  if (object.value.duration < 4 || object.value.duration > 15) {
+    return fail(`${label}.duration must be in [4, 15]`);
+  }
   if (!isNonEmptyString(object.value.prompt)) {
     return fail(`${label}.prompt must be a non-empty string`);
   }
-  const sourceRefs = asArray(object.value.source_refs, `${label}.source_refs`);
-  if (!sourceRefs.ok) return sourceRefs;
-  if (!sourceRefs.value.every((value) => typeof value === "number" || isNonEmptyString(value))) {
-    return fail(`${label}.source_refs must contain only strings or numbers`);
-  }
-
   return ok();
 }
 
@@ -225,11 +228,9 @@ function validateRuntimeShot(shot: unknown, label: string): ArtifactValidationRe
   }
 
   const hasPrompt =
-    isNonEmptyString(object.value.partial_prompt) ||
-    isNonEmptyString(object.value.partial_prompt_v2) ||
     isNonEmptyString(object.value.prompt) ||
-    isNonEmptyString(object.value.complete_prompt) ||
-    isNonEmptyString(object.value.complete_prompt_v2);
+    isNonEmptyString(object.value.partial_prompt) ||
+    isNonEmptyString(object.value.complete_prompt);
 
   if (!hasPrompt) {
     return fail(`${label} must contain at least one prompt field`);

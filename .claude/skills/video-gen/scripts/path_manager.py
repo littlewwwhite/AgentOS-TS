@@ -10,12 +10,58 @@ Path structure:
     ${OUTPUT_ROOT}/ep001/scn001/ep001_scn001_clip001_002.mp4  (version 2)
 """
 
+import json
 import re
 import shutil
 import urllib.request
 import ssl
 from pathlib import Path
 from typing import Optional, Dict
+
+
+_MINIMAL_SHOT_ID_RE = re.compile(r"^scn_\d{3}_clip\d{3}$")
+
+
+def _validate_minimal_shots(data: dict, source_label: str) -> None:
+    """Reject legacy storyboard shapes before VIDEO API calls.
+
+    Shot contract is exhaustive: {id, duration, prompt}. See
+    .claude/skills/video-gen/references/STORYBOARD_SCHEMA.md.
+
+    This is the read-side gate complementing the storyboard finalize gate.
+    Any storyboard predating the minimal-schema migration (e.g. shapes
+    carrying source_refs / partial_prompt / complete_prompt only) is
+    rejected here so it cannot silently fall through to Ark with a
+    missing duration.
+    """
+    scenes = data.get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        raise ValueError(f"{source_label}: scenes[] missing or empty")
+    for sc_idx, scene in enumerate(scenes):
+        scene_id = scene.get("scene_id") or f"<unnamed scene #{sc_idx}>"
+        shots = scene.get("shots")
+        if not isinstance(shots, list) or not shots:
+            raise ValueError(f"{source_label}: scene {scene_id}.shots[] missing or empty")
+        for sh_idx, shot in enumerate(shots):
+            label = f"{source_label}: scene {scene_id} shots[{sh_idx}]"
+            sid = shot.get("id")
+            if not isinstance(sid, str) or not _MINIMAL_SHOT_ID_RE.match(sid):
+                raise ValueError(
+                    f"{label}: id must match ^scn_\\d{{3}}_clip\\d{{3}}$ (got {sid!r}). "
+                    "Legacy storyboard schema — regenerate via storyboard finalize gate."
+                )
+            duration = shot.get("duration")
+            if not isinstance(duration, int) or isinstance(duration, bool) or duration < 4 or duration > 15:
+                raise ValueError(
+                    f"{label}: duration must be int in [4, 15] (got {duration!r}). "
+                    "Legacy storyboard schema — regenerate via storyboard finalize gate."
+                )
+            prompt = shot.get("prompt")
+            if not isinstance(prompt, str) or not prompt.strip():
+                raise ValueError(
+                    f"{label}: prompt must be non-empty string. "
+                    "Legacy storyboard schema — regenerate via storyboard finalize gate."
+                )
 
 
 class VideoNameParser:
@@ -310,110 +356,18 @@ def prepare_runtime_storyboard_export(
     elif not runtime_path.exists():
         raise FileNotFoundError(f"Runtime storyboard not found: {runtime_path}")
 
+    try:
+        runtime_data = json.loads(runtime_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Runtime storyboard {runtime_path} is not valid JSON: {exc}") from exc
+    _validate_minimal_shots(runtime_data, str(runtime_path))
+
     return runtime_path, source_kind
 
 
 def count_storyboard_generation_units(storyboard_data: dict) -> int:
-    """Count generation units in either runtime clips[] or simplified shots[] format."""
-    total = 0
-    for scene in storyboard_data.get("scenes", []):
-        if scene.get("clips"):
-            total += len(scene["clips"])
-        elif scene.get("shots"):
-            total += len(scene["shots"])
-    return total
-
-
-def build_validation_view_from_runtime_storyboard(
-    storyboard_data: dict,
-    episode: int,
-) -> dict:
-    """Normalize storyboard runtime/canonical data into the legacy validation shape.
-
-    This keeps `generate_episode_json.py` compatible with its existing validator
-    even when Phase 1 short-circuits to an approved director canonical contract.
-    """
-    result = {
-        "drama": storyboard_data.get("drama", ""),
-        "episode": episode,
-        "title": storyboard_data.get("title", ""),
-        "scenes": [],
-    }
-
-    for scene in storyboard_data.get("scenes", []):
-        scene_id = scene.get("scene_id", "")
-        actor_ids = [
-            actor.get("actor_id")
-            for actor in scene.get("actors", [])
-            if isinstance(actor, dict) and actor.get("actor_id")
-        ]
-        location_ids = [
-            location.get("location_id")
-            for location in scene.get("locations", [])
-            if isinstance(location, dict) and location.get("location_id")
-        ]
-        prop_ids = [
-            prop.get("prop_id")
-            for prop in scene.get("props", [])
-            if isinstance(prop, dict) and prop.get("prop_id")
-        ]
-        environment = scene.get("environment") or {}
-        normalized_scene = {
-            "scene_id": scene_id,
-            "clips": [],
-        }
-
-        clips = scene.get("clips")
-        if clips:
-            for index, clip in enumerate(clips, start=1):
-                normalized_scene["clips"].append({
-                    "clip_id": clip.get("clip_id", f"clip_{index:03d}"),
-                    "source": clip.get("script_source", clip.get("source", "")),
-                    "expected_duration": clip.get("expected_duration", 10),
-                    "characters": clip.get("characters", actor_ids),
-                    "location": clip.get("location", location_ids[0] if location_ids else ""),
-                    "layout_prompt": clip.get("layout_prompt", ""),
-                    "time": clip.get("time", environment.get("time", "")),
-                    "weather": clip.get("weather", environment.get("weather", "")),
-                    "props": clip.get("props", prop_ids),
-                    "act_rhythm": clip.get("act_rhythm", ""),
-                    "shots": clip.get("shots", []),
-                    "complete_prompt": clip.get(
-                        "complete_prompt",
-                        clip.get("complete_prompt_v2", clip.get("prompt", "")),
-                    ),
-                    "complete_prompt_v2": clip.get(
-                        "complete_prompt_v2",
-                        clip.get("complete_prompt", clip.get("prompt", "")),
-                    ),
-                })
-        else:
-            for index, shot in enumerate(scene.get("shots", []), start=1):
-                prompt = shot.get("prompt", "")
-                normalized_scene["clips"].append({
-                    "clip_id": f"clip_{index:03d}",
-                    "source": ",".join(str(ref) for ref in shot.get("source_refs", [])),
-                    "expected_duration": shot.get("expected_duration", 10),
-                    "characters": actor_ids,
-                    "location": location_ids[0] if location_ids else "",
-                    "layout_prompt": "",
-                    "time": environment.get("time", ""),
-                    "weather": environment.get("weather", ""),
-                    "props": prop_ids,
-                    "act_rhythm": "",
-                    "shots": [{
-                        "shot_id": shot.get("shot_id", f"shot_{index:03d}"),
-                        "time_range": shot.get("time_range", ""),
-                        "partial_prompt": prompt,
-                        "partial_prompt_v2": prompt,
-                    }],
-                    "complete_prompt": prompt,
-                    "complete_prompt_v2": prompt,
-                })
-
-        result["scenes"].append(normalized_scene)
-
-    return result
+    """Count shots[] across all scenes in approved storyboard."""
+    return sum(len(scene.get("shots") or []) for scene in storyboard_data.get("scenes", []))
 
 
 def download_video(url: str, save_path: str, timeout: int = 120) -> bool:

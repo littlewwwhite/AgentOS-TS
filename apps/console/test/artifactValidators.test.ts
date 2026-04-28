@@ -50,7 +50,7 @@ describe("validateEditableArtifact", () => {
       scenes: [
         {
           scene_id: "scn_001",
-          shots: [{ source_refs: ["beat_001"] }],
+          shots: [{ id: "scn_001_clip001", duration: 8 }],
         },
       ],
     });
@@ -68,7 +68,7 @@ describe("validateEditableArtifact", () => {
       scenes: [
         {
           scene_id: "scn_001",
-          shots: [{ source_refs: ["beat_001"], prompt: "镜头提示词" }],
+          shots: [{ id: "scn_001_clip001", duration: 8, prompt: "镜头提示词" }],
         },
       ],
     });

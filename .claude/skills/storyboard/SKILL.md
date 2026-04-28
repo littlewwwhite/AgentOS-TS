@@ -83,8 +83,7 @@ version: 1.4.0
 
 ### 分镜结构（Markdown 强制规范）
 
-<!-- CHANGED: 由 fenced JSON 改为 markdown 段块，便于业务直接编辑 prompt；外层 envelope 仍为 [{ source_refs, prompt }] 不变 -->
-每段视频的 `prompt` 字段必须用以下 markdown 段块描述各分镜，禁止再嵌入 JSON 代码块：
+每个 shot 的 `prompt` 字段必须用以下 markdown 段块描述各分镜，禁止嵌入 JSON 代码块：
 
 ```
 S1 | 00:00-00:03 | 景别/机位
@@ -111,22 +110,15 @@ S2 | 00:03-00:06 | 景别/机位
 ### STORYBOARD 阶段 artifact 约定
 
 - 每个 scene 最终只交付 `shots[]`
-- 每个 `shots[]` 元素只保留两个字段：`source_refs` 和 `prompt`
-- `source_refs` 是当前场里 `actions[]` 的 0-based 下标数组，表示这段视频由哪几段剧本生成
+- 每个 `shots[]` 元素**只保留三个字段**：`id` / `duration` / `prompt`（schema 详见 `references/schema.md`）
+- `id` 形如 `scn_001_clip001`，scene 内从 001 顺序递增
+- `duration` 为整数秒，取值范围 `[4, 15]`（Ark Seedance 2.0 API 上限）
 - `prompt` 是一段 markdown 文本，依本 skill「输出格式模板」组织：`PART` 标头、`总体描述`、`剧情摘要`、`动作节拍 Beats`、若干 `S{n} | <time-range> | 景别/机位` 分镜段块；不得再嵌入 JSON 代码块或键值对结构
+- 视觉资产引用**只能**通过 prompt 内的 `@xxx` token 声明（`@act_xxx[:st_yyy]` / `@loc_xxx` / `@prp_xxx`），不引入 `actors[]` / `props[]` / `reference_images[]` 等独立字段
 - `STORYBOARD` 阶段不得改写 `output/script.json`；剧本是编剧事实源，分镜是导演 artifact
 - 草稿写入 `output/storyboard/draft/ep{NNN}_storyboard.json`
-- 用户批准后写入 `output/storyboard/approved/ep{NNN}_storyboard.json`
-- 不要在这个阶段引入 `layout_prompt`、`sfx_prompt`、`complete_prompt_v2` 等 `VIDEO` 阶段导出字段
-
-### 对接 `video-gen` 的导出说明
-
-- 当前 `video-gen` 的 `generate_episode_json.py` 只消费 `output/storyboard/approved/ep{NNN}_storyboard.json`
-- 如果 approved canonical 缺失，VIDEO 阶段必须失败并回到 STORYBOARD 阶段，不应从 `script.json` 重写导演产物
-- `batch_generate.py` 同时兼容两种输入：
-  - 简化输入：`scenes[].shots[].prompt`
-  - 当前导出：`scenes[].clips[].complete_prompt` / `complete_prompt_v2`
-- 因此：`storyboard` 产出的 `shots[]` 是 **SCRIPT/STORYBOARD 层契约**，`clips[]` 是 **VIDEO 导出层契约**；二者不要混写成同一层语义
+- 用户批准后由 `apply_storyboard_result.py --finalize-stage` 写入 `output/storyboard/approved/ep{NNN}_storyboard.json`，过程中执行 `@token` 静态校验（任一 token 在 VISUAL manifest 中找不到对应资产则 fail-fast）
+- 不引入 `layout_prompt` / `sfx_prompt` / `complete_prompt_v2` / `source_refs` / `continuity` / `locked` 等历史字段
 
 ### 状态落盘与恢复
 
@@ -180,13 +172,15 @@ python3 ./.claude/skills/storyboard/scripts/storyboard_batch.py "${PROJECT_DIR}"
 
 **统一引用规范：**
 - 任何角色出现都必须写成 `@act_xxx` token（act_id 取自 `output/script.json` / `actors.json`），禁止用中文名直写
+- 当一个 actor 在 `script.json` 的 `actors[].states[]` 中注册了**多个 state**时，引用必须写成 `@act_xxx:st_yyy`，其中 `st_yyy` 取自该 actor 的 state_id；只注册单个 state 或无 state 时，直接写 `@act_xxx`
+- 禁止虚构未注册的 `st_yyy`；同一 PART 内同一 actor 一般保持同一个 state_id，只有剧情发生明确换装/换状态时才允许切换
 - 场景写成 `@loc_xxx`，关键道具写成 `@prp_xxx`（道具 ID 前缀沿用 asset-gen / props.json 的 `prp_` 缩写）
 - token 的外观/服饰/年龄/材质等静态属性由对应 subject 参考图承载，**严禁在 prompt 文本里复述**
 
 **"角色状态"字段写法：**
-用**一行统一描述**列出本镜出场角色的动态信息，多个角色用分号 `；` 分隔：
+用**一行统一描述**列出本镜出场角色的动态信息，多个角色用分号 `；` 分隔；多 state 角色 token 必须带 `:st_yyy` 后缀：
 ```
-@act_001 站位（左/右/前景/后景），情绪/紧张度，可见线索；@act_002 站位，情绪，可见线索
+@act_001:st_002 站位（左/右/前景/后景），情绪/紧张度，可见线索；@act_002:st_004 站位，情绪，可见线索
 ```
 - 禁止给每个角色单独加括号尾注（如 `苏父（左侧偏后, 五十岁农夫, 粗布短衫…）` 这种格式严禁出现）
 - 禁止重复罗列外观/服饰
@@ -254,10 +248,10 @@ PART1
 
 S1 | 00:00-00:03 | 景别/机位
 - 运镜：起始参考物 → 终点参考物
-- 动作：@act_xxx 动作点描述
-- 角色状态：@act_001 站位，情绪，可见线索；@act_002 站位，情绪，可见线索
+- 动作：@act_xxx[:st_yyy] 动作点描述
+- 角色状态：@act_001:st_002 站位，情绪，可见线索；@act_002:st_004 站位，情绪，可见线索
 - 音效：环境音/拟音
-- 对白：无 或【@act_xxx｜情绪｜语气｜语速｜音色】"台词"
+- 对白：无 或【@act_xxx[:st_yyy]｜情绪｜语气｜语速｜音色】"台词"
 
 S2 | 00:03-00:06 | 景别/机位
 - 运镜：……
@@ -267,7 +261,7 @@ S2 | 00:03-00:06 | 景别/机位
 - 对白：……
 ```
 
-整段 prompt 必须是纯 markdown，禁止再嵌入 fenced JSON 代码块或 `"shot_id"` / `"beats"` 等键值对结构。所有角色/场景/道具引用必须用 `@act_xxx` / `@loc_xxx` / `@prp_xxx` token，禁止内联外观/服饰/材质等静态属性。
+整段 prompt 必须是纯 markdown，禁止再嵌入 fenced JSON 代码块或 `"shot_id"` / `"beats"` 等键值对结构。所有角色/场景/道具引用必须用 `@act_xxx`（多 state 时 `@act_xxx:st_yyy`）/ `@loc_xxx` / `@prp_xxx` token，禁止内联外观/服饰/材质等静态属性。
 
 ---
 

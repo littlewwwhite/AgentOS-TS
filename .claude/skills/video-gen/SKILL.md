@@ -53,9 +53,9 @@ command -v ffmpeg >/dev/null
 
 - Uses `assets/config.json` defaults, **no user confirmation needed**
 - Default: `seedance2`, image-reference mode, 9:16, 720p
-- Run: `python3 ./.claude/skills/video-gen/scripts/generate_episode_json.py --episode N --parallel`
+- Run: `python3 ./.claude/skills/video-gen/scripts/batch_generate.py ${PROJECT_DIR}/output/storyboard/approved/ep{NNN}_storyboard.json --output ${PROJECT_DIR}/output/ep{NNN} --episode N`
 - 前置条件：`output/storyboard/approved/ep{NNN}_storyboard.json` 已存在
-- Add `--no-generate-video` only when user explicitly says "only export runtime storyboard"
+- `batch_generate.py` 启动时自动通过 `prepare_runtime_storyboard_export` 将 approved canonical 同步到 `output/ep{NNN}/ep{NNN}_storyboard.json`，无需独立导出步骤
 - Scope: 本 skill 在自动模式下只完成 `VIDEO` 阶段，不包含后续 `EDITING` / `MUSIC` / `SUBTITLE`
 - VIDEO 阶段不再从 `script.json` 隐式生成分镜；分镜创作、修改、批准属于 `storyboard` 阶段。video review: `aos-cli model` `video.analyze`
 
@@ -102,17 +102,12 @@ command -v ffmpeg >/dev/null
 
 ### Phase 1: Runtime Storyboard Export
 
-```bash
-# Export approved storyboard for episode
-python3 ./.claude/skills/video-gen/scripts/generate_episode_json.py --episode N
+Runtime export 由 `batch_generate.py` 在启动阶段通过 `path_manager.prepare_runtime_storyboard_export` 自动完成：
 
-# Re-export by deleting stale runtime copy or using --force with checkpoint logic
-python3 ./.claude/skills/video-gen/scripts/generate_episode_json.py --episode N --force
-```
-
-- `generate_episode_json.py` 只接受 `output/storyboard/approved/ep{NNN}_storyboard.json`
-- approved canonical 缺失时直接失败，回到 `storyboard` 阶段生成/批准分镜
-- 不再从 `script.json` 重写该集导演产物
+- 读取 `output/storyboard/approved/ep{NNN}_storyboard.json`
+- 拷贝/同步到 `output/ep{NNN}/ep{NNN}_storyboard.json` 作为 runtime 副本
+- approved canonical 缺失时直接 fail-fast，回到 `storyboard` 阶段生成/批准分镜
+- 不再从 `script.json` 重写该集导演产物，也不再有独立的导出脚本
 
 ### Phase 2: Batch Video Generation
 
@@ -217,8 +212,8 @@ Recovery order:
 
 | Module | Function |
 |--------|----------|
-| `generate_episode_json.py` | Export approved storyboard canonical to VIDEO runtime storyboard |
-| `batch_generate.py` | Core: batch video gen + review loop; scene-parallel, clip-serial |
+| `batch_generate.py` | Core: runtime storyboard export + batch video gen + review loop; scene-parallel, clip-serial |
+| `path_manager.py` | `prepare_runtime_storyboard_export` syncs approved canonical → runtime export |
 | `frame_extractor.py` | Last-shot first-frame extraction + face blur (ffmpeg + PIL) |
 | `video_api.py` | Video model boundary adapter (aos-cli model submit/poll) |
 | `analyzer.py` / `evaluator.py` | `aos-cli video.analyze` review + 2-dimension scoring |
@@ -240,7 +235,7 @@ video-gen
 |----------|---------|
 | `references/MODE_RULES.md` | Mode selection, resume, prompt-only/video-only precedence |
 | `references/SHOT_VALIDATION_RULES.md` | Lightweight preflight validation rules before expensive generation |
-| `references/STORYBOARD_SCHEMA.md` | STORYBOARD 层与 VIDEO 导出层的双层 JSON 契约说明（含 `shots[]` / `clips[]` 兼容关系） |
+| `references/STORYBOARD_SCHEMA.md` | STORYBOARD 层（`{id, duration, prompt}`）与 VIDEO runtime 层（注入 `lsi` / 首末帧）的字段契约 |
 | `references/AI_CONFIG_AND_DELIVERY.md` | Provider config, storyboard draft text endpoint, video review, delivery JSON format |
 
 ## Version

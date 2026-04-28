@@ -11,10 +11,10 @@ def _write_storyboard(project: Path, episode: int, durations: list[int]) -> Path
     approved_dir = project / "output" / "storyboard" / "approved"
     approved_dir.mkdir(parents=True, exist_ok=True)
     storyboard_path = approved_dir / f"ep{episode:03d}_storyboard.json"
-    clips = [
+    shots = [
         {
-            "clip_id": f"clip_{index:03d}",
-            "expected_duration": duration,
+            "id": f"scn_001_clip{index:03d}",
+            "duration": duration,
             "prompt": f"Episode {episode} shot {index} advances the scene.",
         }
         for index, duration in enumerate(durations, start=1)
@@ -30,7 +30,7 @@ def _write_storyboard(project: Path, episode: int, durations: list[int]) -> Path
                         "actors": [],
                         "locations": [],
                         "props": [],
-                        "clips": clips,
+                        "shots": shots,
                     }
                 ],
             },

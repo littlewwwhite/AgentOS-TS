@@ -4,65 +4,69 @@ Convert one scene JSON into concise, production-ready shot prompts.
 Respect the provided director notes, global style, scene beats, visible actors,
 locations, props, time, emotional state, and continuity constraints.
 
-Output JSON only at the OUTER envelope level. Use this exact shape:
+Each shot you emit is one self-contained generation unit (one Ark Seedance task,
+one mp4 clip). You decide both how many shots the scene needs and how long each
+shot should be. There is no fixed shot count and no fixed shot duration — let
+the dramatic rhythm decide.
+
+Output a JSON array. Each element is one shot with this exact shape:
+
 [
   {
-    "source_refs": [0],
-    "prompt": "<a markdown text block describing all shots for this PART, see template below>"
-  }
+    "id": "scn_{NNN}_clip{NNN}",
+    "duration": 8,
+    "prompt": "...markdown text describing this single shot..."
+  },
+  ...
 ]
 
-`source_refs` must be an array of 0-based integer indexes into the current scene `actions[]` array.
-If the scene has no `actions[]` and only has `beats[]`, use 0-based integer indexes into `beats[]`.
+Hard rules for the envelope:
+- `id` MUST match `^scn_\d{3}_clip\d{3}$`. The `scn_NNN` part copies the scene's
+  `scene_id`. The `clip_NNN` part starts at `001` and increments by 1 within
+  the scene. No gaps, no duplicates.
+- `duration` MUST be an integer in [4, 15] (Ark Seedance accepts integers in
+  this range). Pick the value that matches the natural beat length of this
+  shot — short reaction = 4-5, medium action = 6-8, sustained beat = 10-12,
+  long unbroken take = 13-15. Do NOT default everything to 5.
+- `prompt` MUST be plain markdown text. NO fenced code blocks, NO JSON
+  objects, NO `"key":` patterns inside the prompt body.
+- Output JSON only. No prose before or after the array.
 
-The `prompt` field MUST be a markdown text block (NOT a JSON object, NOT a fenced
-JSON code block). Use the following structure:
+Hard rules for the `prompt` body (the markdown for one shot):
+
+Use this structure (every line is required; use 无 when not applicable):
 
 ```
-PART1
+景别/机位 | 运镜简述
 
-总体描述：<one paragraph: characters listed as @act_xxx tokens with relations, setting as @loc_xxx, time/mood, audio strategy, continuity constraints — DO NOT inline appearance/clothing/age>
+总体描述：<one sentence: who is in frame as @act_xxx tokens, where as @loc_xxx, mood and audio strategy. DO NOT inline appearance/clothing/age — the registered subject reference image carries those.>
 
-剧情摘要：<1-2 sentences: cause → turn → result within ~15s>
+动作：<what happens in this shot, second by second if useful>
 
-动作节拍 Beats：
-[0-3]  ...
-[3-6]  ...
-[6-9]  ...
-[9-12] ...
-[12-15]...
+角色状态：@act_xxx 站位，情绪，可见线索；@act_yyy 站位，情绪，可见线索
 
-S1 | 00:00-00:03 | 景别/机位
-- 运镜：起始参考物 → 终点参考物
-- 动作：@act_xxx 动作点描述
-- 角色状态：@act_001 站位，情绪，可见线索；@act_002 站位，情绪，可见线索
-- 音效：环境音/拟音
-- 对白：无 或【@act_xxx｜情绪｜语气｜语速｜音色】"台词"
+音效：<environment / foley>
 
-S2 | 00:03-00:06 | 景别/机位
-- 运镜：...
-- 动作：...
-- 角色状态：...
-- 音效：...
-- 对白：...
+对白：无  或  【@act_xxx｜情绪｜语气｜语速｜音色】"台词"
 ```
 
-Hard rules for `prompt`:
-- The first line of each shot MUST be `S{n} | <time-range> | <景别/机位>` so downstream
-  duration extraction can regex `<time-range>` (e.g. `00:00-00:03`).
-- Each shot has exactly five short-dash list items: 运镜, 动作, 角色状态, 音效, 对白.
-  Use 无 for any item that does not apply.
-- All character/location/prop references MUST use `@act_xxx` / `@loc_xxx` / `@prop_xxx`
-  tokens whose ids come from the project's actors.json / locations.json / props.json.
-  NEVER write a Chinese character name directly; NEVER inline appearance, clothing,
-  age, hairstyle, or material — these are carried by the registered subject reference
-  image, not by prompt text.
-- "角色状态" MUST be a single line listing all visible characters separated by `；`,
-  each entry formatted as `@act_xxx 站位，情绪，可见线索`. Do NOT append a parenthetical
-  per-character suffix (e.g. `苏父（左侧偏后, 五十岁农夫, 粗布短衫…）` is forbidden).
-- Do NOT embed any fenced code block (```json ... ``` or ``` ... ```) inside `prompt`.
-- Do NOT embed any JSON object/array, key-value pair (e.g. `"shot_id":`), or backtick
-  delimiter inside `prompt`. The whole `prompt` is plain markdown text.
-- If a face is not visible, describe body/hand/shoulder/posture cues instead of
-  inventing facial expressions.
-- Keep prompts specific enough for text/image/video generation.
+Token rules (strict — these are the only way assets reach the model):
+- All character/location/prop references MUST use `@act_xxx` / `@loc_xxx` /
+  `@prp_xxx` tokens whose ids come from the project's actors.json /
+  locations.json / props.json. NEVER write a Chinese character name directly.
+- When an actor has multiple registered states (the user message lists them
+  as a catalog), the token MUST include the active state suffix:
+  `@act_xxx:st_yyy`. Single-state or stateless actors keep the bare
+  `@act_xxx` form. Never invent a state_id outside the catalog.
+- "角色状态" MUST be a single line listing all visible characters separated
+  by `；`. Do NOT append per-character parenthetical descriptions
+  (e.g. `苏父（左侧偏后, 五十岁农夫…）` is forbidden — appearance comes from
+  the reference image, not the prompt).
+- If a face is not visible, describe body/hand/shoulder/posture cues instead
+  of inventing facial expressions.
+
+Shot pacing guidance (not enforced, but use it to choose `duration`):
+- A scene of ~30s of script text ≈ 3-5 shots
+- A scene of ~60s of script text ≈ 5-8 shots
+- Sum of shot durations should approximate the dramatic length of the scene,
+  but exact equality is not required — pacing matters more than total length
