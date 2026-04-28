@@ -8,6 +8,7 @@ import { EpisodeNode } from "./EpisodeNode";
 import { buildNavigatorSections, shouldShowGroupDivider } from "../../lib/navigatorSections";
 import type { NavigatorGroup, NavigatorSection } from "../../lib/navigatorSections";
 import { STAGE_ORDER } from "../../lib/workflowModel";
+import { mergeEpisodesByCanonicalId } from "../../lib/episodeKey";
 
 export function Navigator() {
   const { name, state, tree, unread, markSeen } = useProject();
@@ -22,6 +23,10 @@ export function Navigator() {
     }
     return s;
   }, [tree]);
+  const mergedEpisodes = useMemo(
+    () => mergeEpisodesByCanonicalId(state?.episodes),
+    [state?.episodes],
+  );
 
   if (!name) {
     return <div className="p-6 font-serif italic text-[13px] text-[var(--color-ink-faint)]">选择一个项目以开始。</div>;
@@ -42,7 +47,7 @@ export function Navigator() {
     openPath(path, resolveView(path), title, { pinned: true });
   }
 
-  const epIds = Object.keys(state?.episodes ?? {}).sort();
+  const epIds = Object.keys(mergedEpisodes).sort();
   const anyRunning = STAGE_ORDER.some((stage) => state?.stages?.[stage]?.status === "running");
   const sections = buildNavigatorSections({
     hasSource: sourcePaths.length > 0,
@@ -175,7 +180,7 @@ export function Navigator() {
     return (
       <StageNode key={section.key} label={section.label} expandable defaultOpen disabled={!section.available}>
         {epIds.map((id) => (
-          <EpisodeNode key={id} epId={id} ep={state?.episodes?.[id]} unread={unread} markSeen={markSeen} />
+          <EpisodeNode key={id} epId={id} ep={mergedEpisodes[id]} unread={unread} markSeen={markSeen} />
         ))}
       </StageNode>
     );
