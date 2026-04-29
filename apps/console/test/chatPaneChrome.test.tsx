@@ -52,8 +52,26 @@ describe("ChatPane chrome", () => {
 
     expect(html).toContain("导演指令");
     expect(html).toContain("描述你要调整的镜头、分镜、素材或下一步制作任务…");
+    expect(html).toContain("输入 / 技能");
     expect(html).not.toContain("输入消息，或输入 / 调用 Claude Code 命令…");
+    expect(html).not.toContain("输入 / 调用制作技能");
+    expect(html).not.toContain("shadow-[0_10px_30px");
     expect(html).not.toMatch(/<textarea[^>]*\sdisabled(?:=|\s|>)/);
+  });
+
+  test("surfaces elapsed thinking time while waiting for a reply", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ChatPane, {
+        isConnected: true,
+        isStreaming: true,
+        onSend: () => undefined,
+        messages: [{ id: "u1", role: "user", content: "你是谁", timestamp: 1 }],
+        suggestions: [],
+      }),
+    );
+
+    expect(html).toContain("正在思考");
+    expect(html).toContain("1s");
   });
 
   test("renders thinking messages as visible transcript content", () => {
