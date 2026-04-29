@@ -505,11 +505,21 @@ function resolveClipVideoPath(
   const episodeSlug = episodeSlugFromPath(storyboardPath);
   const sceneSlug = compactStoryboardId(sceneId);
   const clipSlug = compactStoryboardId(clipId);
-  const fileStem = `${episodeSlug}_${sceneSlug}_${clipSlug}`;
+  const clipSlugCandidates = [clipSlug];
+  const partMatch = clipSlug.match(/^part(\d+)$/i);
+  if (partMatch?.[1]) clipSlugCandidates.push(`clip${partMatch[1]}`);
+  if (clipSlug.startsWith(sceneSlug)) {
+    const withoutScene = clipSlug.slice(sceneSlug.length);
+    if (withoutScene) clipSlugCandidates.push(withoutScene);
+  }
+  const uniqueClipSlugs = Array.from(new Set(clipSlugCandidates));
+  const fileStems = uniqueClipSlugs.map((slug) => `${episodeSlug}_${sceneSlug}_${slug}`);
 
   const preferredCandidates = [
-    `${episodeDir}/${sceneSlug}/${clipSlug}/${fileStem}.mp4`,
-    `${episodeDir}/${sceneSlug}/${fileStem}.mp4`,
+    ...fileStems.flatMap((fileStem, index) => [
+      `${episodeDir}/${sceneSlug}/${uniqueClipSlugs[index]}/${fileStem}.mp4`,
+      `${episodeDir}/${sceneSlug}/${fileStem}.mp4`,
+    ]),
     fallbackPath,
   ];
 
@@ -517,23 +527,27 @@ function resolveClipVideoPath(
     if (availablePaths.includes(candidate)) return candidate;
   }
 
-  const variantPattern = new RegExp(`^${escapeRegExp(fileStem)}(?:_(\\d+))?$`, "i");
+  const variantPatterns = fileStems.map((fileStem) => new RegExp(`^${escapeRegExp(fileStem)}(?:_(\\d+))?$`, "i"));
   const scopedMatches = availablePaths
     .filter((path) => path.startsWith(`${episodeDir}/`))
-    .filter((path) => variantPattern.test(stripExtension(basenameOf(path))))
+    .map((path) => {
+      const stem = stripExtension(basenameOf(path));
+      const patternIndex = variantPatterns.findIndex((pattern) => pattern.test(stem));
+      return patternIndex >= 0 ? { path, patternIndex, stem } : null;
+    })
+    .filter((match): match is { path: string; patternIndex: number; stem: string } => match !== null)
     .sort((left, right) => {
-      const leftName = stripExtension(basenameOf(left));
-      const rightName = stripExtension(basenameOf(right));
-      const leftMatch = leftName.match(variantPattern);
-      const rightMatch = rightName.match(variantPattern);
+      if (left.patternIndex !== right.patternIndex) return left.patternIndex - right.patternIndex;
+      const leftMatch = left.stem.match(variantPatterns[left.patternIndex]);
+      const rightMatch = right.stem.match(variantPatterns[right.patternIndex]);
       const leftVariant = leftMatch?.[1] ? Number(leftMatch[1]) : 0;
       const rightVariant = rightMatch?.[1] ? Number(rightMatch[1]) : 0;
       if (leftVariant !== rightVariant) return leftVariant - rightVariant;
-      if (left.length !== right.length) return left.length - right.length;
-      return left.localeCompare(right);
+      if (left.path.length !== right.path.length) return left.path.length - right.path.length;
+      return left.path.localeCompare(right.path);
     });
 
-  return scopedMatches[0] ?? fallbackPath;
+  return scopedMatches[0]?.path ?? fallbackPath;
 }
 
 function secondsFromTimeMark(value: string): number | null {
@@ -622,12 +636,27 @@ function assetDir(kind: ProductionAssetKind): string {
 function thumbnailForAsset(
   kind: ProductionAssetKind,
   id: string,
+  label: string,
   availablePaths: ReadonlyArray<string>,
 ): string | null {
-  const prefix = `${assetDir(kind)}/${id}/`;
+  const prefixes = [`${assetDir(kind)}/${id}/`];
+  if (label && label !== id) prefixes.push(`${assetDir(kind)}/${label}/`);
+
+  function imageRank(path: string): number {
+    const directoryRank = kind === "actor" && path.includes("/default/") ? 0 : 10;
+    const base = basenameOf(path);
+    if (base.includes("三视图")) return directoryRank + 0;
+    if (base.includes("主图")) return directoryRank + 1;
+    if (base.includes("正面")) return directoryRank + 2;
+    return directoryRank + 3;
+  }
+
   return availablePaths
-    .filter((path) => path.startsWith(prefix) && isImagePath(path))
-    .sort((a, b) => a.localeCompare(b))[0] ?? null;
+    .filter((path) => prefixes.some((prefix) => path.startsWith(prefix)) && isImagePath(path))
+    .sort((a, b) => {
+      const rank = imageRank(a) - imageRank(b);
+      return rank === 0 ? a.localeCompare(b) : rank;
+    })[0] ?? null;
 }
 
 function addAssetRef(
@@ -735,13 +764,16 @@ export function buildProductionAssetRailModel(input: {
       }
 
       const items = Array.from(refs.entries())
-        .map(([id, scope]) => ({
-          kind,
-          id,
-          label: input.dict[id] ?? id,
-          scope,
-          thumbnailPath: thumbnailForAsset(kind, id, paths),
-        }))
+        .map(([id, scope]) => {
+          const label = input.dict[id] ?? id;
+          return {
+            kind,
+            id,
+            label,
+            scope,
+            thumbnailPath: thumbnailForAsset(kind, id, label, paths),
+          };
+        })
         .sort((left, right) => {
           if (left.scope !== right.scope) return left.scope === "current" ? -1 : 1;
           return left.id.localeCompare(right.id);

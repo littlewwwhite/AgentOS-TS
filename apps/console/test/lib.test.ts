@@ -187,6 +187,47 @@ describe("storyboard helpers", () => {
     ]);
   });
 
+  test("resolves asset thumbnails from name-based production folders", () => {
+    const model = buildProductionAssetRailModel({
+      scenes: [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              prompt: "总体描述：@act_001:st_001 在 @loc_001 洗衣服，手持 @prp_005。",
+            },
+          ],
+        },
+      ],
+      currentSceneId: "scn_001",
+      dict: {
+        act_001: "Rosalind",
+        loc_001: "Laundry Room",
+        prp_005: "Spiked Whip",
+      },
+      availablePaths: [
+        "output/actors/Rosalind/Attendant Uniform/三视图.png",
+        "output/actors/Rosalind/default/背面.png",
+        "output/actors/Rosalind/default/三视图.png",
+        "output/locations/Laundry Room/主图.png",
+        "output/props/Spiked Whip/主图.png",
+      ],
+    });
+
+    expect(model.groups.actor.items[0]).toMatchObject({
+      id: "act_001",
+      thumbnailPath: "output/actors/Rosalind/default/三视图.png",
+    });
+    expect(model.groups.location.items[0]).toMatchObject({
+      id: "loc_001",
+      thumbnailPath: "output/locations/Laundry Room/主图.png",
+    });
+    expect(model.groups.prop.items[0]).toMatchObject({
+      id: "prp_005",
+      thumbnailPath: "output/props/Spiked Whip/主图.png",
+    });
+  });
+
   test("derives clip video path from storyboard path and ids", () => {
     expect(
       clipVideoPath("output/ep001/ep001_storyboard.json", "scn_001", "clip_002"),
@@ -560,6 +601,30 @@ ${promptJson}
 
     expect(model.clips[0]?.videoPath).toBe("output/ep001/scn001/clip001/ep001_scn001_clip001.mp4");
     expect(model.clips[1]?.videoPath).toBe("output/ep001/scn002/ep001_scn002_clip001_003.mp4");
+  });
+
+  test("resolves approved prompt parts to generated clip files", () => {
+    const model = buildStoryboardEditorModel(
+      "output/storyboard/approved/ep001_storyboard.json",
+      [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              prompt: "景别/机位 | 中远景\n\n总体描述：@act_001 在 @loc_001。",
+              duration: 12,
+            },
+          ],
+        },
+      ],
+      {},
+      new Set([
+        "output/ep001/scn001/ep001_scn001_clip001.mp4",
+      ]),
+    );
+
+    expect(model.clips[0]?.clipId).toBe("part_001");
+    expect(model.clips[0]?.videoPath).toBe("output/ep001/scn001/ep001_scn001_clip001.mp4");
   });
 
   test("resolves active clip and shot from episode timeline time", () => {
