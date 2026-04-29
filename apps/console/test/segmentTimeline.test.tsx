@@ -74,6 +74,8 @@ describe("SegmentTimeline", () => {
     );
 
     expect(html).toContain("在片段 1 后插入镜头");
+    expect(html).toContain("w-7");
+    expect(html).toContain("h-full");
     expect(html).toContain(">+<");
   });
 });

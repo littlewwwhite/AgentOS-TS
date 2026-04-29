@@ -16,6 +16,16 @@ interface Props {
   onSelectAsset?: (item: ProductionAssetRailItem) => void;
 }
 
+const ADD_ASSET_OPTIONS = [
+  { label: "添加角色", message: "添加一个新角色资产，并生成角色三视图。" },
+  { label: "添加场景", message: "添加一个新场景资产，并生成场景主图和多视图。" },
+  { label: "添加道具", message: "添加一个新道具资产，并生成道具主图。" },
+] as const;
+
+function sendAssetCommand(message: string) {
+  window.dispatchEvent(new CustomEvent("agentos:send-message", { detail: { message } }));
+}
+
 function scopeLabel(scope: ProductionAssetScope): string {
   if (scope === "current") return "当前片段";
   if (scope === "episode") return "本集";
@@ -117,6 +127,28 @@ export function ProductionAssetRail({
         <h2 className="font-[Geist,sans-serif] text-[14px] font-semibold text-[var(--color-ink)]">
           资产库
         </h2>
+        <div className="group relative">
+          <button
+            type="button"
+            aria-label="添加资产"
+            title="添加资产"
+            className="flex h-7 w-7 cursor-pointer list-none items-center justify-center border border-transparent font-mono text-[22px] leading-none text-[var(--color-ink)] transition-colors hover:border-[var(--color-rule)] hover:bg-[var(--color-paper-soft)] focus:outline-none focus-visible:border-[var(--color-accent)]"
+          >
+            +
+          </button>
+          <div className="absolute right-0 top-8 z-20 hidden w-32 border border-[var(--color-rule)] bg-[var(--color-paper)] py-1 shadow-[0_14px_34px_rgba(0,0,0,0.10)] group-hover:block group-focus-within:block">
+            {ADD_ASSET_OPTIONS.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                onClick={() => sendAssetCommand(option.message)}
+                className="block w-full px-3 py-2 text-left font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink)] hover:bg-[var(--color-paper-soft)] focus:outline-none focus-visible:bg-[var(--color-paper-soft)]"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {totalItems === 0 ? (

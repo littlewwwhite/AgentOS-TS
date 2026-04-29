@@ -70,7 +70,7 @@ export function SegmentTimeline({
       </div>
 
       <div className="overflow-x-auto">
-        <div className="flex min-w-max items-stretch gap-3">
+        <div className="flex min-w-max items-stretch gap-2">
           {clips.map((clip, index) => {
             const active = clip.key === currentClipKey;
             const exists = availablePaths.has(clip.videoPath);
@@ -118,9 +118,12 @@ export function SegmentTimeline({
                     aria-label={`在片段 ${index + 1} 后插入镜头`}
                     title={`在片段 ${index + 1} 后插入镜头`}
                     onClick={() => onInsertClipAfter(clip.key)}
-                    className="self-center border border-dashed border-[var(--color-rule)] bg-[var(--color-paper)] px-2 py-1 font-mono text-[13px] text-[var(--color-ink-muted)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                    className="relative flex h-full w-7 shrink-0 items-center justify-center self-stretch text-[var(--color-ink-faint)] transition-colors hover:text-[var(--color-accent)] focus:outline-none focus-visible:text-[var(--color-accent)]"
                   >
-                    +
+                    <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--color-rule)]" aria-hidden />
+                    <span className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full border border-[var(--color-rule)] bg-[var(--color-paper)] font-mono text-[13px] leading-none shadow-sm">
+                      +
+                    </span>
                   </button>
                 )}
               </Fragment>

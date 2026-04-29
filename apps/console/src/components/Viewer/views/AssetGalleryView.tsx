@@ -3,7 +3,9 @@
 // pos: production-truth view of every actor/location/prop with full asset coverage
 
 import { useMemo, useState } from "react";
+import { EditableText } from "../../common/EditableText";
 import { useProject } from "../../../contexts/ProjectContext";
+import { useEditableJson } from "../../../hooks/useEditableJson";
 import { useFileJson } from "../../../hooks/useFile";
 import { fileUrl } from "../../../lib/fileUrl";
 import type { ScriptJson } from "../../../lib/fountain";
@@ -23,6 +25,8 @@ interface ActorStateAssets {
   back?: { src: string };
   threeView?: { src: string };
   headCloseup?: { src: string };
+  prompt?: string;
+  promptPath?: string;
 }
 
 interface ActorEntry {
@@ -96,10 +100,43 @@ function countOccurrences(script: ScriptJson | null): {
   return { actor, location, prop };
 }
 
+interface ActorPromptInfo {
+  prompt: string;
+  promptPath: string;
+}
+
+function buildActorPromptLookup(json: Record<string, unknown> | null): Map<string, ActorPromptInfo> {
+  const lookup = new Map<string, ActorPromptInfo>();
+  const actors = Array.isArray(json?.actors) ? json.actors : [];
+  actors.forEach((actorRaw, actorIndex) => {
+    if (!actorRaw || typeof actorRaw !== "object") return;
+    const actor = actorRaw as Record<string, unknown>;
+    const actorId = typeof actor.actor_id === "string" ? actor.actor_id : "";
+    if (!actorId) return;
+    const states = Array.isArray(actor.states) ? actor.states : [];
+    states.forEach((stateRaw, stateIndex) => {
+      if (!stateRaw || typeof stateRaw !== "object") return;
+      const state = stateRaw as Record<string, unknown>;
+      const stateName = typeof state.state_name === "string" ? state.state_name : "";
+      const prompts = Array.isArray(state.three_view_prompts) ? state.three_view_prompts : [];
+      const firstPrompt = prompts[0];
+      if (!firstPrompt || typeof firstPrompt !== "object") return;
+      const promptRecord = firstPrompt as Record<string, unknown>;
+      const prompt = typeof promptRecord.prompt === "string" ? promptRecord.prompt : "";
+      const promptPath = `actors.${actorIndex}.states.${stateIndex}.three_view_prompts.0.prompt`;
+      if (stateName) lookup.set(`${actorId}::${stateName}`, { prompt, promptPath });
+      const stateId = typeof state.state_id === "string" ? state.state_id : "";
+      if (stateId) lookup.set(`${actorId}::${stateId}`, { prompt, promptPath });
+    });
+  });
+  return lookup;
+}
+
 function buildActorEntries(
   json: Record<string, unknown> | null,
   counts: Map<string, number>,
   projectName: string,
+  promptLookup: Map<string, ActorPromptInfo>,
 ): ActorEntry[] {
   if (!json) return [];
   const entries: ActorEntry[] = [];
@@ -124,6 +161,11 @@ function buildActorEntries(
       stateAssets.back = pickField("back_view_url", "back_view");
       stateAssets.threeView = pickField("three_view_url", "three_view");
       stateAssets.headCloseup = pickField("head_closeup_url", "head_closeup");
+      const promptInfo = promptLookup.get(`${id}::${stateKey}`);
+      if (promptInfo) {
+        stateAssets.prompt = promptInfo.prompt;
+        stateAssets.promptPath = promptInfo.promptPath;
+      }
       const hasAny =
         stateAssets.face ||
         stateAssets.side ||
@@ -179,10 +221,27 @@ function primaryActorStateImage(state: ActorStateAssets): { src: string } | unde
   return state.threeView ?? state.headCloseup ?? state.face ?? state.side ?? state.back;
 }
 
+function actorPromptJsonPath(tree: TreeNode[]): string {
+  return tree.find((node) => (
+    node.type === "file" &&
+    node.path.startsWith("draft/") &&
+    node.path.endsWith("_actors_gen.json")
+  ))?.path ?? "draft/__missing_actors_gen.json";
+}
+
+function regenerateActorState(entry: ActorEntry, state: ActorStateAssets) {
+  window.dispatchEvent(new CustomEvent("agentos:send-message", {
+    detail: {
+      message: `重新生成角色 ${entry.name} 的 ${state.state} 状态，使用当前生成提示词。`,
+    },
+  }));
+}
+
 export function AssetGalleryView({ projectName, path }: Props) {
   const kind = detectKind(path);
   const { tree } = useProject();
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const actorPromptPath = useMemo(() => actorPromptJsonPath(tree), [tree]);
 
   const jsonPath =
     kind === "actor"
@@ -197,13 +256,21 @@ export function AssetGalleryView({ projectName, path }: Props) {
     projectName,
     jsonPath ?? "output/__nope__.json",
   );
+  const { data: actorPromptJson, patch: patchActorPrompt } = useEditableJson<Record<string, unknown>>(
+    projectName,
+    actorPromptPath,
+  );
   const { data: scriptJson } = useFileJson<ScriptJson>(projectName, "output/script.json");
 
   const counts = useMemo(() => countOccurrences(scriptJson), [scriptJson]);
+  const actorPromptLookup = useMemo(
+    () => buildActorPromptLookup(actorPromptJson),
+    [actorPromptJson],
+  );
 
   const actorEntries = useMemo(
-    () => (kind === "actor" ? buildActorEntries(assetJson, counts.actor, projectName) : []),
-    [kind, assetJson, counts.actor, projectName],
+    () => (kind === "actor" ? buildActorEntries(assetJson, counts.actor, projectName, actorPromptLookup) : []),
+    [kind, assetJson, counts.actor, projectName, actorPromptLookup],
   );
   const locationEntries = useMemo(
     () =>
@@ -258,7 +325,12 @@ export function AssetGalleryView({ projectName, path }: Props) {
       {kind === "actor" && (
         <div className="space-y-8">
           {actorEntries.map((entry) => (
-            <ActorCard key={entry.id} entry={entry} onZoom={setLightbox} />
+            <ActorCard
+              key={entry.id}
+              entry={entry}
+              onZoom={setLightbox}
+              onPatchPrompt={patchActorPrompt}
+            />
           ))}
         </div>
       )}
@@ -281,9 +353,11 @@ export function AssetGalleryView({ projectName, path }: Props) {
 function ActorCard({
   entry,
   onZoom,
+  onPatchPrompt,
 }: {
   entry: ActorEntry;
   onZoom: (src: string) => void;
+  onPatchPrompt: (path: string, value: unknown) => void;
 }) {
   return (
     <article className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-5 py-4">
@@ -310,7 +384,7 @@ function ActorCard({
           <div className="self-start pt-1">
             <span className="font-serif text-[14px] text-[var(--color-ink)]">{state.state}</span>
           </div>
-          <div className="max-w-[360px]">
+          <div className="grid min-w-0 gap-3">
             <ViewCell
               label="三视图"
               entry={primaryActorStateImage(state)}
@@ -318,6 +392,34 @@ function ActorCard({
               fit="contain"
               aspectClassName="aspect-[4/3]"
             />
+            <div className="border border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-3 py-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink-muted)]">
+                  生成提示词
+                </span>
+                <button
+                  type="button"
+                  onClick={() => regenerateActorState(entry, state)}
+                  className="border border-[var(--color-rule)] bg-[var(--color-paper)] px-2 py-1 font-[Geist,sans-serif] text-[11px] font-semibold text-[var(--color-ink)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                >
+                  重新生成此状态
+                </button>
+              </div>
+              {state.promptPath ? (
+                <EditableText
+                  value={state.prompt ?? ""}
+                  onChange={(next) => onPatchPrompt(state.promptPath!, next)}
+                  multiline
+                  ariaLabel={`${entry.name} ${state.state} 生成提示词`}
+                  className="block max-h-[150px] overflow-y-auto font-[Geist,sans-serif] text-[12px] leading-relaxed text-[var(--color-ink)]"
+                  placeholder="补充或修改该角色状态的生成提示词"
+                />
+              ) : (
+                <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-faint)]">
+                  未找到生成提示词
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ))}
