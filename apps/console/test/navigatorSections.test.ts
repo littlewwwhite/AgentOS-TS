@@ -18,7 +18,6 @@ describe("buildNavigatorSections", () => {
     expect(sections.map((section) => section.key)).toEqual([
       "overview",
       "inputs",
-      "catalog",
       "script",
       "assets",
       "episodes",
@@ -29,9 +28,9 @@ describe("buildNavigatorSections", () => {
       false,
       false,
       false,
-      false,
     ]);
-    expect(sections.map((section) => section.label)).toContain("视觉设定");
+    expect(sections.map((section) => section.label)).not.toContain("视觉设定");
+    expect(sections.map((section) => section.label)).toContain("素材");
     expect(sections.map((section) => section.label)).not.toContain("设定目录");
   });
 
@@ -47,12 +46,23 @@ describe("buildNavigatorSections", () => {
     expect(sections.map((section) => section.key)).toEqual([
       "overview",
       "inputs",
-      "catalog",
       "script",
       "assets",
       "episodes",
     ]);
     expect(sections.every((section) => section.available)).toBe(true);
+  });
+
+  test("makes assets available when only visual catalog exists", () => {
+    const sections = buildNavigatorSections({
+      hasSource: false,
+      hasCatalog: true,
+      hasScript: false,
+      hasAssets: false,
+      episodeIds: [],
+    });
+
+    expect(sections.find((section) => section.key === "assets")?.available).toBe(true);
   });
 
   test("hides editing, music, subtitle nodes in current MVP", () => {
@@ -84,7 +94,6 @@ describe("buildNavigatorSections", () => {
     expect(groups).toEqual({
       overview: "cross_episode",
       inputs: "cross_episode",
-      catalog: "cross_episode",
       script: "cross_episode",
       assets: "cross_episode",
       episodes: "per_episode",

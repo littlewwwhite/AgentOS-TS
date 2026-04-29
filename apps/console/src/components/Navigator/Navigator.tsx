@@ -92,19 +92,6 @@ export function Navigator() {
       );
     }
 
-    if (section.key === "catalog") {
-      return (
-        <StageNode
-          key={section.key}
-          label={section.label}
-          unread={unread.get("draft/catalog.json")}
-          disabled={!section.available}
-          pendingLabel="待生成角色、场景、道具"
-          onClick={section.available ? () => { open("draft/catalog.json", "视觉设定"); markSeen("draft/catalog.json"); } : undefined}
-        />
-      );
-    }
-
     if (section.key === "script") {
       return (
         <StageNode
@@ -155,6 +142,12 @@ export function Navigator() {
     if (section.key === "assets") {
       return (
         <StageNode key={section.key} label={section.label} status={state?.stages?.VISUAL?.status} expandable defaultOpen disabled={!section.available}>
+          {has("draft/catalog.json") && (
+            <div
+              className="pl-6 pr-4 py-1.5 text-[13px] text-[var(--color-ink-muted)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"
+              onClick={() => { open("draft/catalog.json", "视觉设定"); markSeen("draft/catalog.json"); }}
+            >视觉设定</div>
+          )}
           {hasPrefix("output/actors") && (
             <div
               className="pl-6 pr-4 py-1.5 text-[13px] text-[var(--color-ink-muted)] hover:bg-[var(--color-paper-soft)] cursor-pointer transition-colors"

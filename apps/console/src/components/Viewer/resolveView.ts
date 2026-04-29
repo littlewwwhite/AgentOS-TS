@@ -17,6 +17,7 @@ export function resolveView(path: string): ViewKind {
     if (base === "script.json") return "script";
     if (base.endsWith("storyboard.json")) return "storyboard";
     if (base.endsWith(".shots.json")) return "storyboard";
+    if (base.endsWith("_delivery.json")) return "video-grid";
     return "json";
   }
 
@@ -31,5 +32,8 @@ export function resolveView(path: string): ViewKind {
 }
 
 export function resolveReviewArtifactPath(path: string): string {
+  if (/(?:^|\/)ep_?\d+_delivery\.json$/i.test(path)) {
+    return path.split("/").slice(0, -1).join("/");
+  }
   return path;
 }

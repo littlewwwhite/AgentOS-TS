@@ -29,7 +29,7 @@ export interface StageState {
 }
 
 export interface EpisodeState {
-  video?: { status: StageStatus; generated?: number; failed?: number };
+  video?: { status: StageStatus; generated?: number; failed?: number; artifact?: string };
   storyboard?: { status: StageStatus; artifact?: string };
   editing?: { status: StageStatus };
   music?: { status: StageStatus };

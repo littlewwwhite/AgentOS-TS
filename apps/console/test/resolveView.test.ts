@@ -30,6 +30,10 @@ describe("resolveView", () => {
     expect(resolveView("output/ep001")).toBe("video-grid");
     expect(resolveReviewArtifactPath("output/ep001")).toBe("output/ep001");
   });
+  test("episode delivery package opens the video review workbench", () => {
+    expect(resolveView("output/ep001/ep001_delivery.json")).toBe("video-grid");
+    expect(resolveReviewArtifactPath("output/ep001/ep001_delivery.json")).toBe("output/ep001");
+  });
   test("mp4 leaf → video", () => {
     expect(resolveView("output/ep001/scn001/clip001/v1.mp4")).toBe("video");
   });
