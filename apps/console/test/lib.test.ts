@@ -3,6 +3,7 @@ import { fileUrl } from "../src/lib/fileUrl";
 import { detectSchema } from "../src/lib/schemaDetect";
 import { buildRefDict, resolveRefs } from "../src/lib/fountain";
 import {
+  buildProductionAssetRailModel,
   buildClipInspectorData,
   buildStoryboardEditorModel,
   buildStoryboardGenerationUnits,
@@ -74,6 +75,118 @@ describe("reference resolution", () => {
 });
 
 describe("storyboard helpers", () => {
+  test("builds asset rail groups with current clip assets highlighted", () => {
+    const model = buildProductionAssetRailModel({
+      scenes: [
+        {
+          scene_id: "scn_001",
+          actors: [{ actor_id: "act_001" }],
+          locations: [{ location_id: "loc_001" }],
+          props: [{ prop_id: "prop_001" }],
+        },
+        {
+          scene_id: "scn_002",
+          actors: [{ actor_id: "act_002" }],
+          locations: [{ location_id: "loc_002" }],
+        },
+      ],
+      currentSceneId: "scn_001",
+      dict: {
+        act_001: "林萧",
+        act_002: "王强",
+        loc_001: "废墟街道",
+        loc_002: "地下室",
+        prop_001: "废铁",
+      },
+      availablePaths: [
+        "output/actors/act_001/ref.png",
+        "output/locations/loc_001/ref.png",
+        "output/props/prop_001/ref.png",
+      ],
+    });
+
+    expect(model.groups.actor.items).toEqual([
+      expect.objectContaining({
+        id: "act_001",
+        label: "林萧",
+        scope: "current",
+        thumbnailPath: "output/actors/act_001/ref.png",
+      }),
+      expect.objectContaining({
+        id: "act_002",
+        label: "王强",
+        scope: "episode",
+      }),
+    ]);
+    expect(model.groups.location.items[0]).toMatchObject({
+      id: "loc_001",
+      label: "废墟街道",
+      scope: "current",
+      thumbnailPath: "output/locations/loc_001/ref.png",
+    });
+    expect(model.groups.prop.items[0]).toMatchObject({
+      id: "prop_001",
+      label: "废铁",
+      scope: "current",
+      thumbnailPath: "output/props/prop_001/ref.png",
+    });
+  });
+
+  test("builds current asset rail groups from prompt references when scene metadata is empty", () => {
+    const model = buildProductionAssetRailModel({
+      scenes: [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              prompt: "总体描述：@act_001:st_001 在 @loc_001 洗衣服，被 @act_003 打到污水中，@prp_005 掉落。",
+            },
+          ],
+        },
+      ],
+      currentSceneId: "scn_001",
+      dict: {
+        act_001: "林萧",
+        act_003: "王强",
+        loc_001: "洗衣房",
+        prp_005: "木桶",
+      },
+      availablePaths: [
+        "output/actors/act_001/ref.png",
+        "output/props/prp_005/ref.webp",
+      ],
+    });
+
+    expect(model.groups.actor.items).toEqual([
+      expect.objectContaining({
+        id: "act_001",
+        label: "林萧",
+        scope: "current",
+        thumbnailPath: "output/actors/act_001/ref.png",
+      }),
+      expect.objectContaining({
+        id: "act_003",
+        label: "王强",
+        scope: "current",
+      }),
+    ]);
+    expect(model.groups.location.items).toEqual([
+      expect.objectContaining({
+        id: "loc_001",
+        label: "洗衣房",
+        scope: "current",
+      }),
+    ]);
+    expect(model.groups.prop.items).toEqual([
+      expect.objectContaining({
+        id: "prp_005",
+        label: "木桶",
+        scope: "current",
+        thumbnailPath: "output/props/prp_005/ref.webp",
+      }),
+    ]);
+  });
+
   test("derives clip video path from storyboard path and ids", () => {
     expect(
       clipVideoPath("output/ep001/ep001_storyboard.json", "scn_001", "clip_002"),

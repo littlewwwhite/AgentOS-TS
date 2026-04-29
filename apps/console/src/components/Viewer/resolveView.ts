@@ -1,9 +1,8 @@
 // input: project-relative artifact path
-// output: viewer kind used to render the artifact
+// output: viewer kind and optional canonical review artifact path
 // pos: central path-to-view routing for the console workspace
 
 import type { ViewKind } from "../../types";
-
 export function resolveView(path: string): ViewKind {
   if (!path) return "overview";
   const base = path.split("/").pop() ?? "";
@@ -25,8 +24,12 @@ export function resolveView(path: string): ViewKind {
   const segments = path.split("/");
   const last = segments[segments.length - 1];
   if (last === "actors" || last === "locations" || last === "props") return "asset-gallery";
-  if (/^ep\d+$/.test(last)) return "video-grid";
+  if (/^ep_?\d+$/i.test(last)) return "video-grid";
   if (last === "raw" || last === "edited" || last === "scored" || last === "final") return "video-grid";
 
   return "fallback";
+}
+
+export function resolveReviewArtifactPath(path: string): string {
+  return path;
 }

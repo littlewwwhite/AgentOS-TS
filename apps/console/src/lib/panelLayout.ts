@@ -52,7 +52,7 @@ export function readPanelWidthValue(
 }
 
 export function chatPanelModeForView(view: ViewKind | null | undefined): ChatPanelMode {
-  return view === "storyboard" ? "storyboard" : "default";
+  return view === "storyboard" || view === "video-grid" ? "storyboard" : "default";
 }
 
 export function chatPanelBoundsForMode(mode: ChatPanelMode): PanelWidthBounds {
@@ -60,7 +60,7 @@ export function chatPanelBoundsForMode(mode: ChatPanelMode): PanelWidthBounds {
 }
 
 export function minContentWidthForView(view: ViewKind | null | undefined): number {
-  return view === "storyboard" ? 480 : 420;
+  return view === "storyboard" || view === "video-grid" ? 600 : 420;
 }
 
 export function fitPanelWidths({

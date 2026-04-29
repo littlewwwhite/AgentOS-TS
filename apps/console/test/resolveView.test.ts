@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveView } from "../src/components/Viewer/resolveView";
+import { resolveReviewArtifactPath, resolveView } from "../src/components/Viewer/resolveView";
 
 describe("resolveView", () => {
   test("empty path → overview", () => {
@@ -26,8 +26,9 @@ describe("resolveView", () => {
     expect(resolveView("output/locations")).toBe("asset-gallery");
     expect(resolveView("output/props")).toBe("asset-gallery");
   });
-  test("ep001/ dir → video-grid", () => {
+  test("ep001/ dir → video review grid", () => {
     expect(resolveView("output/ep001")).toBe("video-grid");
+    expect(resolveReviewArtifactPath("output/ep001")).toBe("output/ep001");
   });
   test("mp4 leaf → video", () => {
     expect(resolveView("output/ep001/scn001/clip001/v1.mp4")).toBe("video");

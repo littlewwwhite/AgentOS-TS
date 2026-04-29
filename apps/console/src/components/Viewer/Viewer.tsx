@@ -1,3 +1,7 @@
+// input: active tab state, project name, and project-relative artifact paths
+// output: routed viewer surface with optional review-artifact path normalization
+// pos: main artifact viewer switchboard inside the console workspace
+
 import { useState } from "react";
 import { useTabs } from "../../contexts/TabsContext";
 import { useProject } from "../../contexts/ProjectContext";
@@ -14,6 +18,7 @@ import { StoryboardView } from "./views/StoryboardView";
 import { OverviewView } from "./views/OverviewView";
 import { ProjectOnboardingView } from "./views/ProjectOnboardingView";
 import { ObjectHeader } from "./ObjectHeader";
+import { resolveReviewArtifactPath } from "./resolveView";
 import type { ViewKind } from "../../types";
 import { getEditPolicy } from "../../lib/editPolicy";
 import { resolveProductionObjectFromPath } from "../../lib/productionObject";
@@ -23,21 +28,23 @@ export function shouldShowObjectHeader(kind: ViewKind, path: string): boolean {
   if (kind === "text" && policy?.contentKind === "text") return false;
   if (kind === "json" && policy?.contentKind === "json") return false;
   if (kind === "storyboard") return false;
+  if (kind === "video-grid") return false;
   return true;
 }
 
 function renderView(kind: ViewKind, projectName: string, path: string) {
+  const reviewPath = resolveReviewArtifactPath(path);
   switch (kind) {
-    case "json": return <JsonView projectName={projectName} path={path} />;
-    case "text": return <TextView projectName={projectName} path={path} />;
-    case "image": return <ImageView projectName={projectName} path={path} />;
-    case "video": return <VideoView projectName={projectName} path={path} />;
-    case "asset-gallery": return <AssetGalleryView projectName={projectName} path={path} />;
-    case "video-grid": return <VideoGridView projectName={projectName} path={path} />;
-    case "script": return <ScriptView projectName={projectName} path={path} />;
-    case "storyboard": return <StoryboardView projectName={projectName} path={path} />;
+    case "json": return <JsonView projectName={projectName} path={reviewPath} />;
+    case "text": return <TextView projectName={projectName} path={reviewPath} />;
+    case "image": return <ImageView projectName={projectName} path={reviewPath} />;
+    case "video": return <VideoView projectName={projectName} path={reviewPath} />;
+    case "asset-gallery": return <AssetGalleryView projectName={projectName} path={reviewPath} />;
+    case "video-grid": return <VideoGridView projectName={projectName} path={reviewPath} />;
+    case "script": return <ScriptView projectName={projectName} path={reviewPath} />;
+    case "storyboard": return <StoryboardView projectName={projectName} path={reviewPath} />;
     case "overview": return <OverviewView />;
-    default: return <FallbackView projectName={projectName} path={path} />;
+    default: return <FallbackView projectName={projectName} path={reviewPath} />;
   }
 }
 
@@ -92,7 +99,7 @@ export function Viewer() {
     );
   }
   const contentClass =
-    active.view === "storyboard"
+    active.view === "storyboard" || active.view === "video-grid"
       ? "flex-1 min-h-0 overflow-hidden overscroll-none"
       : "flex-1 overflow-auto";
 

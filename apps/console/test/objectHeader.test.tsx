@@ -52,6 +52,7 @@ describe("ObjectHeader", () => {
     expect(shouldShowObjectHeader("text", "draft/episodes/ep019.md")).toBe(false);
     expect(shouldShowObjectHeader("json", "output/script.json")).toBe(false);
     expect(shouldShowObjectHeader("storyboard", "output/storyboard/approved/ep001_storyboard.json")).toBe(false);
+    expect(shouldShowObjectHeader("video-grid", "output/ep001")).toBe(false);
     expect(shouldShowObjectHeader("overview", "")).toBe(true);
     expect(shouldShowObjectHeader("video", "output/ep001/scn001/clip001.mp4")).toBe(true);
   });

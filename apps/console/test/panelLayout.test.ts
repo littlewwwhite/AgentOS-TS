@@ -24,6 +24,7 @@ describe("panel layout helpers", () => {
 
   test("uses a compact chat preset for storyboard-heavy editing", () => {
     expect(chatPanelModeForView("storyboard")).toBe("storyboard");
+    expect(chatPanelModeForView("video-grid")).toBe("storyboard");
     expect(CHAT_PANEL_STORYBOARD.default).toBeLessThan(CHAT_PANEL_DEFAULT.default);
     expect(chatPanelModeForView("script")).toBe("default");
   });

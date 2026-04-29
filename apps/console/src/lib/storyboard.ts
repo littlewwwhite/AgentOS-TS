@@ -147,6 +147,21 @@ export interface EditableStoryboardPrompt {
   hasJson: boolean;
 }
 
+export type ProductionAssetKind = "actor" | "location" | "prop";
+export type ProductionAssetScope = "current" | "episode" | "project";
+
+export interface ProductionAssetRailItem {
+  kind: ProductionAssetKind;
+  id: string;
+  label: string;
+  scope: ProductionAssetScope;
+  thumbnailPath: string | null;
+}
+
+export interface ProductionAssetRailModel {
+  groups: Record<ProductionAssetKind, { label: string; items: ProductionAssetRailItem[] }>;
+}
+
 function uniqueNames(names: Array<string | null | undefined>): string[] {
   return Array.from(new Set(names.filter((value): value is string => Boolean(value && value.trim()))));
 }
@@ -201,6 +216,10 @@ function escapeRegExp(text: string): string {
 
 function isVideoPath(path: string): boolean {
   return /\.(?:mp4|mov|webm)$/i.test(path);
+}
+
+function isImagePath(path: string): boolean {
+  return /\.(?:png|jpe?g|webp)$/i.test(path);
 }
 
 function isNumberArray(value: unknown): value is number[] {
@@ -592,6 +611,147 @@ function scenePromptClips(
       script_source: storyboardPromptSummary(shot.prompt ?? ""),
       shots: storyboardShotsFromPrompt(shot.prompt ?? ""),
     }));
+}
+
+function assetDir(kind: ProductionAssetKind): string {
+  if (kind === "actor") return "output/actors";
+  if (kind === "location") return "output/locations";
+  return "output/props";
+}
+
+function thumbnailForAsset(
+  kind: ProductionAssetKind,
+  id: string,
+  availablePaths: ReadonlyArray<string>,
+): string | null {
+  const prefix = `${assetDir(kind)}/${id}/`;
+  return availablePaths
+    .filter((path) => path.startsWith(prefix) && isImagePath(path))
+    .sort((a, b) => a.localeCompare(b))[0] ?? null;
+}
+
+function addAssetRef(
+  refs: Map<string, ProductionAssetScope>,
+  id: string | null | undefined,
+  scope: ProductionAssetScope,
+) {
+  if (!id) return;
+  const existing = refs.get(id);
+  if (existing === "current") return;
+  refs.set(id, scope === "current" ? "current" : existing ?? scope);
+}
+
+function sceneAssetIds(scene: StoryboardSceneLike, kind: ProductionAssetKind): string[] {
+  if (kind === "actor") {
+    return (scene.actors ?? []).map((asset) => asset.actor_id).filter((id): id is string => Boolean(id));
+  }
+  if (kind === "location") {
+    return (scene.locations ?? []).map((asset) => asset.location_id).filter((id): id is string => Boolean(id));
+  }
+  return (scene.props ?? []).map((asset) => asset.prop_id).filter((id): id is string => Boolean(id));
+}
+
+function assetKindFromId(id: string): ProductionAssetKind | null {
+  if (id.startsWith("act_")) return "actor";
+  if (id.startsWith("loc_")) return "location";
+  if (id.startsWith("prp_") || id.startsWith("prop_")) return "prop";
+  return null;
+}
+
+function extractAssetRefsFromText(text: string): Array<{ kind: ProductionAssetKind; id: string }> {
+  const refs: Array<{ kind: ProductionAssetKind; id: string }> = [];
+  const seen = new Set<string>();
+  const matches = text.matchAll(/(?:@|\{)?((?:act|loc|prp|prop)_\d+)(?::st_\d+)?(?:\})?/gi);
+  for (const match of matches) {
+    const id = match[1]?.toLowerCase();
+    if (!id || seen.has(id)) continue;
+    const kind = assetKindFromId(id);
+    if (!kind) continue;
+    seen.add(id);
+    refs.push({ kind, id });
+  }
+  return refs;
+}
+
+function scenePromptTexts(scene: StoryboardSceneLike): string[] {
+  const texts: string[] = [];
+  const withPrompts = scene as StoryboardSceneLike & {
+    shots?: ReadonlyArray<StoryboardShotLike>;
+    clips?: ReadonlyArray<StoryboardClipLike>;
+  };
+
+  for (const shot of withPrompts.shots ?? []) {
+    for (const value of [shot.prompt, shot.partial_prompt, shot.partial_prompt_v2]) {
+      if (typeof value === "string" && value.trim()) texts.push(value);
+    }
+  }
+
+  for (const clip of withPrompts.clips ?? []) {
+    for (const value of [
+      clip.script_source,
+      clip.layout_prompt,
+      clip.complete_prompt,
+      clip.complete_prompt_v2,
+      clip.sfx_prompt,
+    ]) {
+      if (typeof value === "string" && value.trim()) texts.push(value);
+    }
+    for (const shot of clip.shots ?? []) {
+      for (const value of [shot.prompt, shot.partial_prompt, shot.partial_prompt_v2]) {
+        if (typeof value === "string" && value.trim()) texts.push(value);
+      }
+    }
+  }
+
+  return texts;
+}
+
+export function buildProductionAssetRailModel(input: {
+  scenes: ReadonlyArray<StoryboardSceneLike & { scene_id?: string }>;
+  currentSceneId: string | null | undefined;
+  dict: Record<string, string>;
+  availablePaths?: Iterable<string>;
+}): ProductionAssetRailModel {
+  const paths = input.availablePaths ? Array.from(input.availablePaths) : [];
+  const kinds: Array<{ kind: ProductionAssetKind; label: string }> = [
+    { kind: "actor", label: "角色" },
+    { kind: "location", label: "场景" },
+    { kind: "prop", label: "道具" },
+  ];
+
+  const groups = Object.fromEntries(
+    kinds.map(({ kind, label }) => {
+      const refs = new Map<string, ProductionAssetScope>();
+      for (const scene of input.scenes) {
+        const scope = scene.scene_id === input.currentSceneId ? "current" : "episode";
+        for (const id of sceneAssetIds(scene, kind)) {
+          addAssetRef(refs, id, scope);
+        }
+        for (const text of scenePromptTexts(scene)) {
+          for (const ref of extractAssetRefsFromText(text)) {
+            if (ref.kind === kind) addAssetRef(refs, ref.id, scope);
+          }
+        }
+      }
+
+      const items = Array.from(refs.entries())
+        .map(([id, scope]) => ({
+          kind,
+          id,
+          label: input.dict[id] ?? id,
+          scope,
+          thumbnailPath: thumbnailForAsset(kind, id, paths),
+        }))
+        .sort((left, right) => {
+          if (left.scope !== right.scope) return left.scope === "current" ? -1 : 1;
+          return left.id.localeCompare(right.id);
+        });
+
+      return [kind, { label, items }];
+    }),
+  ) as ProductionAssetRailModel["groups"];
+
+  return { groups };
 }
 
 export function findScriptSceneSnapshot(

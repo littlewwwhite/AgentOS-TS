@@ -8,6 +8,8 @@ const storyboardData = {
   scenes: [
     {
       scene_id: "scn_001",
+      actors: [{ actor_id: "act_001" }],
+      locations: [{ location_id: "loc_001" }],
       shots: [
         {
           source_refs: [0, 1, 2],
@@ -52,12 +54,39 @@ const scriptData = {
     },
   ],
   actors: [{ actor_id: "act_001", actor_name: "灵霜" }],
+  locations: [{ location_id: "loc_001", location_name: "内宅" }],
 };
 
 // Mutable storyboard data reference — each test can swap before rendering.
 let currentStoryboardData: unknown = storyboardData;
 // Mutable script data reference — each test can swap before rendering.
 let currentScriptData: unknown = scriptData;
+
+function setAtPathForMock<T>(obj: T, path: string, value: unknown): T {
+  const segments = path.split(".");
+  function recurse(node: unknown, segs: string[]): unknown {
+    const [head, ...rest] = segs;
+    if (head === undefined) return value;
+    if (node === null || node === undefined) throw new Error("PATH_NOT_FOUND");
+    const idx = Number(head);
+    const isArrayIndex = !Number.isNaN(idx) && String(idx) === head;
+    if (isArrayIndex) {
+      if (!Array.isArray(node)) throw new Error("PATH_NOT_FOUND");
+      const copy = [...node];
+      copy[idx] = rest.length === 0 ? value : recurse(copy[idx], rest);
+      return copy;
+    }
+    if (typeof node !== "object" || Array.isArray(node)) throw new Error("PATH_NOT_FOUND");
+    const copy = { ...(node as Record<string, unknown>) };
+    copy[head] = rest.length === 0 ? value : recurse(copy[head], rest);
+    return copy;
+  }
+  try {
+    return recurse(obj, segments) as T;
+  } catch {
+    return obj;
+  }
+}
 
 mock.module("../src/hooks/useEditableJson", () => ({
   useEditableJson: () => ({
@@ -75,9 +104,11 @@ mock.module("../src/hooks/useEditableJson", () => ({
       return undefined;
     }, value);
   },
+  setAtPath: setAtPathForMock,
 }));
 
 mock.module("../src/hooks/useFile", () => ({
+  useFileText: () => ({ text: null, error: null }),
   useFileJson: (_projectName: string, path: string) => ({
     get data() { return path === "output/script.json" ? currentScriptData : {}; },
   }),
@@ -113,20 +144,33 @@ describe("StoryboardView rendering", () => {
     expect(html).not.toContain("剧本到故事板");
     expect(html).not.toContain("来源剧本");
     expect(html).not.toContain("视频状态");
-    expect(html).not.toContain("时间轴与预览辅助区");
-    expect(html).not.toContain("总时长");
+    expect(html).toContain("当前镜头");
+    expect(html).toContain("资产库");
+    expect(html).toContain("grid-cols-[220px_minmax(0,1fr)]");
+    expect(html).toContain("repeat(auto-fit, minmax(min(100%, 360px), 1fr))");
+    expect(html).toContain("grid-rows-[minmax(0,1fr)_auto]");
+    expect(html).toContain("角色");
+    expect(html).toContain("场景");
+    expect(html).toContain("当前片段");
+    expect(html).toContain("视频片段轨");
+    expect(html).not.toContain("整集时间轴");
+    expect(html).not.toContain("片段轨</");
+    expect(html).not.toContain("镜头轨");
+    expect(html).not.toContain("点击任意片段或镜头即可跳转");
+    expect(html).toContain("总时长");
     expect(html).toContain("账房摊开银锭");
-    expect(html).not.toContain("灵霜：这些账，今晚要清。");
+    expect(html).toContain("灵霜");
+    expect(html).toContain("这些账，今晚要清。");
     expect(html).toContain("生成视频 prompt");
     expect(html).not.toContain("video.generate");
     expect(html).not.toContain("aos-cli.model/v1");
-    expect(html).toContain("PART1");
+    expect(html).not.toContain("PART1");
     expect(html).toContain("总体描述：压抑内宅。");
-    expect(html).not.toContain("&quot;shots&quot;");
-    expect(html).not.toContain("&quot;shot_id&quot;");
-    expect(html).not.toContain("&quot;time_range&quot;");
-    expect(html).not.toContain("&quot;camera_setup&quot;");
-    expect(html).not.toContain("&quot;beats&quot;");
+    expect(html).toContain("&quot;shots&quot;");
+    expect(html).toContain("&quot;shot_id&quot;");
+    expect(html).toContain("&quot;time_range&quot;");
+    expect(html).toContain("&quot;camera_setup&quot;");
+    expect(html).toContain("&quot;beats&quot;");
     expect(html).toContain("S1");
     expect(html).toContain("00:00-00:06");
     expect(html).toContain("近景手部+银锭特写");
@@ -190,9 +234,10 @@ describe("StoryboardView rendering", () => {
     const scriptOccurrences = html.split("账房摊开银锭").length - 1;
     expect(scriptOccurrences).toBe(1);
     expect(html).toContain("part_001");
-    expect(html).toContain("part_002");
-    expect(html).toContain("总体描述：第一段。");
     expect(html).toContain("总体描述：第二段。");
+    expect(html).toContain("视频片段轨");
+    expect(html).toContain("总体描述：第一段。");
+    expect(html).not.toContain("镜头轨");
   });
 
   // I-2: when storyboard has scenes[].shots[].prompt but editorModel clips are empty
