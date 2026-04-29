@@ -624,6 +624,9 @@ ${promptJson}
     );
 
     expect(model.clips[0]?.clipId).toBe("part_001");
+    expect(model.clips[0]?.totalDuration).toBe(12);
+    expect(model.clips[0]?.expectedDuration).toBe("12s");
+    expect(model.totalDuration).toBe(12);
     expect(model.clips[0]?.videoPath).toBe("output/ep001/scn001/ep001_scn001_clip001.mp4");
   });
 

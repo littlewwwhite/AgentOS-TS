@@ -175,6 +175,10 @@ function buildSimpleEntries(
   return entries.sort(compareEntries);
 }
 
+function primaryActorStateImage(state: ActorStateAssets): { src: string } | undefined {
+  return state.threeView ?? state.headCloseup ?? state.face ?? state.side ?? state.back;
+}
+
 export function AssetGalleryView({ projectName, path }: Props) {
   const kind = detectKind(path);
   const { tree } = useProject();
@@ -306,12 +310,14 @@ function ActorCard({
           <div className="self-start pt-1">
             <span className="font-serif text-[14px] text-[var(--color-ink)]">{state.state}</span>
           </div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
-            <ViewCell label="正面" entry={state.face} onZoom={onZoom} />
-            <ViewCell label="侧面" entry={state.side} onZoom={onZoom} />
-            <ViewCell label="背面" entry={state.back} onZoom={onZoom} />
-            <ViewCell label="三视图" entry={state.threeView} onZoom={onZoom} />
-            {state.headCloseup && <ViewCell label="头部特写" entry={state.headCloseup} onZoom={onZoom} />}
+          <div className="max-w-[360px]">
+            <ViewCell
+              label="三视图"
+              entry={primaryActorStateImage(state)}
+              onZoom={onZoom}
+              fit="contain"
+              aspectClassName="aspect-[4/3]"
+            />
           </div>
         </div>
       ))}
@@ -323,27 +329,32 @@ function ViewCell({
   label,
   entry,
   onZoom,
+  fit = "cover",
+  aspectClassName = "aspect-square",
 }: {
   label: string;
   entry: { src: string } | undefined;
   onZoom: (src: string) => void;
+  fit?: "cover" | "contain";
+  aspectClassName?: string;
 }) {
+  const fitClass = fit === "contain" ? "object-contain" : "object-cover";
   return (
     <figure className="space-y-1.5">
       {entry ? (
         <button
           onClick={() => onZoom(entry.src)}
-          className="block aspect-square w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunk)] transition-colors hover:border-[var(--color-accent)]"
+          className={`block ${aspectClassName} w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunk)] transition-colors hover:border-[var(--color-accent)]`}
         >
           <img
             src={entry.src}
             alt={label}
             loading="lazy"
-            className="h-full w-full object-cover"
+            className={`h-full w-full ${fitClass}`}
           />
         </button>
       ) : (
-        <div className="flex aspect-square w-full items-center justify-center border border-dashed border-[var(--color-rule)] bg-[var(--color-paper-sunk)] font-serif text-[12px] italic text-[var(--color-ink-faint)]">
+        <div className={`flex ${aspectClassName} w-full items-center justify-center border border-dashed border-[var(--color-rule)] bg-[var(--color-paper-sunk)] font-serif text-[12px] italic text-[var(--color-ink-faint)]`}>
           缺图
         </div>
       )}

@@ -612,6 +612,11 @@ function storyboardPromptSummary(prompt: string): string {
   return proseLines[0] ?? "";
 }
 
+function durationText(seconds: number | undefined): string | undefined {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) return undefined;
+  return `${seconds.toFixed(seconds % 1 === 0 ? 0 : 1)}s`;
+}
+
 function scenePromptClips(
   scene: StoryboardSceneLike & {
     scene_id: string;
@@ -620,11 +625,25 @@ function scenePromptClips(
 ): Array<StoryboardClipLike & { clip_id: string; shots?: ReadonlyArray<StoryboardShotLike> }> {
   return (scene.shots ?? [])
     .filter((shot) => typeof shot.prompt === "string" && shot.prompt.trim())
-    .map((shot, index) => ({
-      clip_id: `part_${String(index + 1).padStart(3, "0")}`,
-      script_source: storyboardPromptSummary(shot.prompt ?? ""),
-      shots: storyboardShotsFromPrompt(shot.prompt ?? ""),
-    }));
+    .map((shot, index) => {
+      const prompt = shot.prompt ?? "";
+      const nestedShots = storyboardShotsFromPrompt(prompt);
+      const duration = typeof shot.duration === "number" && Number.isFinite(shot.duration) && shot.duration > 0
+        ? shot.duration
+        : undefined;
+      return {
+        clip_id: `part_${String(index + 1).padStart(3, "0")}`,
+        expected_duration: durationText(duration),
+        script_source: storyboardPromptSummary(prompt),
+        shots: nestedShots.length > 0
+          ? nestedShots
+          : [{
+              shot_id: "shot_001",
+              duration,
+              partial_prompt: prompt,
+            }],
+      };
+    });
 }
 
 function assetDir(kind: ProductionAssetKind): string {

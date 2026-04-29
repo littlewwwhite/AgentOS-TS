@@ -33,6 +33,8 @@ describe("ProductionAssetRail", () => {
             prop: { label: "道具", items: [] },
           },
         },
+        selectedAssetId: "act_001",
+        onSelectAsset: () => undefined,
       }),
     );
 
@@ -40,6 +42,8 @@ describe("ProductionAssetRail", () => {
     expect(html).toContain("w-[220px]");
     expect(html).toContain("角色");
     expect(html).toContain("林萧");
+    expect(html).toContain("选择 林萧");
+    expect(html).toContain("aria-pressed=\"true\"");
     expect(html).toContain("当前片段");
     expect(html).toContain("王强");
     expect(html).toContain("本集");

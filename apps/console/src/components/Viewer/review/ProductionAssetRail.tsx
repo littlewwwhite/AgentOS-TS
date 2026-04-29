@@ -12,6 +12,8 @@ import type {
 interface Props {
   projectName: string;
   model: ProductionAssetRailModel;
+  selectedAssetId?: string | null;
+  onSelectAsset?: (item: ProductionAssetRailItem) => void;
 }
 
 function scopeLabel(scope: ProductionAssetScope): string {
@@ -47,20 +49,26 @@ function AssetThumb({
 function AssetCard({
   projectName,
   item,
+  selected,
+  onSelect,
 }: {
   projectName: string;
   item: ProductionAssetRailItem;
+  selected: boolean;
+  onSelect?: (item: ProductionAssetRailItem) => void;
 }) {
   const active = item.scope === "current";
-  return (
-    <li
-      className={
-        "grid grid-cols-[52px_minmax(0,1fr)] gap-2.5 border bg-[var(--color-paper-soft)] p-2 " +
-        (active
-          ? "border-[var(--color-ink)]"
-          : "border-[var(--color-rule)]")
-      }
-    >
+  const selectable = typeof onSelect === "function";
+  const shellClass =
+    "grid w-full grid-cols-[52px_minmax(0,1fr)] gap-2.5 border bg-[var(--color-paper-soft)] p-2 text-left transition-colors " +
+    (selected
+      ? "border-[var(--color-accent)] ring-1 ring-[var(--color-accent)]"
+      : active
+        ? "border-[var(--color-ink)]"
+        : "border-[var(--color-rule)]") +
+    (selectable ? " hover:border-[var(--color-accent)]" : "");
+  const content = (
+    <>
       <div className="h-[52px] overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunk)]">
         <AssetThumb projectName={projectName} item={item} />
       </div>
@@ -72,11 +80,34 @@ function AssetCard({
           {scopeLabel(item.scope)}
         </div>
       </div>
+    </>
+  );
+
+  return (
+    <li>
+      {selectable ? (
+        <button
+          type="button"
+          aria-label={`选择 ${item.label}`}
+          aria-pressed={selected}
+          className={shellClass}
+          onClick={() => onSelect?.(item)}
+        >
+          {content}
+        </button>
+      ) : (
+        <div className={shellClass}>{content}</div>
+      )}
     </li>
   );
 }
 
-export function ProductionAssetRail({ projectName, model }: Props) {
+export function ProductionAssetRail({
+  projectName,
+  model,
+  selectedAssetId,
+  onSelectAsset,
+}: Props) {
   const groups = [model.groups.actor, model.groups.location, model.groups.prop];
   const totalItems = groups.reduce((sum, group) => sum + group.items.length, 0);
 
@@ -107,7 +138,13 @@ export function ProductionAssetRail({ projectName, model }: Props) {
             {group.items.length > 0 ? (
               <ul className="grid gap-2">
                 {group.items.map((item) => (
-                  <AssetCard key={`${item.kind}-${item.id}`} projectName={projectName} item={item} />
+                  <AssetCard
+                    key={`${item.kind}-${item.id}`}
+                    projectName={projectName}
+                    item={item}
+                    selected={selectedAssetId === item.id}
+                    onSelect={onSelectAsset}
+                  />
                 ))}
               </ul>
             ) : (
