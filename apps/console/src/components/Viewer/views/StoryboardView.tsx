@@ -771,9 +771,17 @@ function ReviewPromptPanel({
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
 }) {
-  const sourceIndices = scriptScene
+  const explicitSourceIndices = scriptScene
     ? unit.sourceRefs.filter((ref) => ref >= 0 && ref < scriptScene.actions.length)
     : [];
+  const fallbackSourceIndices = scriptScene && explicitSourceIndices.length === 0
+    ? (() => {
+        const partNumber = Number(unit.partId.match(/part_(\d+)/)?.[1] ?? NaN);
+        const actionIndex = Number.isFinite(partNumber) ? partNumber - 1 : -1;
+        return actionIndex >= 0 && actionIndex < scriptScene.actions.length ? [actionIndex] : [];
+      })()
+    : [];
+  const sourceIndices = explicitSourceIndices.length > 0 ? explicitSourceIndices : fallbackSourceIndices;
 
   return (
     <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border border-[var(--color-rule)] bg-[var(--color-paper)]">
@@ -794,7 +802,7 @@ function ReviewPromptPanel({
         )}
       </div>
 
-      <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain px-4 py-3">
+      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-y-auto overscroll-contain px-4 py-3">
         {selectedShot && (
           <InfoPanelSection title="当前镜头">
             {selectedShot.prompt || "（无镜头提示词）"}
@@ -811,7 +819,7 @@ function ReviewPromptPanel({
           )}
         </InfoPanelSection>
 
-        <div>
+        <div className="min-h-0">
           <FieldLabel>生成视频 prompt</FieldLabel>
           <StoryboardPromptEditor
             unit={unit}

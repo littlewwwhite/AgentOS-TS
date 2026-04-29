@@ -53,8 +53,15 @@ const scriptData = {
       ],
     },
   ],
-  actors: [{ actor_id: "act_001", actor_name: "灵霜" }],
+  actors: [
+    {
+      actor_id: "act_001",
+      actor_name: "灵霜",
+      states: [{ state_id: "st_001", state_name: "洗衣奴装" }],
+    },
+  ],
   locations: [{ location_id: "loc_001", location_name: "内宅" }],
+  props: [{ prop_id: "prp_001", prop_name: "银锭" }],
 };
 
 // Mutable storyboard data reference — each test can swap before rendering.
@@ -197,6 +204,38 @@ describe("StoryboardView rendering", () => {
     expect(html).not.toContain("（无剧本摘录）");
     expect(html).toContain("生成视频 prompt");
     expect(html).not.toContain("剧本到故事板");
+  });
+
+  test("falls back to part order for script source and renders prompt refs as names", () => {
+    currentStoryboardData = {
+      episode_id: "ep_001",
+      status: "approved",
+      scenes: [
+        {
+          scene_id: "scn_001",
+          shots: [
+            {
+              prompt: "景别/机位 | 近景\n\n总体描述：@act_001:st_001 在 @loc_001 推开 @prp_001。",
+            },
+          ],
+        },
+      ],
+    };
+    currentScriptData = scriptData;
+    currentTree = [{ path: "output/storyboard/approved/ep001_storyboard.json" }];
+
+    const html = renderToStaticMarkup(
+      React.createElement(StoryboardView, {
+        projectName: "demo-project",
+        path: "output/storyboard/approved/ep001_storyboard.json",
+      }),
+    );
+
+    expect(html).toContain("账房摊开银锭。");
+    expect(html).toContain("灵霜（洗衣奴装）");
+    expect(html).toContain("内宅");
+    expect(html).toContain("银锭");
+    expect(html).toContain("原始 prompt");
   });
 
   // I-3: when one scene has multiple parts, the script column must render once
