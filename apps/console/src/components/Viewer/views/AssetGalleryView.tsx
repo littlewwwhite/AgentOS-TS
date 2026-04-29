@@ -40,8 +40,7 @@ interface SimpleEntry {
   id: string;
   name: string;
   count: number;
-  primary?: { src: string; label: string };
-  secondary?: { src: string; label: string };
+  image?: { src: string; label: string };
 }
 
 const KIND_TITLE: Record<Exclude<AssetKind, "unknown">, string> = {
@@ -189,10 +188,7 @@ function buildSimpleEntries(
   counts: Map<string, number>,
   projectName: string,
   fallbackPrefix: string,
-  primaryKey: string = "main",
-  secondaryKey: string = "auxiliary",
-  primaryLabel: string = "主图",
-  secondaryLabel: string = "特写",
+  label: string,
 ): SimpleEntry[] {
   if (!json) return [];
   const entries: SimpleEntry[] = [];
@@ -200,18 +196,19 @@ function buildSimpleEntries(
     if (!raw || typeof raw !== "object") continue;
     const record = raw as Record<string, unknown>;
     const name = typeof record.name === "string" ? record.name : id;
-    const primaryUrl = typeof record[`${primaryKey}_url`] === "string" ? (record[`${primaryKey}_url`] as string) : undefined;
-    const primaryPath = typeof record[primaryKey] === "string" ? (record[primaryKey] as string) : undefined;
-    const secondaryUrl = typeof record[`${secondaryKey}_url`] === "string" ? (record[`${secondaryKey}_url`] as string) : undefined;
-    const secondaryPath = typeof record[secondaryKey] === "string" ? (record[secondaryKey] as string) : undefined;
-    const primarySrc = imageSrc(projectName, primaryUrl, primaryPath, fallbackPrefix);
-    const secondarySrc = imageSrc(projectName, secondaryUrl, secondaryPath, fallbackPrefix);
+    const imageKeys = ["main", "views", "auxiliary"] as const;
+    const src = imageKeys
+      .map((key) => {
+        const url = typeof record[`${key}_url`] === "string" ? (record[`${key}_url`] as string) : undefined;
+        const path = typeof record[key] === "string" ? (record[key] as string) : undefined;
+        return imageSrc(projectName, url, path, fallbackPrefix);
+      })
+      .find((value): value is string => Boolean(value));
     entries.push({
       id,
       name,
       count: counts.get(id) ?? 0,
-      primary: primarySrc ? { src: primarySrc, label: primaryLabel } : undefined,
-      secondary: secondarySrc ? { src: secondarySrc, label: secondaryLabel } : undefined,
+      image: src ? { src, label } : undefined,
     });
   }
   return entries.sort(compareEntries);
@@ -275,14 +272,14 @@ export function AssetGalleryView({ projectName, path }: Props) {
   const locationEntries = useMemo(
     () =>
       kind === "location"
-        ? buildSimpleEntries(assetJson, counts.location, projectName, "output/locations/", "main", "auxiliary", "主图", "特写")
+        ? buildSimpleEntries(assetJson, counts.location, projectName, "output/locations/", "多视图")
         : [],
     [kind, assetJson, counts.location, projectName],
   );
   const propEntries = useMemo(
     () =>
       kind === "prop"
-        ? buildSimpleEntries(assetJson, counts.prop, projectName, "output/props/", "main", "auxiliary", "主图", "特写")
+        ? buildSimpleEntries(assetJson, counts.prop, projectName, "output/props/", "多角度图")
         : [],
     [kind, assetJson, counts.prop, projectName],
   );
@@ -475,7 +472,7 @@ function SimpleGrid({
   onZoom: (src: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-5">
       {entries.map((entry) => (
         <article
           key={entry.id}
@@ -485,10 +482,13 @@ function SimpleGrid({
             <h3 className="font-serif text-[15px] text-[var(--color-ink)]">{entry.name}</h3>
             <span className="font-mono text-[10px] text-[var(--color-ink-faint)]">{entry.id}</span>
           </header>
-          <div className="grid grid-cols-2 gap-2">
-            <ViewCell label={entry.primary?.label ?? "主图"} entry={entry.primary} onZoom={onZoom} />
-            <ViewCell label={entry.secondary?.label ?? "特写"} entry={entry.secondary} onZoom={onZoom} />
-          </div>
+          <ViewCell
+            label={entry.image?.label ?? "多视图"}
+            entry={entry.image}
+            onZoom={onZoom}
+            fit="contain"
+            aspectClassName="aspect-[16/9]"
+          />
           <div className="font-mono text-[11px] tracking-[0.04em] text-[var(--color-ink-subtle)]">
             出现 {entry.count} 次
           </div>

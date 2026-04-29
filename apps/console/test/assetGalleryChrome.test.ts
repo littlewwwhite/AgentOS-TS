@@ -26,4 +26,16 @@ describe("AssetGalleryView chrome", () => {
     expect(source).toContain("重新生成此状态");
     expect(source).toContain("three_view_prompts.0.prompt");
   });
+
+  test("renders location and prop assets as one composite image without closeup cells", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/components/Viewer/views/AssetGalleryView.tsx"),
+      "utf-8",
+    );
+
+    expect(source).toContain("多视图");
+    expect(source).toContain("多角度图");
+    expect(source).not.toContain("特写");
+    expect(source).not.toContain("grid-cols-2");
+  });
 });

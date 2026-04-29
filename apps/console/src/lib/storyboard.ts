@@ -665,6 +665,7 @@ function thumbnailForAsset(
     const directoryRank = kind === "actor" && path.includes("/default/") ? 0 : 10;
     const base = basenameOf(path);
     if (base.includes("三视图")) return directoryRank + 0;
+    if (base.includes("多视图") || base.includes("多角度")) return directoryRank + 0;
     if (base.includes("主图")) return directoryRank + 1;
     if (base.includes("正面")) return directoryRank + 2;
     return directoryRank + 3;

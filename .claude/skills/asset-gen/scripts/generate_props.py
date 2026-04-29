@@ -18,7 +18,7 @@ JSON状态文件（仅线程1写入）：
   tasks_{uuid}.json : 任务状态
 
 输出目录结构：
-  {project-dir}/props/{道具名}/主图.png          道具主图
+  {project-dir}/props/{道具名}/多角度图.png      道具多角度细节拼接图
   {project-dir}/props/{道具名}/props.json        元数据（subject_id, main）
   {project-dir}/props/props.json                全局道具索引
 
@@ -66,9 +66,9 @@ REVIEW_WORKERS = 10         # 审核线程池大小
 
 # ── 道具/任务状态常量 ─────────────────────────────────────────────────────────
 P_PENDING = "未生成"
-P_MAIN_GENERATING = "主图进行中"
-P_MAIN_WAIT_REVIEW = "主图待审核"
-P_MAIN_REVIEWING = "主图审核中"
+P_MAIN_GENERATING = "多角度图进行中"
+P_MAIN_WAIT_REVIEW = "多角度图待审核"
+P_MAIN_REVIEWING = "多角度图审核中"
 P_REF_GENERATING = "参考图进行中"
 P_REF_WAIT_REVIEW = "参考图待审核"
 P_REF_REVIEWING = "参考图审核中"
@@ -467,7 +467,7 @@ def _reviewer_thread(review_q, inbox_q, stop_event, temp_dir, style_data):
 
 
 def _stage_prop_images_single(ps, ts, temp_dir):
-    """将最佳候选主图暂存到 temp 目录（道具全部完成后再统一复制到输出目录）
+    """将最佳候选多角度细节拼接图暂存到 temp 目录（道具全部完成后再统一复制到输出目录）
 
     Args:
         ps: prop_state[prop_id] 道具状态对象
@@ -478,11 +478,10 @@ def _stage_prop_images_single(ps, ts, temp_dir):
     stage_dir = Path(temp_dir) / safe_name
     stage_dir.mkdir(parents=True, exist_ok=True)
 
-    # 只暂存最佳候选的主图
     if ts.get('image_path') and Path(ts['image_path']).exists():
-        dst = stage_dir / "主图.png"
+        dst = stage_dir / "多角度图.png"
         shutil.copy2(ts['image_path'], str(dst))
-        log(f"  道具「{ps['name']}」→ temp/{safe_name}/主图.png（最佳候选）")
+        log(f"  道具「{ps['name']}」→ temp/{safe_name}/多角度图.png（最佳候选）")
 
     return stage_dir
 
@@ -501,7 +500,7 @@ def _finalize_prop_to_output(ps, project_dir, temp_dir):
     dst_dir.mkdir(parents=True, exist_ok=True)
 
     # 只复制最终文件到输出目录（跳过轮询下载的临时候选图片）
-    _FINAL_FILES = ('主图.png',)
+    _FINAL_FILES = ('多角度图.png',)
     if src_dir.exists():
         for name in _FINAL_FILES:
             f = src_dir / name
@@ -515,8 +514,8 @@ def _finalize_prop_to_output(ps, project_dir, temp_dir):
     if not prop_id:
         return
 
-    main_file = dst_dir / "主图.png"
-    main_path = f"props/{safe_name}/主图.png" if main_file.exists() else ""
+    main_file = dst_dir / "多角度图.png"
+    main_path = f"props/{safe_name}/多角度图.png" if main_file.exists() else ""
     main_url = ""
     if ps.get('main_task_id'):
         main_url = ps.get('_main_show_url', '')
@@ -561,7 +560,7 @@ def generate_props(props_json, project_dir, workspace=None, scripts_dir=None, de
         print(f"日志初始化失败: {e}", flush=True)
 
     if not skip_ref:
-        log("  [配置] 道具资产现在只生成主图，忽略旧的参考图生成参数")
+        log("  [配置] 道具资产现在只生成多角度细节拼接图，忽略旧的参考图生成参数")
 
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
     log(f"=== 道具生成启动 (run_id={run_id}) ===")
@@ -707,7 +706,7 @@ def generate_props(props_json, project_dir, workspace=None, scripts_dir=None, de
             submitted_count += 1
 
     _write_json(prop_path, prop_state)
-    log(f"\n=== 已提交 {submitted_count} 个默认道具主图生成任务 ===")
+    log(f"\n=== 已提交 {submitted_count} 个默认道具多角度图生成任务 ===")
 
     # ── 主循环：监听 inbox_q ──────────────────────────────────────────────────
     GLOBAL_TIMEOUT = 3600
@@ -909,7 +908,7 @@ def generate_props(props_json, project_dir, workspace=None, scripts_dir=None, de
                     ps['_main_show_url'] = task_state[best_prompt_id].get('show_url', '')
                     # 暂存到 temp 目录
                     _stage_prop_images_single(ps, task_state[best_prompt_id], temp_dir)
-                    log(f"  ⏭ 道具「{ps['name']}」只生成主图，跳过参考图生成")
+                    log(f"  ⏭ 道具「{ps['name']}」只生成多角度细节拼接图，跳过参考图生成")
                     frontal_url = task_state[best_prompt_id].get('show_url')
                     if skip_subject:
                         log(f"  ⏭ 道具「{ps['name']}」跳过创建主体（--skip-subject）")
@@ -1045,7 +1044,7 @@ if __name__ == "__main__":
     parser.add_argument("--workspace",   default=None,  help="工作区目录（存临时文件，默认同 project-dir）")
     parser.add_argument("--scripts-dir", default=None,  help="剧本 episodes 目录，用于预分析场次上下文")
     parser.add_argument("--debug", action="store_true", help="调试模式，保留 _temp 临时文件")
-    parser.add_argument("--skip-ref", action="store_true", default=True, help="兼容旧参数；道具始终只生成主图")
+    parser.add_argument("--skip-ref", action="store_true", default=True, help="兼容旧参数；道具始终只生成多角度细节拼接图")
     parser.add_argument("--regenerate", default=None, help="指定重新生成的道具名称，逗号分隔，如 \"手机,钥匙\"")
     parser.add_argument("--skip-subject", action="store_true", default=False, help="跳过创建主体（默认不跳过）")
 

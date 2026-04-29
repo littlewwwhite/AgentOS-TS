@@ -59,9 +59,9 @@ REVIEW_WORKERS = 10         # 审核线程池大小
 
 # ── 场景/任务状态常量 ─────────────────────────────────────────────────────────
 S_PENDING = "未生成"
-S_MAIN_GENERATING = "主图进行中"
-S_MAIN_WAIT_REVIEW = "主图待审核"
-S_MAIN_REVIEWING = "主图审核中"
+S_MAIN_GENERATING = "多视图拼接图进行中"
+S_MAIN_WAIT_REVIEW = "多视图拼接图待审核"
+S_MAIN_REVIEWING = "多视图拼接图审核中"
 S_REF_GENERATING = "参考图进行中"
 S_REF_WAIT_REVIEW = "参考图待审核"
 S_REF_REVIEWING = "参考图审核中"
@@ -466,14 +466,14 @@ def _reviewer_thread(review_q, inbox_q, stop_event, temp_dir, style_data):
 #         ts = task_state[pid]
 #         if ts.get('image_path') and Path(ts['image_path']).exists():
 #             suffix = "" if idx == 0 else f"_{idx + 1}"
-#             dst = scene_dir / f"主图{suffix}.png"
+#             dst = scene_dir / f"多视图{suffix}.png"
 #             if not dst.exists():
 #                 shutil.copy2(ts['image_path'], str(dst))
-#                 log(f"  场景「{ss['name']}」→ locations/{safe_name}/主图{suffix}.png")
+#                 log(f"  场景「{ss['name']}」→ locations/{safe_name}/多视图{suffix}.png")
 
 
 def _stage_scene_images_single(ss, ts, temp_dir):
-    """将最佳候选主图暂存到 temp 目录（场景全部完成后再统一复制到输出目录）
+    """将最佳候选场景多视图拼接图暂存到 temp 目录（场景全部完成后再统一复制到输出目录）
 
     Args:
         ss: scene_state[scene_id] 场景状态对象
@@ -485,15 +485,9 @@ def _stage_scene_images_single(ss, ts, temp_dir):
     stage_dir.mkdir(parents=True, exist_ok=True)
 
     if ts.get('image_path') and Path(ts['image_path']).exists():
-        dst = stage_dir / "主图.png"
-        shutil.copy2(ts['image_path'], str(dst))
-        log(f"  场景「{ss['name']}」→ temp/{safe_name}/主图.png（最佳候选）")
-
-    # 暂存多视图参考图
-    if ss.get('ref_path') and Path(ss['ref_path']).exists():
         dst = stage_dir / "多视图.png"
-        shutil.copy2(ss['ref_path'], str(dst))
-        log(f"  场景「{ss['name']}」→ temp/{safe_name}/多视图.png")
+        shutil.copy2(ts['image_path'], str(dst))
+        log(f"  场景「{ss['name']}」→ temp/{safe_name}/多视图.png（最佳候选）")
 
     return stage_dir
 
@@ -512,7 +506,7 @@ def _finalize_scene_to_output(ss, project_dir, temp_dir):
     dst_dir.mkdir(parents=True, exist_ok=True)
 
     # 只复制最终文件到输出目录（跳过轮询下载的临时候选图片）
-    _FINAL_FILES = ('主图.png', '多视图.png')
+    _FINAL_FILES = ('多视图.png',)
     if src_dir.exists():
         for name in _FINAL_FILES:
             f = src_dir / name
@@ -526,26 +520,19 @@ def _finalize_scene_to_output(ss, project_dir, temp_dir):
     if not scene_id:
         return
 
-    main_file = dst_dir / "主图.png"
-    main_path = f"locations/{safe_name}/主图.png" if main_file.exists() else ""
+    main_file = dst_dir / "多视图.png"
+    main_path = f"locations/{safe_name}/多视图.png" if main_file.exists() else ""
     main_url = ss.get('_main_show_url', '')
-
-    views_path = ""
-    views_url = ""
-    ref_file = dst_dir / "多视图.png"
-    if ref_file.exists():
-        views_path = f"locations/{safe_name}/多视图.png"
-        views_url = ss.get('ref_show_url', '')
 
     entry = {
         "name": ss['name'],
         "subject_id": ss.get('element_id', ''),
         "main": main_path,
         "main_url": main_url,
-        "views": views_path,
-        "views_url": views_url,
-        "auxiliary": views_path,
-        "auxiliary_url": views_url,
+        "views": main_path,
+        "views_url": main_url,
+        "auxiliary": "",
+        "auxiliary_url": "",
     }
 
     # 读取现有 locations.json（增量合并）
@@ -569,7 +556,7 @@ def _finalize_scene_to_output(ss, project_dir, temp_dir):
 # 线程1：编排 + 提交（主函数）
 # ══════════════════════════════════════════════════════════════════════════════
 
-def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, debug=False, skip_ref=False, regenerate_names=None, skip_subject=False):
+def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, debug=False, skip_ref=True, regenerate_names=None, skip_subject=False):
     """3 线程架构的场景生成主入口。"""
     if not workspace:
         workspace = project_dir
@@ -1223,7 +1210,7 @@ if __name__ == "__main__":
     parser.add_argument("--workspace", default=None, help="工作区目录")
     parser.add_argument("--scripts-dir", default=None, help="剧本目录")
     parser.add_argument("--debug", action="store_true", help="调试模式，保留 _temp 临时文件")
-    parser.add_argument("--skip-ref", action="store_true", default=False, help="跳过多视图参考图生成（默认不跳过）")
+    parser.add_argument("--skip-ref", action="store_true", default=True, help="兼容旧参数；场景主图已是多视图拼接图")
     parser.add_argument("--regenerate", default=None, help="指定重新生成的场景名称，逗号分隔，如 \"客厅,卧室\"")
     parser.add_argument("--skip-subject", action="store_true", default=False, help="跳过创建主体（默认不跳过）")
     args = parser.parse_args()
