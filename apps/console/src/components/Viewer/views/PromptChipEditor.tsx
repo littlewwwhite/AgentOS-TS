@@ -1,6 +1,8 @@
 // input: storyboard prompt string + ref dict + per-kind catalog of swap candidates
-// output: always-editable textarea with leading PART\d+ marker stripped
-// pos: storyboard prompt editor — direct edit, no chip view, no toggle
+// output: compact readable prompt block with leading PART\d+ marker stripped
+// pos: storyboard prompt preview — review-first surface, no raw-ID drawer
+
+import type { ReactNode } from "react";
 
 export interface PromptCatalogEntry {
   id: string;
@@ -22,14 +24,131 @@ interface Props {
   ariaLabel: string;
   placeholder?: string;
   onChange: (next: string) => void;
+  editing?: boolean;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
+  selectedRefId?: string | null;
+  onSelectRef?: (ref: PromptRefSelection) => void;
 }
 
 const PART_PREFIX = /^PART\d+\s*\n+/;
+const REF_PATTERN = /(@|\{)((?:act|loc|prp|prop)_\d+)(?::(st_\d+))?\}?/gi;
 
-function stripPartPrefix(text: string): string {
-  return text.replace(PART_PREFIX, "");
+export interface PromptRefSelection {
+  raw: string;
+  id: string;
+  stateId?: string;
+}
+
+function splitPartPrefix(text: string): { prefix: string; body: string } {
+  const match = text.match(PART_PREFIX);
+  const prefix = match?.[0] ?? "";
+  return { prefix, body: text.slice(prefix.length) };
+}
+
+function readableRefLabel(
+  id: string,
+  stateId: string | undefined,
+  dict: Record<string, string>,
+  actorStateOverrides?: Map<string, string>,
+  stateNameById: Record<string, string> = {},
+): string | null {
+  const normalized = id.toLowerCase();
+  const resolvedStateId = stateId ?? actorStateOverrides?.get(normalized);
+  const name = dict[normalized];
+  if (!name) return null;
+  const stateName = resolvedStateId ? stateNameById[resolvedStateId] : undefined;
+  return stateName ? `${name}（${stateName}）` : name;
+}
+
+function refToneClassName(id: string, selected: boolean): string {
+  if (id.startsWith("act_")) {
+    return selected
+      ? "border-[#8aa800] bg-[#dfff2f] text-[#172200]"
+      : "border-[#b7d900] bg-[#e7ff5f] text-[#1d2c00]";
+  }
+  if (id.startsWith("loc_")) {
+    return selected
+      ? "border-[#009db0] bg-[#5eefff] text-[#002b31]"
+      : "border-[#39cfe0] bg-[#8ff7ff] text-[#003940]";
+  }
+  if (id.startsWith("prp_") || id.startsWith("prop_")) {
+    return selected
+      ? "border-[#d85ca4] bg-[#ffafe1] text-[#3f0027]"
+      : "border-[#f58acb] bg-[#ffd1f0] text-[#4b0030]";
+  }
+  return selected
+    ? "border-[var(--color-accent)] bg-[var(--color-paper)] text-[var(--color-ink)]"
+    : "border-[var(--color-rule)] bg-[var(--color-paper)] text-[var(--color-ink)]";
+}
+
+export function replacePromptRef(
+  prompt: string,
+  selection: PromptRefSelection | null | undefined,
+  nextId: string,
+): string {
+  if (!selection) {
+    return `${prompt.trimEnd()}\n@${nextId}`;
+  }
+  const index = prompt.indexOf(selection.raw);
+  if (index < 0) return `${prompt.trimEnd()}\n@${nextId}`;
+  return `${prompt.slice(0, index)}@${nextId}${prompt.slice(index + selection.raw.length)}`;
+}
+
+export function PromptRefText({
+  text,
+  dict = {},
+  actorStateOverrides,
+  stateNameById = {},
+  selectedRefId,
+  onSelectRef,
+}: {
+  text: string;
+  dict?: Record<string, string>;
+  actorStateOverrides?: Map<string, string>;
+  stateNameById?: Record<string, string>;
+  selectedRefId?: string | null;
+  onSelectRef?: (ref: PromptRefSelection) => void;
+}) {
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(REF_PATTERN)) {
+    const raw = match[0];
+    const id = match[2]?.toLowerCase();
+    if (!raw || !id || match.index === undefined) continue;
+
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    const label = readableRefLabel(id, match[3], dict, actorStateOverrides, stateNameById) ?? raw;
+    const selected = selectedRefId === id;
+    const className =
+      "inline-flex align-baseline border px-1 py-0.5 font-[Geist,sans-serif] text-[12px] leading-none " +
+      refToneClassName(id, selected);
+
+    nodes.push(
+      onSelectRef ? (
+        <button
+          key={`${match.index}-${raw}`}
+          type="button"
+          className={`${className} cursor-pointer`}
+          onClick={() => onSelectRef({ raw, id, stateId: match[3] })}
+        >
+          {label}
+        </button>
+      ) : (
+        <span key={`${match.index}-${raw}`} className={className}>
+          {label}
+        </span>
+      ),
+    );
+    lastIndex = match.index + raw.length;
+  }
+
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return <>{nodes.length > 0 ? nodes : text}</>;
 }
 
 export function PromptChipEditor({
@@ -37,44 +156,45 @@ export function PromptChipEditor({
   dict = {},
   actorStateOverrides,
   stateNameById = {},
-  readOnly,
   ariaLabel,
   placeholder,
   onChange,
+  readOnly,
+  editing = false,
+  selectedRefId,
+  onSelectRef,
 }: Props) {
-  const display = stripPartPrefix(value);
-  const readableDisplay = display.replace(
-    /@((?:act|loc|prp|prop)_\d+)(?::(st_\d+))?/gi,
-    (token, rawId: string, rawStateId?: string) => {
-      const id = rawId.toLowerCase();
-      const stateId = rawStateId ?? actorStateOverrides?.get(id);
-      const name = dict[id];
-      if (!name) return token;
-      const stateName = stateId ? stateNameById[stateId] : undefined;
-      return stateName ? `${name}（${stateName}）` : name;
-    },
-  );
+  const { prefix, body: display } = splitPartPrefix(value);
+
+  if (editing && !readOnly) {
+    return (
+      <textarea
+        aria-label={`${ariaLabel} 编辑`}
+        value={display}
+        placeholder={placeholder}
+        onChange={(event) => onChange(`${prefix}${event.currentTarget.value}`)}
+        className="h-full min-h-[260px] w-full resize-none overflow-y-auto border border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-3 py-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
+      />
+    );
+  }
 
   return (
-    <div className="grid h-full min-h-[260px] grid-rows-[minmax(0,1fr)_auto] gap-2">
-      <div className="min-h-0 overflow-y-auto border border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-3 py-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] whitespace-pre-wrap">
-        {readableDisplay || (
-          <span className="text-[var(--color-ink-faint)]">{placeholder}</span>
-        )}
-      </div>
-      <details className="border border-[var(--color-rule)] bg-[var(--color-paper)]">
-        <summary className="cursor-pointer select-none px-3 py-2 font-[Geist,sans-serif] text-[11px] font-semibold tracking-[0.08em] text-[var(--color-ink-subtle)]">
-          原始 prompt
-        </summary>
-        <textarea
-          aria-label={ariaLabel}
-          className="block min-h-[150px] w-full resize-y border-0 border-t border-[var(--color-rule)] bg-[var(--color-paper-soft)] p-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] outline-none transition-colors focus:border-[var(--color-accent)] disabled:opacity-70"
-          readOnly={readOnly}
-          value={display}
-          placeholder={placeholder}
-          onChange={(event) => onChange(event.target.value)}
+    <div
+      aria-label={ariaLabel}
+      className="h-full min-h-[260px] overflow-y-auto border border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-3 py-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] whitespace-pre-wrap"
+    >
+      {display ? (
+        <PromptRefText
+          text={display}
+          dict={dict}
+          actorStateOverrides={actorStateOverrides}
+          stateNameById={stateNameById}
+          selectedRefId={selectedRefId}
+          onSelectRef={onSelectRef}
         />
-      </details>
+      ) : (
+        <span className="text-[var(--color-ink-faint)]">{placeholder}</span>
+      )}
     </div>
   );
 }
