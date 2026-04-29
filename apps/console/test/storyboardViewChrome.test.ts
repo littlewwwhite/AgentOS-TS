@@ -74,4 +74,22 @@ describe("StoryboardView chrome", () => {
     expect(source).not.toContain("故事板视频");
     expect(source).not.toContain("当前片段");
   });
+
+  test("play all immediately starts the current clip when no episode preview exists", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/components/Viewer/views/StoryboardView.tsx"),
+      "utf-8",
+    );
+
+    expect(source).toContain("!nextIsEpisodePlayback || isEpisodePlayback");
+  });
+
+  test("prompt review text block fills the remaining panel height", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/components/Viewer/views/StoryboardView.tsx"),
+      "utf-8",
+    );
+
+    expect(source).toContain("grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] px-4 py-3");
+  });
 });

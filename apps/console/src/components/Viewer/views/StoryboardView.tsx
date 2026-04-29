@@ -31,6 +31,7 @@ import {
   splitStoryboardText,
   type ClipInspectorData,
   type DraftStoryboardPromptSummary,
+  type ProductionAssetRailItem,
   type ScriptSceneSnapshot,
   type StoryboardClipLike,
   type StoryboardEditorClip,
@@ -42,7 +43,13 @@ import {
 import { EditableText } from "../../common/EditableText";
 import { SaveStatusDot } from "../../common/SaveStatusDot";
 import { ArtifactLifecycleActions } from "../../common/ArtifactLifecycleActions";
-import { PromptChipEditor, type PromptCatalog } from "./PromptChipEditor";
+import {
+  PromptChipEditor,
+  PromptRefText,
+  replacePromptRef,
+  type PromptCatalog,
+  type PromptRefSelection,
+} from "./PromptChipEditor";
 import { ProductionAssetRail } from "../review/ProductionAssetRail";
 import { SegmentTimeline } from "../review/SegmentTimeline";
 
@@ -84,7 +91,40 @@ interface DraftStoryboardPart {
 }
 
 type PlaybackStatus = "idle" | "playing" | "paused";
+type PlaybackMode = "clip" | "episode" | "sequence";
 type EpisodePreviewStatus = "idle" | "building" | "ready" | "error";
+
+const NEW_STORYBOARD_PROMPT = [
+  "景别/机位 | ",
+  "",
+  "总体描述：",
+  "",
+  "动作：",
+  "",
+  "角色状态：",
+  "",
+  "音效：",
+  "",
+  "对白：无",
+].join("\n");
+
+function requestClipRegeneration(input: {
+  storyboardPath: string;
+  unit: StoryboardGenerationUnit;
+  videoPath: string | null;
+}) {
+  if (typeof window === "undefined") return;
+  const message = [
+    `/video-gen 重新生成此片段`,
+    `故事板：${input.storyboardPath}`,
+    `片段：${input.unit.sceneId} · ${input.unit.partId}`,
+    `提示词路径：${input.unit.promptPath}`,
+    input.videoPath ? `当前视频：${input.videoPath}` : null,
+    "",
+    "只重新生成这个片段，完成后刷新对应分集视频工作台。",
+  ].filter(Boolean).join("\n");
+  window.dispatchEvent(new CustomEvent("agentos:send-message", { detail: { message } }));
+}
 
 function savedAtLabel(savedAt: number | null): string {
   if (savedAt === null) return "";
@@ -242,7 +282,7 @@ function PreviewStage({
                 {placeholderTitle}
               </div>
               <div className="mx-auto max-w-[28rem] font-[Geist,sans-serif] text-[13px] leading-relaxed text-white/68">
-                视频生成后会在此预览；当前可先校对右侧提示词与剧本原文。
+                视频生成后会在此预览；当前可先校对右侧提示词。
               </div>
             </div>
           </div>
@@ -259,6 +299,10 @@ function ClipInfoPanel({
   dict,
   children,
   className = "",
+  actorStateOverrides,
+  stateNameById,
+  selectedRefId,
+  onSelectRef,
 }: {
   summary: ClipInspectorData;
   source: string;
@@ -266,6 +310,10 @@ function ClipInfoPanel({
   dict: Record<string, string>;
   children?: ReactNode;
   className?: string;
+  actorStateOverrides?: Map<string, string>;
+  stateNameById?: Record<string, string>;
+  selectedRefId?: string | null;
+  onSelectRef?: (ref: PromptRefSelection) => void;
 }) {
   const scriptBeats = splitStoryboardText(source, dict);
 
@@ -282,7 +330,18 @@ function ClipInfoPanel({
 
         {selectedShot && (
           <InfoPanelSection title="当前镜头">
-            {selectedShot.prompt || "（无镜头提示词）"}
+            {selectedShot.prompt ? (
+              <PromptRefText
+                text={selectedShot.prompt}
+                dict={dict}
+                actorStateOverrides={actorStateOverrides}
+                stateNameById={stateNameById}
+                selectedRefId={selectedRefId}
+                onSelectRef={onSelectRef}
+              />
+            ) : (
+              "（无镜头提示词）"
+            )}
           </InfoPanelSection>
         )}
 
@@ -637,16 +696,22 @@ function StoryboardPromptEditor({
   readOnly,
   dict,
   catalog,
+  editing = false,
   actorStateOverrides,
   stateNameById,
+  selectedRefId,
+  onSelectRef,
 }: {
   unit: StoryboardGenerationUnit;
   patch: JsonPatch;
   readOnly: boolean;
   dict: Record<string, string>;
   catalog: PromptCatalog;
+  editing?: boolean;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
+  selectedRefId?: string | null;
+  onSelectRef?: (ref: PromptRefSelection) => void;
 }) {
   return (
     <PromptChipEditor
@@ -655,9 +720,12 @@ function StoryboardPromptEditor({
       dict={dict}
       catalog={catalog}
       readOnly={readOnly}
+      editing={editing}
       placeholder="用一段自然语言描述这一镜头要拍什么"
       actorStateOverrides={actorStateOverrides}
       stateNameById={stateNameById}
+      selectedRefId={selectedRefId}
+      onSelectRef={onSelectRef}
       onChange={(next) => patch(unit.promptPath, next)}
     />
   );
@@ -728,6 +796,8 @@ function StoryboardPartBlock({
   catalog,
   actorStateOverrides,
   stateNameById,
+  selectedRefId,
+  onSelectRef,
 }: {
   unit: StoryboardGenerationUnit;
   patch: JsonPatch;
@@ -736,6 +806,8 @@ function StoryboardPartBlock({
   catalog: PromptCatalog;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
+  selectedRefId?: string | null;
+  onSelectRef?: (ref: PromptRefSelection) => void;
 }) {
   return (
     <StoryboardPromptEditor
@@ -746,42 +818,42 @@ function StoryboardPartBlock({
       catalog={catalog}
       actorStateOverrides={actorStateOverrides}
       stateNameById={stateNameById}
+      selectedRefId={selectedRefId}
+      onSelectRef={onSelectRef}
     />
   );
 }
 
 function ReviewPromptPanel({
+  storyboardPath,
   unit,
-  scriptScene,
-  selectedShot,
+  videoPath,
   patch,
   readOnly,
   dict,
   catalog,
   actorStateOverrides,
   stateNameById,
+  selectedRefId,
+  onSelectRef,
 }: {
+  storyboardPath: string;
   unit: StoryboardGenerationUnit;
-  scriptScene: ScriptSceneSnapshot | null;
-  selectedShot: StoryboardEditorShot | null;
+  videoPath: string | null;
   patch: JsonPatch;
   readOnly: boolean;
   dict: Record<string, string>;
   catalog: PromptCatalog;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
+  selectedRefId?: string | null;
+  onSelectRef?: (ref: PromptRefSelection) => void;
 }) {
-  const explicitSourceIndices = scriptScene
-    ? unit.sourceRefs.filter((ref) => ref >= 0 && ref < scriptScene.actions.length)
-    : [];
-  const fallbackSourceIndices = scriptScene && explicitSourceIndices.length === 0
-    ? (() => {
-        const partNumber = Number(unit.partId.match(/part_(\d+)/)?.[1] ?? NaN);
-        const actionIndex = Number.isFinite(partNumber) ? partNumber - 1 : -1;
-        return actionIndex >= 0 && actionIndex < scriptScene.actions.length ? [actionIndex] : [];
-      })()
-    : [];
-  const sourceIndices = explicitSourceIndices.length > 0 ? explicitSourceIndices : fallbackSourceIndices;
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+  }, [unit.key]);
 
   return (
     <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border border-[var(--color-rule)] bg-[var(--color-paper)]">
@@ -790,47 +862,42 @@ function ReviewPromptPanel({
           <div className="font-serif text-[18px] leading-tight text-[var(--color-ink)]">
             {unit.sceneId} · {unit.partId}
           </div>
-          <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
-            当前选择的提示词、镜头和剧本原文
-          </div>
         </div>
-        {selectedShot && (
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <MetaBadge label="镜头" value={selectedShot.shotId} />
-            <MetaBadge label="时间" value={selectedShot.timeRange ?? durationLabel(selectedShot.duration)} />
-          </div>
-        )}
       </div>
 
-      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-y-auto overscroll-contain px-4 py-3">
-        {selectedShot && (
-          <InfoPanelSection title="当前镜头">
-            {selectedShot.prompt || "（无镜头提示词）"}
-          </InfoPanelSection>
-        )}
-
-        <InfoPanelSection title="剧本原文">
-          {scriptScene && sourceIndices.length > 0 ? (
-            <ScriptActionGroup scene={scriptScene} indices={sourceIndices} />
-          ) : (
-            <span className="font-serif italic text-[14px] text-[var(--color-ink-faint)]">
-              （无剧本原文）
-            </span>
-          )}
-        </InfoPanelSection>
-
-        <div className="min-h-0">
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] px-4 py-3">
+        <div className="mb-1 flex items-center justify-between gap-3">
           <FieldLabel>生成视频 prompt</FieldLabel>
-          <StoryboardPromptEditor
-            unit={unit}
-            patch={patch}
-            readOnly={readOnly}
-            dict={dict}
-            catalog={catalog}
-            actorStateOverrides={actorStateOverrides}
-            stateNameById={stateNameById}
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() => setEditing((current) => !current)}
+              className="border border-[var(--color-rule)] px-2 py-1 font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-muted)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:text-[var(--color-ink-faint)]"
+            >
+              {editing ? "预览提示词" : "编辑提示词"}
+            </button>
+            <button
+              type="button"
+              onClick={() => requestClipRegeneration({ storyboardPath, unit, videoPath })}
+              className="border border-[var(--color-ink)] bg-[var(--color-ink)] px-2 py-1 font-[Geist,sans-serif] text-[11px] font-semibold text-[var(--color-paper)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-accent)]"
+            >
+              重新生成此片段
+            </button>
+          </div>
         </div>
+        <StoryboardPromptEditor
+          unit={unit}
+          patch={patch}
+          readOnly={readOnly}
+          dict={dict}
+          catalog={catalog}
+          editing={editing}
+          actorStateOverrides={actorStateOverrides}
+          stateNameById={stateNameById}
+          selectedRefId={selectedRefId}
+          onSelectRef={onSelectRef}
+        />
       </div>
     </aside>
   );
@@ -1116,6 +1183,8 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
   const [selectedShotKey, setSelectedShotKey] = useState<string | null>(editorModel.defaultShotKey);
   const [episodeTime, setEpisodeTime] = useState(0);
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>("idle");
+  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>("clip");
+  const [selectedPromptRef, setSelectedPromptRef] = useState<PromptRefSelection | null>(null);
   const [generatedEpisodeVideoPath, setGeneratedEpisodeVideoPath] = useState<string | null>(null);
   const [episodePreviewStatus, setEpisodePreviewStatus] = useState<EpisodePreviewStatus>("idle");
 
@@ -1136,6 +1205,7 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
   useEffect(() => {
     setGeneratedEpisodeVideoPath(null);
     setEpisodePreviewStatus("idle");
+    setPlaybackMode("clip");
     pendingSeekRef.current = 0;
     pendingAutoplayRef.current = false;
   }, [path, projectName]);
@@ -1181,12 +1251,16 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     [currentClip?.sceneId, dict, scenes, treePathList],
   );
   const currentUnit = currentClipKey ? generationUnitMap.get(currentClipKey) ?? null : null;
-  const currentUnitScriptScene = currentUnit
-    ? scriptSceneLookup.get(currentUnit.sceneId) ?? null
-    : null;
   const currentUnitActorStateLookup = currentUnit
     ? sceneActorStateLookup.get(currentUnit.sceneId)
     : undefined;
+
+  const handleSelectAsset = useCallback((item: ProductionAssetRailItem) => {
+    if (!currentUnit) return;
+    const nextPrompt = replacePromptRef(currentUnit.rawPrompt, selectedPromptRef, item.id);
+    patch(currentUnit.promptPath, nextPrompt);
+    setSelectedPromptRef({ raw: `@${item.id}`, id: item.id });
+  }, [currentUnit, patch, selectedPromptRef]);
 
   useEffect(() => {
     if (!currentClip) return;
@@ -1194,6 +1268,10 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
       setSelectedShotKey(currentClip.shots[0]?.key ?? null);
     }
   }, [currentClip, selectedShotKey]);
+
+  useEffect(() => {
+    setSelectedPromptRef(null);
+  }, [currentUnit?.key]);
 
   const currentShot = selectedShotKey ? shotMap.get(selectedShotKey) ?? null : null;
   const selectedShot = currentShot?.clipKey === currentClipKey
@@ -1207,9 +1285,10 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
   const mergedEpisodeVideoPath = editorModel.episodeVideoPath ?? generatedEpisodeVideoPath;
   const hasEpisodeVideo = mergedEpisodeVideoPath !== null &&
     (treePaths.has(mergedEpisodeVideoPath) || mergedEpisodeVideoPath === generatedEpisodeVideoPath);
+  const isEpisodePlayback = playbackMode === "episode" && hasEpisodeVideo;
   const currentClipExists = currentClip ? treePaths.has(currentClip.videoPath) : false;
-  const previewVideoPath = hasEpisodeVideo ? mergedEpisodeVideoPath : currentClip?.videoPath ?? null;
-  const previewExists = hasEpisodeVideo || currentClipExists;
+  const previewVideoPath = isEpisodePlayback ? mergedEpisodeVideoPath : currentClip?.videoPath ?? null;
+  const previewExists = isEpisodePlayback ? hasEpisodeVideo : currentClipExists;
   const previewPlaceholderTitle = "当前没有可播放的预览视频";
   const currentScene = currentClip ? scenes[currentClip.sceneIndex] ?? null : null;
   const storedClipData = currentClip && currentScene
@@ -1285,21 +1364,22 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     refresh,
   ]);
 
-  const applyTimeSelection = useCallback((clip: StoryboardEditorClip, localTime: number, autoplay: boolean) => {
+  const applyTimeSelection = useCallback((clip: StoryboardEditorClip, localTime: number, autoplay: boolean, mode: PlaybackMode) => {
     const boundedLocalTime = Math.max(0, Math.min(localTime, Math.max(clip.totalDuration - 0.05, 0)));
     const nextGlobalTime = clip.startOffset + boundedLocalTime;
     const nextSelection = resolveStoryboardSelectionAtTime(editorModel, nextGlobalTime);
+    const nextIsEpisodePlayback = mode === "episode" && hasEpisodeVideo;
+    const canPlayCurrentClip = treePaths.has(clip.videoPath);
+    const canPlayPreview = nextIsEpisodePlayback ? hasEpisodeVideo : canPlayCurrentClip;
 
+    setPlaybackMode(mode);
     setCurrentClipKey(nextSelection.clipKey ?? clip.key);
     setSelectedShotKey(nextSelection.shotKey);
     setEpisodeTime(nextGlobalTime);
 
     const currentVideo = videoRef.current;
-    const canPlayCurrentClip = treePaths.has(clip.videoPath);
-    const canPlayPreview = hasEpisodeVideo || canPlayCurrentClip;
-
-    if (currentVideo && canPlayPreview && (hasEpisodeVideo || currentClipKey === clip.key)) {
-      currentVideo.currentTime = hasEpisodeVideo ? nextGlobalTime : boundedLocalTime;
+    if (currentVideo && canPlayPreview && currentClipKey === clip.key && (!nextIsEpisodePlayback || isEpisodePlayback)) {
+      currentVideo.currentTime = nextIsEpisodePlayback ? nextGlobalTime : boundedLocalTime;
       if (autoplay) {
         void currentVideo.play().catch(() => undefined);
       }
@@ -1311,25 +1391,58 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     if (!canPlayPreview) {
       setPlaybackStatus("idle");
     }
-  }, [currentClipKey, editorModel, hasEpisodeVideo, treePaths]);
+  }, [currentClipKey, editorModel, hasEpisodeVideo, isEpisodePlayback, treePaths]);
 
   const handleSelectClip = useCallback((clipKey: string) => {
     const clip = clipMap.get(clipKey);
     if (!clip) return;
-    applyTimeSelection(clip, 0, playbackStatus === "playing");
-  }, [applyTimeSelection, clipMap, playbackStatus]);
+    applyTimeSelection(clip, 0, true, "clip");
+  }, [applyTimeSelection, clipMap]);
+
+  const handleInsertClipAfter = useCallback((clipKey: string) => {
+    if (!data) return;
+    const clip = clipMap.get(clipKey);
+    if (!clip) return;
+    const scene = data.scenes?.[clip.sceneIndex];
+    if (!scene) return;
+
+    const shots = Array.isArray(scene.shots) ? scene.shots : [];
+    const insertIndex = Math.min(clip.clipIndex + 1, shots.length);
+    const nextShots = [
+      ...shots.slice(0, insertIndex),
+      {
+        source_refs: [],
+        duration: 4,
+        prompt: NEW_STORYBOARD_PROMPT,
+      },
+      ...shots.slice(insertIndex),
+    ];
+    const nextPartId = `part_${String(insertIndex + 1).padStart(3, "0")}`;
+
+    patch(`scenes.${clip.sceneIndex}.shots`, nextShots);
+    setPlaybackMode("clip");
+    setCurrentClipKey(`${clip.sceneId}::${nextPartId}`);
+    setSelectedShotKey(null);
+    setEpisodeTime(clip.endOffset);
+  }, [clipMap, data, patch]);
+
+  const handlePlayAll = useCallback(() => {
+    const firstClip = editorModel.clips[0] ?? null;
+    if (!firstClip) return;
+    applyTimeSelection(firstClip, 0, true, hasEpisodeVideo ? "episode" : "sequence");
+  }, [applyTimeSelection, editorModel.clips, hasEpisodeVideo]);
 
   const handleLoadedMetadata = useCallback(() => {
     const clip = currentClipKey ? clipMap.get(currentClipKey) ?? null : null;
     const video = videoRef.current;
-    if (!video || (!hasEpisodeVideo && !clip)) return;
+    if (!video || (!isEpisodePlayback && !clip)) return;
 
     const pendingGlobalTime = pendingSeekRef.current ?? (clip?.startOffset ?? 0);
     const boundedGlobalTime = Math.max(0, Math.min(pendingGlobalTime, Math.max(editorModel.totalDuration - 0.05, 0)));
     const boundedLocalTime = clip
       ? Math.max(0, Math.min(boundedGlobalTime - clip.startOffset, Math.max(clip.totalDuration - 0.05, 0)))
       : boundedGlobalTime;
-    const targetTime = hasEpisodeVideo ? boundedGlobalTime : boundedLocalTime;
+    const targetTime = isEpisodePlayback ? boundedGlobalTime : boundedLocalTime;
     if (Math.abs(video.currentTime - targetTime) > 0.05) {
       video.currentTime = targetTime;
     }
@@ -1346,22 +1459,27 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     if (shouldAutoplay) {
       void video.play().catch(() => undefined);
     }
-  }, [clipMap, currentClipKey, editorModel, hasEpisodeVideo]);
+  }, [clipMap, currentClipKey, editorModel, isEpisodePlayback]);
 
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
     const clip = currentClipKey ? clipMap.get(currentClipKey) ?? null : null;
-    if (!video || (!hasEpisodeVideo && !clip)) return;
+    if (!video || (!isEpisodePlayback && !clip)) return;
 
-    const nextGlobalTime = hasEpisodeVideo ? video.currentTime : (clip?.startOffset ?? 0) + video.currentTime;
+    const rawGlobalTime = isEpisodePlayback ? video.currentTime : (clip?.startOffset ?? 0) + video.currentTime;
+    const nextGlobalTime = !isEpisodePlayback && clip
+      ? Math.min(rawGlobalTime, Math.max(clip.startOffset, clip.endOffset - 0.05))
+      : rawGlobalTime;
     const nextSelection = resolveStoryboardSelectionAtTime(editorModel, nextGlobalTime);
     setEpisodeTime(nextGlobalTime);
-    setCurrentClipKey((previous) => previous === nextSelection.clipKey ? previous : nextSelection.clipKey);
+    if (isEpisodePlayback) {
+      setCurrentClipKey((previous) => previous === nextSelection.clipKey ? previous : nextSelection.clipKey);
+    }
     setSelectedShotKey((previous) => previous === nextSelection.shotKey ? previous : nextSelection.shotKey);
-  }, [clipMap, currentClipKey, editorModel, hasEpisodeVideo]);
+  }, [clipMap, currentClipKey, editorModel, isEpisodePlayback]);
 
   const handleEnded = useCallback(() => {
-    if (hasEpisodeVideo) {
+    if (isEpisodePlayback) {
       const nextSelection = resolveStoryboardSelectionAtTime(editorModel, editorModel.totalDuration);
       setPlaybackStatus("idle");
       setCurrentClipKey(nextSelection.clipKey);
@@ -1371,6 +1489,12 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     }
 
     if (!currentClip) return;
+    if (playbackMode !== "sequence") {
+      setPlaybackStatus("idle");
+      setEpisodeTime(currentClip.endOffset);
+      return;
+    }
+
     const currentIndex = editorModel.clips.findIndex((clip) => clip.key === currentClip.key);
     const nextPlayableClip = editorModel.clips
       .slice(currentIndex + 1)
@@ -1384,10 +1508,11 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
 
     pendingSeekRef.current = 0;
     pendingAutoplayRef.current = true;
+    setPlaybackMode("sequence");
     setCurrentClipKey(nextPlayableClip.key);
     setSelectedShotKey(nextPlayableClip.shots[0]?.key ?? null);
     setEpisodeTime(nextPlayableClip.startOffset);
-  }, [currentClip, editorModel, hasEpisodeVideo, treePaths]);
+  }, [currentClip, editorModel, isEpisodePlayback, playbackMode, treePaths]);
 
   const handlePlay = useCallback(() => {
     setPlaybackStatus("playing");
@@ -1456,26 +1581,27 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-6 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-6 py-2 shrink-0">
-        <header className="space-y-1">
-          <h1 className="font-serif text-[24px] leading-tight text-[var(--color-ink)]">
+      <div className="flex items-center justify-between gap-4 border-b border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-4 py-1.5 shrink-0">
+        <header>
+          <h1 className="font-[Geist,sans-serif] text-[14px] font-semibold leading-tight text-[var(--color-ink)]">
             {data.title ? data.title : `${data.episode_id} 故事板`}
           </h1>
-          <div className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-subtle)]">
-            视频生成前的镜头规划与提示词定稿
-          </div>
         </header>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           <SaveStatusLabel status={status} savedAt={savedAt} error={error} />
-          <ArtifactLifecycleActions projectName={projectName} path={path} onActionDone={refresh} />
           <MetaBadge label="总时长" value={durationLabel(editorModel.totalDuration)} />
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden bg-[var(--color-paper-sunk)] px-3 py-3 lg:px-4">
         <div className="mx-auto grid h-full w-full max-w-[1760px] grid-cols-[220px_minmax(0,1fr)] gap-3">
-          <ProductionAssetRail projectName={projectName} model={assetRailModel} />
+          <ProductionAssetRail
+            projectName={projectName}
+            model={assetRailModel}
+            selectedAssetId={selectedPromptRef?.id ?? null}
+            onSelectAsset={currentUnit ? handleSelectAsset : undefined}
+          />
           <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 lg:gap-4">
           {currentClip && currentClipData && currentScene && currentSummary ? (
             <section className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-2 lg:gap-3">
@@ -1499,15 +1625,17 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
 
                 {currentUnit ? (
                   <ReviewPromptPanel
+                    storyboardPath={path}
                     unit={currentUnit}
-                    scriptScene={currentUnitScriptScene}
-                    selectedShot={selectedShot}
+                    videoPath={currentClip.videoPath}
                     patch={patch}
                     readOnly={locked}
                     dict={dict}
                     catalog={promptCatalog}
                     actorStateOverrides={currentUnitActorStateLookup}
                     stateNameById={stateNameById}
+                    selectedRefId={selectedPromptRef?.id ?? null}
+                    onSelectRef={setSelectedPromptRef}
                   />
                 ) : (
                   <ClipInfoPanel
@@ -1577,6 +1705,8 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
                 episodeTime={episodeTime}
                 totalDuration={editorModel.totalDuration}
                 onSelectClip={handleSelectClip}
+                onPlayAll={handlePlayAll}
+                onInsertClipAfter={locked ? undefined : handleInsertClipAfter}
               />
             </section>
           ) : (

@@ -93,11 +93,22 @@ function Shell() {
     [activeTab?.path, name],
   );
 
-  function handleSend(message: string) {
+  const handleSend = useCallback((message: string) => {
     send(message, name ?? undefined, sessionId ?? undefined, {
       agentMessage: buildAgentMessage(message, activeProductionObject),
     });
-  }
+  }, [activeProductionObject, name, send, sessionId]);
+
+  useEffect(() => {
+    function handleSendMessage(event: Event) {
+      const message = (event as CustomEvent<{ message?: unknown }>).detail?.message;
+      if (typeof message !== "string" || !message.trim()) return;
+      handleSend(message);
+    }
+
+    window.addEventListener("agentos:send-message", handleSendMessage);
+    return () => window.removeEventListener("agentos:send-message", handleSendMessage);
+  }, [handleSend]);
 
   const activeView = activeTab?.view ?? "overview";
   const workflowStatus = name && state ? buildWorkflowStatus(state) : null;
@@ -107,6 +118,7 @@ function Shell() {
     currentStage: workflowStatus?.currentStage,
   });
   const chatMode = chatPanelModeForView(activeView);
+  const showChatPane = activeView !== "storyboard" && activeView !== "video-grid";
   const chatBounds = chatPanelBoundsForMode(chatMode);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? 1440 : window.innerWidth
@@ -278,26 +290,30 @@ function Shell() {
         <div className="min-w-0 flex-1 overflow-hidden">
           <Viewer />
         </div>
-        <ResizeHandle
-          label="调整右侧对话宽度"
-          onPointerDown={(event) => handleResizeStart("chat", event)}
-          onKeyDown={(event) => handleResizeKey("chat", event)}
-        />
-        <div
-          className="min-w-0 shrink-0 flex flex-col overflow-hidden"
-          style={{ width: `${fittedLayout.chatWidth}px` }}
-        >
-          <ChatPane
-            messages={messages}
-            isStreaming={isStreaming}
-            isConnected={isConnected}
-            onSend={handleSend}
-            onStop={stop}
-            suggestions={suggestions}
-            slashCommands={slashCommands}
-            productionObject={activeProductionObject}
-          />
-        </div>
+        {showChatPane && (
+          <>
+            <ResizeHandle
+              label="调整右侧对话宽度"
+              onPointerDown={(event) => handleResizeStart("chat", event)}
+              onKeyDown={(event) => handleResizeKey("chat", event)}
+            />
+            <div
+              className="min-w-0 shrink-0 flex flex-col overflow-hidden"
+              style={{ width: `${fittedLayout.chatWidth}px` }}
+            >
+              <ChatPane
+                messages={messages}
+                isStreaming={isStreaming}
+                isConnected={isConnected}
+                onSend={handleSend}
+                onStop={stop}
+                suggestions={suggestions}
+                slashCommands={slashCommands}
+                productionObject={activeProductionObject}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

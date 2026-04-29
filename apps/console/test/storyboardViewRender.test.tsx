@@ -151,7 +151,8 @@ describe("StoryboardView rendering", () => {
     expect(html).not.toContain("剧本到故事板");
     expect(html).not.toContain("来源剧本");
     expect(html).not.toContain("视频状态");
-    expect(html).toContain("当前镜头");
+    expect(html).not.toContain("当前镜头");
+    expect(html).not.toContain("剧本原文");
     expect(html).toContain("资产库");
     expect(html).toContain("grid-cols-[220px_minmax(0,1fr)]");
     expect(html).toContain("repeat(auto-fit, minmax(min(100%, 360px), 1fr))");
@@ -161,14 +162,19 @@ describe("StoryboardView rendering", () => {
     expect(html).toContain("当前片段");
     expect(html).toContain("视频片段轨");
     expect(html).not.toContain("整集时间轴");
+    expect(html).not.toContain("通过");
+    expect(html).not.toContain("锁版");
+    expect(html).not.toContain("返修");
     expect(html).not.toContain("片段轨</");
     expect(html).not.toContain("镜头轨");
     expect(html).not.toContain("点击任意片段或镜头即可跳转");
     expect(html).toContain("总时长");
     expect(html).toContain("账房摊开银锭");
     expect(html).toContain("灵霜");
-    expect(html).toContain("这些账，今晚要清。");
+    expect(html).not.toContain("这些账，今晚要清。");
     expect(html).toContain("生成视频 prompt");
+    expect(html).toContain("编辑提示词");
+    expect(html).toContain("重新生成此片段");
     expect(html).not.toContain("video.generate");
     expect(html).not.toContain("aos-cli.model/v1");
     expect(html).not.toContain("PART1");
@@ -231,16 +237,18 @@ describe("StoryboardView rendering", () => {
       }),
     );
 
-    expect(html).toContain("账房摊开银锭。");
+    expect(html).not.toContain("账房摊开银锭。");
     expect(html).toContain("灵霜（洗衣奴装）");
     expect(html).toContain("内宅");
     expect(html).toContain("银锭");
-    expect(html).toContain("原始 prompt");
+    expect(html).not.toContain("原始 prompt");
+    expect(html).not.toContain("<details");
+    expect(html).not.toContain("<summary");
   });
 
-  // I-3: when one scene has multiple parts, the script column must render once
-  // (scene-level), not once per part. Each part shows only its own prompt editor.
-  test("renders script column once per scene even when scene has multiple parts", () => {
+  // I-3: when one scene has multiple parts, the review panel stays focused on
+  // the selected prompt instead of duplicating script source beside every part.
+  test("renders only the selected part prompt when scene has multiple parts", () => {
     currentStoryboardData = {
       episode_id: "ep_001",
       status: "approved",
@@ -270,10 +278,9 @@ describe("StoryboardView rendering", () => {
       }),
     );
 
-    const scriptOccurrences = html.split("账房摊开银锭").length - 1;
-    expect(scriptOccurrences).toBe(1);
+    expect(html).not.toContain("账房摊开银锭。");
+    expect(html).not.toContain("剧本原文");
     expect(html).toContain("part_001");
-    expect(html).toContain("总体描述：第二段。");
     expect(html).toContain("视频片段轨");
     expect(html).toContain("总体描述：第一段。");
     expect(html).not.toContain("镜头轨");
