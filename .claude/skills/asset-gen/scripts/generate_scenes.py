@@ -489,11 +489,11 @@ def _stage_scene_images_single(ss, ts, temp_dir):
         shutil.copy2(ts['image_path'], str(dst))
         log(f"  场景「{ss['name']}」→ temp/{safe_name}/主图.png（最佳候选）")
 
-    # 暂存参考图
+    # 暂存多视图参考图
     if ss.get('ref_path') and Path(ss['ref_path']).exists():
-        dst = stage_dir / "特写附图.png"
+        dst = stage_dir / "多视图.png"
         shutil.copy2(ss['ref_path'], str(dst))
-        log(f"  场景「{ss['name']}」→ temp/{safe_name}/特写附图.png")
+        log(f"  场景「{ss['name']}」→ temp/{safe_name}/多视图.png")
 
     return stage_dir
 
@@ -512,7 +512,7 @@ def _finalize_scene_to_output(ss, project_dir, temp_dir):
     dst_dir.mkdir(parents=True, exist_ok=True)
 
     # 只复制最终文件到输出目录（跳过轮询下载的临时候选图片）
-    _FINAL_FILES = ('主图.png', '特写附图.png')
+    _FINAL_FILES = ('主图.png', '多视图.png')
     if src_dir.exists():
         for name in _FINAL_FILES:
             f = src_dir / name
@@ -530,20 +530,22 @@ def _finalize_scene_to_output(ss, project_dir, temp_dir):
     main_path = f"locations/{safe_name}/主图.png" if main_file.exists() else ""
     main_url = ss.get('_main_show_url', '')
 
-    auxiliary_path = ""
-    auxiliary_url = ""
-    ref_file = dst_dir / "特写附图.png"
+    views_path = ""
+    views_url = ""
+    ref_file = dst_dir / "多视图.png"
     if ref_file.exists():
-        auxiliary_path = f"locations/{safe_name}/特写附图.png"
-        auxiliary_url = ss.get('ref_show_url', '')
+        views_path = f"locations/{safe_name}/多视图.png"
+        views_url = ss.get('ref_show_url', '')
 
     entry = {
         "name": ss['name'],
         "subject_id": ss.get('element_id', ''),
         "main": main_path,
         "main_url": main_url,
-        "auxiliary": auxiliary_path,
-        "auxiliary_url": auxiliary_url,
+        "views": views_path,
+        "views_url": views_url,
+        "auxiliary": views_path,
+        "auxiliary_url": views_url,
     }
 
     # 读取现有 locations.json（增量合并）
@@ -806,20 +808,12 @@ def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, 
                     if msg['status'] == T_DONE:
                         ss['ref_path'] = msg.get('image_path')
                         ss['ref_show_url'] = msg.get('show_url')
-                        log(f"  [参考图完成] 场景「{ss['name']}」参考图生成成功")
+                        log(f"  [多视图完成] 场景「{ss['name']}」多视图参考图生成成功")
 
                         # 暂存到 temp 目录
                         best_prompt_id = ss.get('main_task_id')
                         ss['_main_show_url'] = task_state[best_prompt_id].get('show_url', '') if best_prompt_id else ''
                         _stage_scene_images_single(ss, task_state[best_prompt_id], temp_dir)
-                        # if ss.get('ref_path'):
-                        #     safe_name = sanitize_dirname(ss['name'])
-                        #     scene_dir = Path(project_dir) / "locations" / safe_name
-                        #     ref_dst = scene_dir / "特写附图.png"
-                        #     if Path(ss['ref_path']).exists():
-                        #         shutil.copy2(ss['ref_path'], str(ref_dst))
-                        #         log(f"  场景「{ss['name']}」→ locations/{safe_name}/特写附图.png")
-
                         # 创建主体
                         log(f"  [创建主体] 场景「{ss['name']}」开始创建主体...")
                         best_prompt_id = None
@@ -969,7 +963,7 @@ def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, 
                     # 暂存到 temp 目录
                     _stage_scene_images_single(ss, task_state[best_prompt_id], temp_dir)
 
-                    # 生成参考图（特写附图）
+                    # 生成多视图参考图
                     if skip_ref:
                         log(f"  ⏭ 场景「{ss['name']}」跳过参考图生成（--skip-ref）")
                         if best_prompt_id:
@@ -1009,7 +1003,7 @@ def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, 
                             description = ss.get('description') or ss['name']
                             ref_prompt = _GC["generate_scenes"]["ref_prompt_template"].format(description=description)
                             params["iref"] = [main_show_url]
-                            log(f"  [参考图] 道具「{ss['name']}」开始生成参考图 tmp_prompt: {ref_prompt} params: {params}...")
+                            log(f"  [多视图] 场景「{ss['name']}」开始生成多视图参考图 tmp_prompt: {ref_prompt} params: {params}...")
                             ref_task_id = submit_image_task(
                                 "",
                                 ref_prompt,
@@ -1034,7 +1028,7 @@ def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, 
                                     "is_ref": True,  # 标记为参考图任务
                                 })
                                 ss['status'] = S_REF_GENERATING  # 等待参考图生成
-                                log(f"  [参考图] 场景「{ss['name']}」参考图任务已提交: {ref_task_id}")
+                                log(f"  [多视图] 场景「{ss['name']}」多视图参考图任务已提交: {ref_task_id}")
                             else:
                                 # 参考图提交失败，直接完成
                                 ss['status'] = S_DONE
@@ -1120,7 +1114,7 @@ def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, 
                                     description = ss.get('description') or ss['name']
                                     ref_prompt = _GC["generate_scenes"]["ref_prompt_template"].format(description=description)
                                     params["iref"] = [main_show_url]
-                                    log(f"  [参考图] 场景「{ss['name']}」强制通过后开始生成参考图 tmp_prompt: {ref_prompt} params: {params}...")
+                                    log(f"  [多视图] 场景「{ss['name']}」强制通过后开始生成多视图参考图 tmp_prompt: {ref_prompt} params: {params}...")
                                     ref_task_id = submit_image_task(
                                         "",
                                         ref_prompt,
@@ -1144,12 +1138,12 @@ def generate_scenes(scenes_json, project_dir, workspace=None, scripts_dir=None, 
                                             "is_ref": True,
                                         })
                                         ss['status'] = S_REF_GENERATING
-                                        log(f"  [参考图] 场景「{ss['name']}」参考图任务已提交: {ref_task_id}")
+                                        log(f"  [多视图] 场景「{ss['name']}」多视图参考图任务已提交: {ref_task_id}")
                                     else:
                                         ss['status'] = S_DONE
                                         _finalize_scene_to_output(ss, project_dir, temp_dir)
                                         if ss.get('start_time'):
-                                            log(f"  [耗时] 场景「{ss['name']}」耗时 {_fmt_elapsed(ss['start_time'])}（强制通过，参考图提交失败）")
+                                            log(f"  [耗时] 场景「{ss['name']}」耗时 {_fmt_elapsed(ss['start_time'])}（强制通过，多视图提交失败）")
                                         should_trigger_variants = True
                                 else:
                                     ss['status'] = S_DONE
@@ -1229,7 +1223,7 @@ if __name__ == "__main__":
     parser.add_argument("--workspace", default=None, help="工作区目录")
     parser.add_argument("--scripts-dir", default=None, help="剧本目录")
     parser.add_argument("--debug", action="store_true", help="调试模式，保留 _temp 临时文件")
-    parser.add_argument("--skip-ref", action="store_true", default=False, help="跳过参考图生成（默认不跳过）")
+    parser.add_argument("--skip-ref", action="store_true", default=False, help="跳过多视图参考图生成（默认不跳过）")
     parser.add_argument("--regenerate", default=None, help="指定重新生成的场景名称，逗号分隔，如 \"客厅,卧室\"")
     parser.add_argument("--skip-subject", action="store_true", default=False, help="跳过创建主体（默认不跳过）")
     args = parser.parse_args()

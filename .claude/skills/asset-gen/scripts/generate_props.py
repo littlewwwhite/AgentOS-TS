@@ -19,8 +19,7 @@ JSON状态文件（仅线程1写入）：
 
 输出目录结构：
   {project-dir}/props/{道具名}/主图.png          道具主图
-  {project-dir}/props/{道具名}/特写附图.png      多角度细节参考表
-  {project-dir}/props/{道具名}/props.json        元数据（subject_id, main, auxiliary）
+  {project-dir}/props/{道具名}/props.json        元数据（subject_id, main）
   {project-dir}/props/props.json                全局道具索引
 
 用法:
@@ -466,32 +465,6 @@ def _reviewer_thread(review_q, inbox_q, stop_event, temp_dir, style_data):
 # 保存道具图片到项目目录
 # ══════════════════════════════════════════════════════════════════════════════
 
-# def _save_prop_images(prop_id, prop_state, task_state, project_dir):
-#     """将已完成道具的图片复制到 project_dir/props/{道具名}/"""
-#     ps = prop_state[prop_id]
-#     safe_name = sanitize_dirname(ps['name'])
-#     prop_dir = Path(project_dir) / "props" / safe_name
-#     prop_dir.mkdir(parents=True, exist_ok=True)
-#
-#     # 保存所有 prompt 对应的主图
-#     prompt_ids = list(ps['prompts'].keys())
-#     for idx, pid in enumerate(prompt_ids):
-#         if pid in task_state:
-#             ts = task_state[pid]
-#             if ts.get('image_path') and Path(ts['image_path']).exists():
-#                 suffix = "" if idx == 0 else f"_{idx + 1}"
-#                 dst = prop_dir / f"主图{suffix}.png"
-#                 if not dst.exists():
-#                     shutil.copy2(ts['image_path'], str(dst))
-#                     log(f"  道具「{ps['name']}」→ props/{safe_name}/主图{suffix}.png")
-#
-#     # 保存参考图
-#     if ps.get('ref_path') and Path(ps['ref_path']).exists():
-#         dst = prop_dir / "特写附图.png"
-#         if not dst.exists():
-#             shutil.copy2(ps['ref_path'], str(dst))
-#             log(f"  道具「{ps['name']}」→ props/{safe_name}/特写附图.png")
-
 
 def _stage_prop_images_single(ps, ts, temp_dir):
     """将最佳候选主图暂存到 temp 目录（道具全部完成后再统一复制到输出目录）
@@ -511,12 +484,6 @@ def _stage_prop_images_single(ps, ts, temp_dir):
         shutil.copy2(ts['image_path'], str(dst))
         log(f"  道具「{ps['name']}」→ temp/{safe_name}/主图.png（最佳候选）")
 
-    # 暂存参考图
-    if ps.get('ref_path') and Path(ps['ref_path']).exists():
-        dst = stage_dir / "特写附图.png"
-        shutil.copy2(ps['ref_path'], str(dst))
-        log(f"  道具「{ps['name']}」→ temp/{safe_name}/特写附图.png")
-
     return stage_dir
 
 
@@ -534,7 +501,7 @@ def _finalize_prop_to_output(ps, project_dir, temp_dir):
     dst_dir.mkdir(parents=True, exist_ok=True)
 
     # 只复制最终文件到输出目录（跳过轮询下载的临时候选图片）
-    _FINAL_FILES = ('主图.png', '特写附图.png')
+    _FINAL_FILES = ('主图.png',)
     if src_dir.exists():
         for name in _FINAL_FILES:
             f = src_dir / name
@@ -554,20 +521,13 @@ def _finalize_prop_to_output(ps, project_dir, temp_dir):
     if ps.get('main_task_id'):
         main_url = ps.get('_main_show_url', '')
 
-    auxiliary_path = ""
-    auxiliary_url = ""
-    ref_file = dst_dir / "特写附图.png"
-    if ref_file.exists():
-        auxiliary_path = f"props/{safe_name}/特写附图.png"
-        auxiliary_url = ps.get('ref_show_url', '')
-
     entry = {
         "name": ps['name'],
         "subject_id": ps.get('element_id', ''),
         "main": main_path,
         "main_url": main_url,
-        "auxiliary": auxiliary_path,
-        "auxiliary_url": auxiliary_url,
+        "auxiliary": "",
+        "auxiliary_url": "",
     }
 
     # 读取现有 props.json（增量合并）
@@ -599,6 +559,9 @@ def generate_props(props_json, project_dir, workspace=None, scripts_dir=None, de
         setup_logging(workspace)
     except Exception as e:
         print(f"日志初始化失败: {e}", flush=True)
+
+    if not skip_ref:
+        log("  [配置] 道具资产现在只生成主图，忽略旧的参考图生成参数")
 
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
     log(f"=== 道具生成启动 (run_id={run_id}) ===")
@@ -946,97 +909,27 @@ def generate_props(props_json, project_dir, workspace=None, scripts_dir=None, de
                     ps['_main_show_url'] = task_state[best_prompt_id].get('show_url', '')
                     # 暂存到 temp 目录
                     _stage_prop_images_single(ps, task_state[best_prompt_id], temp_dir)
-                    safe_prop_name = sanitize_dirname(ps['name'])
-                    params = {
-                        "quality": "2K",
-                        "ratio": "16:9",
-                        "generate_num": "1",
-                        "local_dir": str(Path(temp_dir) / safe_prop_name),
-                        "role": "prop.reference",
-                        "task": "asset.prop.reference",
-                    }
-                    # 生成参考图（如果未跳过）
-                    if skip_ref:
-                        log(f"  ⏭ 道具「{ps['name']}」跳过参考图生成（--skip-ref）")
-                        if best_prompt_id:
-                            frontal_url = task_state[best_prompt_id].get('show_url')
-                            if skip_subject:
-                                log(f"  ⏭ 道具「{ps['name']}」跳过创建主体（--skip-subject）")
-                            else:
-                                element_id = process_actor(
-                                    element_name=ps['name'],
-                                    element_description=ps.get('description', ps['name'])[:200],
-                                    element_frontal_image=frontal_url,
-                                    dry_run=False,
-                                    element_refer_list=[frontal_url],
-                                )
-                                if element_id:
-                                    ps['element_id'] = element_id
-                                    log(f"  ✅ 道具主体创建成功: {ps['name']} → {element_id}")
-
-                        ps['status'] = P_DONE
-                        _finalize_prop_to_output(ps, project_dir, temp_dir)
-                        if ps.get('start_time'):
-                            log(f"  [耗时] 道具「{ps['name']}」耗时 {_fmt_elapsed(ps['start_time'])}")
-                        should_trigger_variants = True
+                    log(f"  ⏭ 道具「{ps['name']}」只生成主图，跳过参考图生成")
+                    frontal_url = task_state[best_prompt_id].get('show_url')
+                    if skip_subject:
+                        log(f"  ⏭ 道具「{ps['name']}」跳过创建主体（--skip-subject）")
                     else:
-                        best_ts = task_state[best_prompt_id] if best_prompt_id else task_state[list(ps['prompts'].keys())[0]]
-                        main_show_url = best_ts.get('show_url')
-                        if main_show_url:
-                            description = ps.get('description') or ps['name']
-                            ref_prompt = _GC["generate_props"]["ref_prompt_template"].format(description=description)
-                            params["iref"] = [main_show_url]
-                            log(f"  [参考图] 道具「{ps['name']}」开始生成参考图 tmp_prompt: {ref_prompt} params: {params}...")
-                            ref_task_id = submit_image_task(
-                                "",
-                                ref_prompt,
-                                params=params,
-                                project_dir=project_dir,
-                            )
-                            if ref_task_id:
-                                now = time.time()
-                                pending_q.put({
-                                    "task_id": f"{best_prompt_id}_ref",
-                                    "prop_id": pid,
-                                    "prop_name": ps['name'],
-                                    "api_task_id": ref_task_id,
-                                    "created_at": now,
-                                    "timeout": TASK_TIMEOUT,
-                                    "check_count": 0,
-                                    "error_count": 0,
-                                    "next_check_at": now + 3,
-                                    "is_ref": True,
-                                })
-                                ps['status'] = P_REF_GENERATING
-                                log(f"  [参考图] 道具「{ps['name']}」参考图任务已提交: {ref_task_id}")
-                            else:
-                                # 参考图提交失败，仍尝试创建主体
-                                if best_prompt_id:
-                                    frontal_url_fb = task_state[best_prompt_id].get('show_url')
-                                    if frontal_url_fb:
-                                        if skip_subject:
-                                            log(f"  ⏭ 道具「{ps['name']}」跳过创建主体（--skip-subject）")
-                                        else:
-                                            element_id = process_actor(
-                                                element_name=ps['name'],
-                                                element_description=ps.get('description', ps['name'])[:200],
-                                                element_frontal_image=frontal_url_fb,
-                                                dry_run=False,
-                                                element_refer_list=[frontal_url_fb],
-                                            )
-                                            if element_id:
-                                                ps['element_id'] = element_id
-                                                log(f"  ✅ 道具主体创建成功（参考图提交失败兜底）: {ps['name']} → {element_id}")
-                                ps['status'] = P_DONE
-                                _finalize_prop_to_output(ps, project_dir, temp_dir)
-                                if ps.get('start_time'):
-                                    log(f"  [耗时] 道具「{ps['name']}」耗时 {_fmt_elapsed(ps['start_time'])}（参考图提交失败）")
-                                should_trigger_variants = True
-                        else:
-                            ps['status'] = P_DONE
-                            if ps.get('start_time'):
-                                log(f"  [耗时] 道具「{ps['name']}」耗时 {_fmt_elapsed(ps['start_time'])}")
-                            should_trigger_variants = True
+                        element_id = process_actor(
+                            element_name=ps['name'],
+                            element_description=ps.get('description', ps['name'])[:200],
+                            element_frontal_image=frontal_url,
+                            dry_run=False,
+                            element_refer_list=[frontal_url] if frontal_url else [],
+                        )
+                        if element_id:
+                            ps['element_id'] = element_id
+                            log(f"  ✅ 道具主体创建成功: {ps['name']} → {element_id}")
+
+                    ps['status'] = P_DONE
+                    _finalize_prop_to_output(ps, project_dir, temp_dir)
+                    if ps.get('start_time'):
+                        log(f"  [耗时] 道具「{ps['name']}」耗时 {_fmt_elapsed(ps['start_time'])}")
+                    should_trigger_variants = True
                 else:
                     reason = msg.get('reason', '')
                     log(f"  [驳回] 道具「{ps['name']}」审核不通过: {reason[:60]}")
@@ -1152,7 +1045,7 @@ if __name__ == "__main__":
     parser.add_argument("--workspace",   default=None,  help="工作区目录（存临时文件，默认同 project-dir）")
     parser.add_argument("--scripts-dir", default=None,  help="剧本 episodes 目录，用于预分析场次上下文")
     parser.add_argument("--debug", action="store_true", help="调试模式，保留 _temp 临时文件")
-    parser.add_argument("--skip-ref", action="store_true", default=True, help="跳过参考图生成（默认跳过）")
+    parser.add_argument("--skip-ref", action="store_true", default=True, help="兼容旧参数；道具始终只生成主图")
     parser.add_argument("--regenerate", default=None, help="指定重新生成的道具名称，逗号分隔，如 \"手机,钥匙\"")
     parser.add_argument("--skip-subject", action="store_true", default=False, help="跳过创建主体（默认不跳过）")
 

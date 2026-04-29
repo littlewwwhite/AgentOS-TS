@@ -174,18 +174,18 @@ props_json   = "${PROJECT_DIR}/output/props/props.json"     # 道具
   Ethan        |  ✓    |  ✓  |  ✓  |  ✓
 
 【场景】共 N 个
-  名称         | 图片
-  Beach        |  ✓
-  Castle Hall  |  ✓
+  名称         | 主图 | 多视图
+  Beach        |  ✓  |  ✓
+  Castle Hall  |  ✓  |  ✓
 
 【道具】共 N 个
-  名称         | 图片
+  名称         | 主图
   Glass Shard  |  ✓
 ```
 
 - 角色检查字段：`three_view`、`face_view`、`side_view`、`back_view`（非空即 ✓）
-- 场景检查字段：`image`（非空即 ✓）
-- 道具检查字段：`image`（非空即 ✓）
+- 场景检查字段：`main`、`views`（非空即 ✓；`auxiliary` 仅作旧字段兼容）
+- 道具检查字段：`main`（非空即 ✓；`auxiliary`/`auxiliary_url` 保留为空字符串兼容旧读取方）
 - 文件不存在时显示"尚未生成"
 
 ### 1.3 剧本一致性检查
