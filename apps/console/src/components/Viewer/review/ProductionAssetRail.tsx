@@ -4,6 +4,7 @@
 
 import { fileUrl } from "../../../lib/fileUrl";
 import type {
+  ProductionAssetKind,
   ProductionAssetRailItem,
   ProductionAssetRailModel,
   ProductionAssetScope,
@@ -13,13 +14,15 @@ interface Props {
   projectName: string;
   model: ProductionAssetRailModel;
   selectedAssetId?: string | null;
+  replacementKind?: ProductionAssetKind | null;
+  replacementLabel?: string | null;
   onSelectAsset?: (item: ProductionAssetRailItem) => void;
 }
 
 const ADD_ASSET_OPTIONS = [
   { label: "添加角色", message: "添加一个新角色资产，并生成角色三视图。" },
-  { label: "添加场景", message: "添加一个新场景资产，并生成场景主图和多视图。" },
-  { label: "添加道具", message: "添加一个新道具资产，并生成道具主图。" },
+  { label: "添加场景", message: "添加一个新场景资产，并生成场景多视图拼接图。" },
+  { label: "添加道具", message: "添加一个新道具资产，并生成道具多角度细节拼接图。" },
 ] as const;
 
 function sendAssetCommand(message: string) {
@@ -60,15 +63,22 @@ function AssetCard({
   projectName,
   item,
   selected,
+  replacementKind,
+  replacementLabel,
   onSelect,
 }: {
   projectName: string;
   item: ProductionAssetRailItem;
   selected: boolean;
+  replacementKind?: ProductionAssetKind | null;
+  replacementLabel?: string | null;
   onSelect?: (item: ProductionAssetRailItem) => void;
 }) {
   const active = item.scope === "current";
-  const selectable = typeof onSelect === "function";
+  const inReplacementMode = Boolean(replacementKind);
+  const compatibleReplacement = !replacementKind || item.kind === replacementKind;
+  const selectable = typeof onSelect === "function" && compatibleReplacement;
+  const replacementTarget = replacementLabel ?? "当前引用";
   const shellClass =
     "grid w-full grid-cols-[52px_minmax(0,1fr)] gap-2.5 border bg-[var(--color-paper-soft)] p-2 text-left transition-colors " +
     (selected
@@ -76,7 +86,8 @@ function AssetCard({
       : active
         ? "border-[var(--color-ink)]"
         : "border-[var(--color-rule)]") +
-    (selectable ? " hover:border-[var(--color-accent)]" : "");
+    (selectable ? " hover:border-[var(--color-accent)]" : "") +
+    (!compatibleReplacement ? " opacity-45" : "");
   const content = (
     <>
       <div className="h-[52px] overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunk)]">
@@ -86,8 +97,15 @@ function AssetCard({
         <div className="truncate font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink)]">
           {item.label}
         </div>
-        <div className="mt-1 inline-flex border border-[var(--color-rule)] bg-[var(--color-paper)] px-1.5 py-0.5 font-[Geist,sans-serif] text-[10px] text-[var(--color-ink-subtle)]">
-          {scopeLabel(item.scope)}
+        <div className="mt-1 flex flex-wrap gap-1">
+          <span className="inline-flex border border-[var(--color-rule)] bg-[var(--color-paper)] px-1.5 py-0.5 font-[Geist,sans-serif] text-[10px] text-[var(--color-ink-subtle)]">
+            {scopeLabel(item.scope)}
+          </span>
+          {inReplacementMode && compatibleReplacement && (
+            <span className="inline-flex border border-[var(--color-accent)] bg-[var(--color-paper)] px-1.5 py-0.5 font-[Geist,sans-serif] text-[10px] font-semibold text-[var(--color-accent)]">
+              选择替换
+            </span>
+          )}
         </div>
       </div>
     </>
@@ -95,11 +113,17 @@ function AssetCard({
 
   return (
     <li>
-      {selectable ? (
+      {typeof onSelect === "function" ? (
         <button
           type="button"
-          aria-label={`选择 ${item.label}`}
+          aria-label={compatibleReplacement
+            ? inReplacementMode
+              ? `用 ${item.label} 替换 ${replacementTarget}`
+              : `选择 ${item.label}`
+            : `${item.label} 不是同类型资产`}
           aria-pressed={selected}
+          aria-disabled={!compatibleReplacement}
+          disabled={!compatibleReplacement}
           className={shellClass}
           onClick={() => onSelect?.(item)}
         >
@@ -116,6 +140,8 @@ export function ProductionAssetRail({
   projectName,
   model,
   selectedAssetId,
+  replacementKind,
+  replacementLabel,
   onSelectAsset,
 }: Props) {
   const groups = [model.groups.actor, model.groups.location, model.groups.prop];
@@ -124,9 +150,16 @@ export function ProductionAssetRail({
   return (
     <aside className="min-h-0 w-[220px] shrink-0 overflow-y-auto border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-3">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="font-[Geist,sans-serif] text-[14px] font-semibold text-[var(--color-ink)]">
-          资产库
-        </h2>
+        <div className="min-w-0">
+          <h2 className="font-[Geist,sans-serif] text-[14px] font-semibold text-[var(--color-ink)]">
+            资产库
+          </h2>
+          {replacementKind && replacementLabel && (
+            <div className="mt-1 truncate font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-muted)]">
+              替换 {replacementLabel}
+            </div>
+          )}
+        </div>
         <div className="group relative">
           <button
             type="button"
@@ -141,6 +174,7 @@ export function ProductionAssetRail({
               <button
                 key={option.label}
                 type="button"
+                title={option.message}
                 onClick={() => sendAssetCommand(option.message)}
                 className="block w-full px-3 py-2 text-left font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink)] hover:bg-[var(--color-paper-soft)] focus:outline-none focus-visible:bg-[var(--color-paper-soft)]"
               >
@@ -175,6 +209,8 @@ export function ProductionAssetRail({
                     projectName={projectName}
                     item={item}
                     selected={selectedAssetId === item.id}
+                    replacementKind={replacementKind}
+                    replacementLabel={replacementLabel}
                     onSelect={onSelectAsset}
                   />
                 ))}

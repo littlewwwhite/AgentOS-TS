@@ -23,6 +23,7 @@ import {
   buildProductionAssetRailModel,
   buildStoryboardEditorModel,
   buildStoryboardGenerationUnits,
+  assetKindFromId,
   findScriptSceneSnapshot,
   parseDraftStoryboardPrompt,
   resolveStoryboardSelectionAtTime,
@@ -32,6 +33,7 @@ import {
   type ClipInspectorData,
   type DraftStoryboardPromptSummary,
   type ProductionAssetRailItem,
+  type ProductionAssetRailModel,
   type ScriptSceneSnapshot,
   type StoryboardClipLike,
   type StoryboardEditorClip,
@@ -302,7 +304,9 @@ function ClipInfoPanel({
   actorStateOverrides,
   stateNameById,
   selectedRefId,
+  selectedRefKey,
   onSelectRef,
+  onClearSelectedRef,
 }: {
   summary: ClipInspectorData;
   source: string;
@@ -313,7 +317,9 @@ function ClipInfoPanel({
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
   selectedRefId?: string | null;
+  selectedRefKey?: string | null;
   onSelectRef?: (ref: PromptRefSelection) => void;
+  onClearSelectedRef?: () => void;
 }) {
   const scriptBeats = splitStoryboardText(source, dict);
 
@@ -337,6 +343,7 @@ function ClipInfoPanel({
                 actorStateOverrides={actorStateOverrides}
                 stateNameById={stateNameById}
                 selectedRefId={selectedRefId}
+                selectedRefKey={selectedRefKey}
                 onSelectRef={onSelectRef}
               />
             ) : (
@@ -690,28 +697,41 @@ function buildPromptCatalog(
   };
 }
 
+function buildPromptCatalogFromAssetRail(model: ProductionAssetRailModel): PromptCatalog {
+  const toEntries = (items: ProductionAssetRailItem[]) =>
+    items.map((item) => ({ id: item.id, name: item.label }));
+
+  return {
+    actor: toEntries(model.groups.actor.items),
+    location: toEntries(model.groups.location.items),
+    prop: toEntries(model.groups.prop.items),
+  };
+}
+
 function StoryboardPromptEditor({
   unit,
   patch,
   readOnly,
   dict,
   catalog,
-  editing = false,
   actorStateOverrides,
   stateNameById,
   selectedRefId,
+  selectedRefKey,
   onSelectRef,
+  onClearSelectedRef,
 }: {
   unit: StoryboardGenerationUnit;
   patch: JsonPatch;
   readOnly: boolean;
   dict: Record<string, string>;
   catalog: PromptCatalog;
-  editing?: boolean;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
   selectedRefId?: string | null;
+  selectedRefKey?: string | null;
   onSelectRef?: (ref: PromptRefSelection) => void;
+  onClearSelectedRef?: () => void;
 }) {
   return (
     <PromptChipEditor
@@ -720,12 +740,13 @@ function StoryboardPromptEditor({
       dict={dict}
       catalog={catalog}
       readOnly={readOnly}
-      editing={editing}
       placeholder="用一段自然语言描述这一镜头要拍什么"
       actorStateOverrides={actorStateOverrides}
       stateNameById={stateNameById}
       selectedRefId={selectedRefId}
+      selectedRefKey={selectedRefKey}
       onSelectRef={onSelectRef}
+      onClearSelectedRef={onClearSelectedRef}
       onChange={(next) => patch(unit.promptPath, next)}
     />
   );
@@ -797,7 +818,9 @@ function StoryboardPartBlock({
   actorStateOverrides,
   stateNameById,
   selectedRefId,
+  selectedRefKey,
   onSelectRef,
+  onClearSelectedRef,
 }: {
   unit: StoryboardGenerationUnit;
   patch: JsonPatch;
@@ -807,7 +830,9 @@ function StoryboardPartBlock({
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
   selectedRefId?: string | null;
+  selectedRefKey?: string | null;
   onSelectRef?: (ref: PromptRefSelection) => void;
+  onClearSelectedRef?: () => void;
 }) {
   return (
     <StoryboardPromptEditor
@@ -819,7 +844,9 @@ function StoryboardPartBlock({
       actorStateOverrides={actorStateOverrides}
       stateNameById={stateNameById}
       selectedRefId={selectedRefId}
+      selectedRefKey={selectedRefKey}
       onSelectRef={onSelectRef}
+      onClearSelectedRef={onClearSelectedRef}
     />
   );
 }
@@ -835,7 +862,9 @@ function ReviewPromptPanel({
   actorStateOverrides,
   stateNameById,
   selectedRefId,
+  selectedRefKey,
   onSelectRef,
+  onClearSelectedRef,
 }: {
   storyboardPath: string;
   unit: StoryboardGenerationUnit;
@@ -847,14 +876,10 @@ function ReviewPromptPanel({
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
   selectedRefId?: string | null;
+  selectedRefKey?: string | null;
   onSelectRef?: (ref: PromptRefSelection) => void;
+  onClearSelectedRef?: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-
-  useEffect(() => {
-    setEditing(false);
-  }, [unit.key]);
-
   return (
     <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border border-[var(--color-rule)] bg-[var(--color-paper)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
@@ -871,14 +896,6 @@ function ReviewPromptPanel({
           <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
-              disabled={readOnly}
-              onClick={() => setEditing((current) => !current)}
-              className="border border-[var(--color-rule)] px-2 py-1 font-[Geist,sans-serif] text-[11px] text-[var(--color-ink-muted)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:text-[var(--color-ink-faint)]"
-            >
-              {editing ? "预览提示词" : "编辑提示词"}
-            </button>
-            <button
-              type="button"
               onClick={() => requestClipRegeneration({ storyboardPath, unit, videoPath })}
               className="border border-[var(--color-ink)] bg-[var(--color-ink)] px-2 py-1 font-[Geist,sans-serif] text-[11px] font-semibold text-[var(--color-paper)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-accent)]"
             >
@@ -892,11 +909,12 @@ function ReviewPromptPanel({
           readOnly={readOnly}
           dict={dict}
           catalog={catalog}
-          editing={editing}
           actorStateOverrides={actorStateOverrides}
           stateNameById={stateNameById}
           selectedRefId={selectedRefId}
+          selectedRefKey={selectedRefKey}
           onSelectRef={onSelectRef}
+          onClearSelectedRef={onClearSelectedRef}
         />
       </div>
     </aside>
@@ -1250,17 +1268,39 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
     }),
     [currentClip?.sceneId, dict, scenes, treePathList],
   );
+  const assetRailPromptCatalog = useMemo(
+    () => buildPromptCatalogFromAssetRail(assetRailModel),
+    [assetRailModel],
+  );
   const currentUnit = currentClipKey ? generationUnitMap.get(currentClipKey) ?? null : null;
   const currentUnitActorStateLookup = currentUnit
     ? sceneActorStateLookup.get(currentUnit.sceneId)
     : undefined;
+  const selectedPromptRefKind = selectedPromptRef
+    ? assetKindFromId(selectedPromptRef.id)
+    : null;
+  const selectedPromptRefLabel = useMemo(() => {
+    if (!selectedPromptRef) return null;
+    const name = dict[selectedPromptRef.id] ?? selectedPromptRef.id;
+    const stateId = selectedPromptRef.stateId ?? currentUnitActorStateLookup?.get(selectedPromptRef.id);
+    const stateName = stateId ? stateNameById[stateId] : undefined;
+    return stateName ? `${name}（${stateName}）` : name;
+  }, [currentUnitActorStateLookup, dict, selectedPromptRef, stateNameById]);
 
   const handleSelectAsset = useCallback((item: ProductionAssetRailItem) => {
     if (!currentUnit) return;
+    if (selectedPromptRefKind && item.kind !== selectedPromptRefKind) return;
     const nextPrompt = replacePromptRef(currentUnit.rawPrompt, selectedPromptRef, item.id);
     patch(currentUnit.promptPath, nextPrompt);
-    setSelectedPromptRef({ raw: `@${item.id}`, id: item.id });
-  }, [currentUnit, patch, selectedPromptRef]);
+    setSelectedPromptRef({
+      raw: `@${item.id}`,
+      id: item.id,
+      index: selectedPromptRef?.index,
+      occurrenceKey: typeof selectedPromptRef?.index === "number"
+        ? `${selectedPromptRef.index}:@${item.id}`
+        : undefined,
+    });
+  }, [currentUnit, patch, selectedPromptRef, selectedPromptRefKind]);
 
   useEffect(() => {
     if (!currentClip) return;
@@ -1600,6 +1640,8 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
             projectName={projectName}
             model={assetRailModel}
             selectedAssetId={selectedPromptRef?.id ?? null}
+            replacementKind={selectedPromptRefKind}
+            replacementLabel={selectedPromptRefLabel}
             onSelectAsset={currentUnit ? handleSelectAsset : undefined}
           />
           <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 lg:gap-4">
@@ -1631,11 +1673,13 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
                     patch={patch}
                     readOnly={locked}
                     dict={dict}
-                    catalog={promptCatalog}
+                    catalog={assetRailPromptCatalog}
                     actorStateOverrides={currentUnitActorStateLookup}
                     stateNameById={stateNameById}
                     selectedRefId={selectedPromptRef?.id ?? null}
+                    selectedRefKey={selectedPromptRef?.occurrenceKey ?? null}
                     onSelectRef={setSelectedPromptRef}
+                    onClearSelectedRef={() => setSelectedPromptRef(null)}
                   />
                 ) : (
                   <ClipInfoPanel

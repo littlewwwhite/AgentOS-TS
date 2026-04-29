@@ -92,4 +92,26 @@ describe("StoryboardView chrome", () => {
 
     expect(source).toContain("grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] px-4 py-3");
   });
+
+  test("prompt reference replacement only accepts matching asset kinds", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/components/Viewer/views/StoryboardView.tsx"),
+      "utf-8",
+    );
+
+    expect(source).toContain("selectedPromptRefKind");
+    expect(source).toContain("if (selectedPromptRefKind && item.kind !== selectedPromptRefKind) return;");
+    expect(source).toContain("replacementKind={selectedPromptRefKind}");
+    expect(source).toContain("replacementLabel={selectedPromptRefLabel}");
+  });
+
+  test("prompt asset dropdown uses the same assets as the left rail", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/components/Viewer/views/StoryboardView.tsx"),
+      "utf-8",
+    );
+
+    expect(source).toContain("assetRailPromptCatalog");
+    expect(source).toContain("catalog={assetRailPromptCatalog}");
+  });
 });

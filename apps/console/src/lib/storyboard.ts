@@ -700,7 +700,7 @@ function sceneAssetIds(scene: StoryboardSceneLike, kind: ProductionAssetKind): s
   return (scene.props ?? []).map((asset) => asset.prop_id).filter((id): id is string => Boolean(id));
 }
 
-function assetKindFromId(id: string): ProductionAssetKind | null {
+export function assetKindFromId(id: string): ProductionAssetKind | null {
   if (id.startsWith("act_")) return "actor";
   if (id.startsWith("loc_")) return "location";
   if (id.startsWith("prp_") || id.startsWith("prop_")) return "prop";

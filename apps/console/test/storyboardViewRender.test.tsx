@@ -173,7 +173,8 @@ describe("StoryboardView rendering", () => {
     expect(html).toContain("灵霜");
     expect(html).not.toContain("这些账，今晚要清。");
     expect(html).toContain("生成视频 prompt");
-    expect(html).toContain("编辑提示词");
+    expect(html).not.toContain("编辑提示词");
+    expect(html).not.toContain("预览提示词");
     expect(html).toContain("重新生成此片段");
     expect(html).not.toContain("video.generate");
     expect(html).not.toContain("aos-cli.model/v1");

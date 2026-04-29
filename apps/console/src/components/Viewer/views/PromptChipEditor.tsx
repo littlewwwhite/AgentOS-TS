@@ -2,7 +2,7 @@
 // output: compact readable prompt block with leading PART\d+ marker stripped
 // pos: storyboard prompt preview — review-first surface, no raw-ID drawer
 
-import type { ReactNode } from "react";
+import { useCallback, useEffect, type ReactNode } from "react";
 
 export interface PromptCatalogEntry {
   id: string;
@@ -24,11 +24,12 @@ interface Props {
   ariaLabel: string;
   placeholder?: string;
   onChange: (next: string) => void;
-  editing?: boolean;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
   selectedRefId?: string | null;
+  selectedRefKey?: string | null;
   onSelectRef?: (ref: PromptRefSelection) => void;
+  onClearSelectedRef?: () => void;
 }
 
 const PART_PREFIX = /^PART\d+\s*\n+/;
@@ -38,7 +39,11 @@ export interface PromptRefSelection {
   raw: string;
   id: string;
   stateId?: string;
+  index?: number;
+  occurrenceKey?: string;
 }
+
+type PromptAssetKind = keyof PromptCatalog;
 
 function splitPartPrefix(text: string): { prefix: string; body: string } {
   const match = text.match(PART_PREFIX);
@@ -82,6 +87,23 @@ function refToneClassName(id: string, selected: boolean): string {
     : "border-[var(--color-rule)] bg-[var(--color-paper)] text-[var(--color-ink)]";
 }
 
+function assetKindFromPromptRef(id: string): PromptAssetKind | null {
+  if (id.startsWith("act_")) return "actor";
+  if (id.startsWith("loc_")) return "location";
+  if (id.startsWith("prp_") || id.startsWith("prop_")) return "prop";
+  return null;
+}
+
+function collectEditablePrompt(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+  if (!(node instanceof HTMLElement)) return "";
+  const rawRef = node.dataset.rawRef;
+  if (rawRef) return rawRef;
+  if (node.tagName === "BR") return "\n";
+  const text = Array.from(node.childNodes).map(collectEditablePrompt).join("");
+  return node.tagName === "DIV" || node.tagName === "P" ? `${text}\n` : text;
+}
+
 export function replacePromptRef(
   prompt: string,
   selection: PromptRefSelection | null | undefined,
@@ -90,7 +112,10 @@ export function replacePromptRef(
   if (!selection) {
     return `${prompt.trimEnd()}\n@${nextId}`;
   }
-  const index = prompt.indexOf(selection.raw);
+  const selectedIndex = typeof selection.index === "number" ? selection.index : -1;
+  const index = selectedIndex >= 0 && prompt.slice(selectedIndex, selectedIndex + selection.raw.length) === selection.raw
+    ? selectedIndex
+    : prompt.indexOf(selection.raw);
   if (index < 0) return `${prompt.trimEnd()}\n@${nextId}`;
   return `${prompt.slice(0, index)}@${nextId}${prompt.slice(index + selection.raw.length)}`;
 }
@@ -98,17 +123,25 @@ export function replacePromptRef(
 export function PromptRefText({
   text,
   dict = {},
+  catalog,
   actorStateOverrides,
   stateNameById = {},
   selectedRefId,
+  selectedRefKey,
+  refIndexOffset = 0,
   onSelectRef,
+  onReplaceRef,
 }: {
   text: string;
   dict?: Record<string, string>;
+  catalog?: PromptCatalog;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
   selectedRefId?: string | null;
+  selectedRefKey?: string | null;
+  refIndexOffset?: number;
   onSelectRef?: (ref: PromptRefSelection) => void;
+  onReplaceRef?: (selection: PromptRefSelection, nextId: string) => void;
 }) {
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
@@ -123,23 +156,66 @@ export function PromptRefText({
     }
 
     const label = readableRefLabel(id, match[3], dict, actorStateOverrides, stateNameById) ?? raw;
-    const selected = selectedRefId === id;
+    const absoluteIndex = refIndexOffset + match.index;
+    const occurrenceKey = `${absoluteIndex}:${raw}`;
+    const selected = selectedRefKey
+      ? selectedRefKey === occurrenceKey
+      : selectedRefId === id;
+    const selection = { raw, id, stateId: match[3], index: absoluteIndex, occurrenceKey };
+    const kind = assetKindFromPromptRef(id);
+    const replacementOptions = kind && catalog && onReplaceRef
+      ? catalog[kind].filter((entry) => entry.id !== id)
+      : [];
     const className =
       "inline-flex align-baseline border px-1 py-0.5 font-[Geist,sans-serif] text-[12px] leading-none " +
       refToneClassName(id, selected);
 
     nodes.push(
       onSelectRef ? (
-        <button
+        <span
           key={`${match.index}-${raw}`}
-          type="button"
-          className={`${className} cursor-pointer`}
-          onClick={() => onSelectRef({ raw, id, stateId: match[3] })}
+          data-raw-ref={raw}
+          data-prompt-ref-interactive="true"
+          contentEditable={false}
+          className="relative inline-flex align-baseline"
         >
-          {label}
-        </button>
+          <button
+            type="button"
+            className={`${className} cursor-pointer`}
+            onClick={() => onSelectRef(selection)}
+          >
+            {label}
+          </button>
+          {selected && replacementOptions.length > 0 && (
+            <span
+              role="menu"
+              aria-label={`替换 ${label}`}
+              className="absolute left-0 top-[calc(100%+4px)] z-30 grid min-w-[148px] border border-[var(--color-ink)] bg-[var(--color-paper)] py-1 shadow-[0_14px_34px_rgba(0,0,0,0.14)]"
+            >
+              {replacementOptions.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  role="menuitem"
+                  aria-label={`替换为 ${entry.name}`}
+                  className="block w-full px-3 py-1.5 text-left font-[Geist,sans-serif] text-[12px] text-[var(--color-ink)] hover:bg-[var(--color-paper-soft)] focus:outline-none focus-visible:bg-[var(--color-paper-soft)]"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => onReplaceRef(selection, entry.id)}
+                >
+                  <span className="sr-only">替换为 </span>
+                  {entry.name}
+                </button>
+              ))}
+            </span>
+          )}
+        </span>
       ) : (
-        <span key={`${match.index}-${raw}`} className={className}>
+        <span
+          key={`${match.index}-${raw}`}
+          data-raw-ref={raw}
+          contentEditable={false}
+          className={className}
+        >
           {label}
         </span>
       ),
@@ -154,43 +230,88 @@ export function PromptRefText({
 export function PromptChipEditor({
   value,
   dict = {},
+  catalog,
   actorStateOverrides,
   stateNameById = {},
   ariaLabel,
   placeholder,
   onChange,
   readOnly,
-  editing = false,
   selectedRefId,
+  selectedRefKey,
   onSelectRef,
+  onClearSelectedRef,
 }: Props) {
   const { prefix, body: display } = splitPartPrefix(value);
+  const handleReplaceRef = useCallback(
+    (selection: PromptRefSelection, nextId: string) => {
+      onChange(replacePromptRef(value, selection, nextId));
+      onSelectRef?.({
+        raw: `@${nextId}`,
+        id: nextId,
+        index: selection.index,
+        occurrenceKey: typeof selection.index === "number" ? `${selection.index}:@${nextId}` : undefined,
+      });
+    },
+    [onChange, onSelectRef, value],
+  );
+  const handleEditableBlur = useCallback(
+    (event: React.FocusEvent<HTMLDivElement>) => {
+      const next = collectEditablePrompt(event.currentTarget).replace(/\n$/, "");
+      onChange(`${prefix}${next}`);
+    },
+    [onChange, prefix],
+  );
+  useEffect(() => {
+    if (!selectedRefKey || !onClearSelectedRef) return;
 
-  if (editing && !readOnly) {
-    return (
-      <textarea
-        aria-label={`${ariaLabel} 编辑`}
-        value={display}
-        placeholder={placeholder}
-        onChange={(event) => onChange(`${prefix}${event.currentTarget.value}`)}
-        className="h-full min-h-[260px] w-full resize-none overflow-y-auto border border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-3 py-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
-      />
-    );
-  }
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-prompt-ref-interactive='true']")) return;
+      onClearSelectedRef?.();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [onClearSelectedRef, selectedRefKey]);
 
   return (
     <div
       aria-label={ariaLabel}
-      className="h-full min-h-[260px] overflow-y-auto border border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-3 py-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] whitespace-pre-wrap"
+      role={readOnly ? undefined : "textbox"}
+      tabIndex={readOnly ? undefined : 0}
+      contentEditable={!readOnly}
+      suppressContentEditableWarning
+      onBlur={readOnly ? undefined : handleEditableBlur}
+      onKeyDown={readOnly ? undefined : (event) => {
+        if (event.key === "Escape" && selectedRefKey) {
+          event.preventDefault();
+          onClearSelectedRef?.();
+          return;
+        }
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }}
+      className={
+        "h-full min-h-[260px] overflow-y-auto border border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-3 py-3 font-[Geist,sans-serif] text-[13px] leading-relaxed text-[var(--color-ink)] whitespace-pre-wrap " +
+        (readOnly ? "" : "cursor-text transition-colors hover:border-[var(--color-accent)] focus:outline-none focus-visible:border-[var(--color-accent)]")
+      }
     >
       {display ? (
         <PromptRefText
           text={display}
           dict={dict}
+          catalog={catalog}
           actorStateOverrides={actorStateOverrides}
           stateNameById={stateNameById}
           selectedRefId={selectedRefId}
+          selectedRefKey={selectedRefKey}
+          refIndexOffset={prefix.length}
           onSelectRef={onSelectRef}
+          onReplaceRef={readOnly ? undefined : handleReplaceRef}
         />
       ) : (
         <span className="text-[var(--color-ink-faint)]">{placeholder}</span>
