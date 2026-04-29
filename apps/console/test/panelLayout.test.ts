@@ -7,6 +7,7 @@ import {
   clampPanelWidth,
   fitPanelWidths,
   readPanelWidthValue,
+  shouldRenderChatPane,
 } from "../src/lib/panelLayout";
 
 describe("panel layout helpers", () => {
@@ -27,6 +28,13 @@ describe("panel layout helpers", () => {
     expect(chatPanelModeForView("video-grid")).toBe("storyboard");
     expect(CHAT_PANEL_STORYBOARD.default).toBeLessThan(CHAT_PANEL_DEFAULT.default);
     expect(chatPanelModeForView("script")).toBe("default");
+  });
+
+  test("keeps a restore path for auto-hidden storyboard chat", () => {
+    expect(shouldRenderChatPane({ view: "storyboard", isRestored: false })).toBe(false);
+    expect(shouldRenderChatPane({ view: "video-grid", isRestored: false })).toBe(false);
+    expect(shouldRenderChatPane({ view: "storyboard", isRestored: true })).toBe(true);
+    expect(shouldRenderChatPane({ view: "script", isRestored: false })).toBe(true);
   });
 
   test("shrinks side panels before sacrificing the main content area", () => {

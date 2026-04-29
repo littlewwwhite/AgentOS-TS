@@ -19,7 +19,9 @@ import {
   chatPanelModeForView,
   clampPanelWidth,
   fitPanelWidths,
+  isChatAutoHiddenView,
   readPanelWidthValue,
+  shouldRenderChatPane,
 } from "./lib/panelLayout";
 
 const WS_URL = "ws://localhost:3001/ws";
@@ -118,7 +120,12 @@ function Shell() {
     currentStage: workflowStatus?.currentStage,
   });
   const chatMode = chatPanelModeForView(activeView);
-  const showChatPane = activeView !== "storyboard" && activeView !== "video-grid";
+  const autoHideChatPane = isChatAutoHiddenView(activeView);
+  const [isChatPaneRestored, setIsChatPaneRestored] = useState(false);
+  const showChatPane = shouldRenderChatPane({
+    view: activeView,
+    isRestored: isChatPaneRestored,
+  });
   const chatBounds = chatPanelBoundsForMode(chatMode);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? 1440 : window.innerWidth
@@ -150,6 +157,10 @@ function Shell() {
   useEffect(() => {
     writeStoredPanelWidth(CHAT_WIDTH_STORAGE_KEYS.storyboard, chatWidths.storyboard);
   }, [chatWidths.storyboard]);
+
+  useEffect(() => {
+    setIsChatPaneRestored(false);
+  }, [activeView]);
 
   const activeChatWidth = chatMode === "storyboard"
     ? chatWidths.storyboard
@@ -290,6 +301,17 @@ function Shell() {
         <div className="min-w-0 flex-1 overflow-hidden">
           <Viewer />
         </div>
+        {autoHideChatPane && !showChatPane && (
+          <button
+            type="button"
+            aria-label="打开右侧对话"
+            title="打开右侧对话"
+            onClick={() => setIsChatPaneRestored(true)}
+            className="group flex w-10 shrink-0 items-center justify-center border-l border-[var(--color-rule)] bg-[var(--color-paper-muted)] text-[12px] font-medium text-[var(--color-ink-muted)] transition-colors hover:bg-[var(--color-paper)] hover:text-[var(--color-ink)] focus:outline-none focus-visible:bg-[var(--color-paper)] focus-visible:text-[var(--color-ink)]"
+          >
+            <span className="[writing-mode:vertical-rl]">对话</span>
+          </button>
+        )}
         {showChatPane && (
           <>
             <ResizeHandle
@@ -298,9 +320,20 @@ function Shell() {
               onKeyDown={(event) => handleResizeKey("chat", event)}
             />
             <div
-              className="min-w-0 shrink-0 flex flex-col overflow-hidden"
+              className="relative min-w-0 shrink-0 flex flex-col overflow-hidden"
               style={{ width: `${fittedLayout.chatWidth}px` }}
             >
+              {autoHideChatPane && (
+                <button
+                  type="button"
+                  aria-label="收起右侧对话"
+                  title="收起右侧对话"
+                  onClick={() => setIsChatPaneRestored(false)}
+                  className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center border border-[var(--color-rule)] bg-[var(--color-paper)] text-[14px] leading-none text-[var(--color-ink-muted)] shadow-[0_6px_18px_rgba(0,0,0,0.06)] hover:text-[var(--color-ink)] focus:outline-none focus-visible:border-[var(--color-accent)] focus-visible:text-[var(--color-ink)]"
+                >
+                  ×
+                </button>
+              )}
               <ChatPane
                 messages={messages}
                 isStreaming={isStreaming}

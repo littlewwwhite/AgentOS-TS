@@ -55,6 +55,20 @@ export function chatPanelModeForView(view: ViewKind | null | undefined): ChatPan
   return view === "storyboard" || view === "video-grid" ? "storyboard" : "default";
 }
 
+export function isChatAutoHiddenView(view: ViewKind | null | undefined): boolean {
+  return view === "storyboard" || view === "video-grid";
+}
+
+export function shouldRenderChatPane({
+  view,
+  isRestored,
+}: {
+  view: ViewKind | null | undefined;
+  isRestored: boolean;
+}): boolean {
+  return !isChatAutoHiddenView(view) || isRestored;
+}
+
 export function chatPanelBoundsForMode(mode: ChatPanelMode): PanelWidthBounds {
   return mode === "storyboard" ? CHAT_PANEL_STORYBOARD : CHAT_PANEL_DEFAULT;
 }
