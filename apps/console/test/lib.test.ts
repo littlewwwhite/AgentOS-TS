@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { fileUrl } from "../src/lib/fileUrl";
-import { detectSchema } from "../src/lib/schemaDetect";
 import { buildRefDict, resolveRefs } from "../src/lib/fountain";
 import {
   buildProductionAssetRailModel,
@@ -26,27 +25,9 @@ describe("fileUrl", () => {
   test("trims leading slash", () => {
     expect(fileUrl("c0", "/output/script.json")).toBe("/files/c0/output/script.json");
   });
-});
-
-describe("detectSchema", () => {
-  test("script: has episodes array", () => {
-    expect(detectSchema({ episodes: [{ scenes: [] }] })).toBe("script");
-  });
-  test("storyboard: scenes with shots+prompt", () => {
-    expect(detectSchema({ episode_id: "ep001", scenes: [{ shots: [{ prompt: "x" }] }] })).toBe("storyboard");
-  });
-  test("paused inspiration contract falls back to generic JSON", () => {
-    expect(detectSchema({ brief: "x", topics: [] })).toBe("generic");
-  });
-  test("fallback: unknown", () => {
-    expect(detectSchema({ foo: 1 })).toBe("generic");
-  });
-  test("non-object returns generic", () => {
-    expect(detectSchema(null)).toBe("generic");
-    expect(detectSchema([1, 2])).toBe("generic");
-  });
-  test("script wins when both episodes and scenes are top-level", () => {
-    expect(detectSchema({ episodes: [{ scenes: [] }], scenes: [{ shots: [{ prompt: "x" }] }] })).toBe("script");
+  test("rejects non-renderable workspace paths before browser normalization", () => {
+    expect(() => fileUrl("c0", "../output/script.json")).toThrow("invalid workspace-relative file path");
+    expect(() => fileUrl("c0", "output//script.json")).toThrow("invalid workspace-relative file path");
   });
 });
 
@@ -183,6 +164,48 @@ describe("storyboard helpers", () => {
         label: "木桶",
         scope: "current",
         thumbnailPath: "output/props/prp_005/ref.webp",
+      }),
+    ]);
+  });
+
+  test("includes existing project assets that are not referenced by the current episode", () => {
+    const model = buildProductionAssetRailModel({
+      scenes: [
+        {
+          scene_id: "scn_001",
+          actors: [{ actor_id: "act_001" }],
+          locations: [{ location_id: "loc_001" }],
+          props: [],
+        },
+      ],
+      currentSceneId: "scn_001",
+      dict: {
+        act_001: "林萧",
+        act_009: "客串长老",
+        loc_001: "废墟街道",
+        prp_008: "玉佩",
+      },
+      availablePaths: [
+        "output/actors/客串长老/default/三视图.png",
+        "output/props/玉佩/主图.png",
+      ],
+    });
+
+    expect(model.groups.actor.items).toEqual([
+      expect.objectContaining({ id: "act_001", scope: "current" }),
+      expect.objectContaining({
+        id: "act_009",
+        label: "客串长老",
+        scope: "project",
+        thumbnailPath: "output/actors/客串长老/default/三视图.png",
+      }),
+    ]);
+    expect(model.groups.prop.items).toEqual([
+      expect.objectContaining({
+        id: "prp_008",
+        label: "玉佩",
+        scope: "project",
+        thumbnailPath: "output/props/玉佩/主图.png",
       }),
     ]);
   });

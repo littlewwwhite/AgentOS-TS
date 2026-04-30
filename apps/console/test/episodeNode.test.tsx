@@ -8,7 +8,7 @@ mock.module("../src/contexts/TabsContext", () => ({
   }),
 }));
 
-const { EpisodeNode } = await import("../src/components/Navigator/EpisodeNode");
+const { EpisodeNode, episodeOpenPath } = await import("../src/components/Navigator/EpisodeNode");
 
 describe("EpisodeNode", () => {
   test("renders one episode workbench entry instead of separate storyboard and video tabs", () => {
@@ -27,5 +27,12 @@ describe("EpisodeNode", () => {
     expect(html).toContain("ep001");
     expect(html).not.toContain("分镜");
     expect(html).not.toContain("视频");
+  });
+
+  test("opens the episode workbench when legacy state points video to a missing runtime storyboard file", () => {
+    expect(episodeOpenPath("ep002", {
+      storyboard: { status: "completed", artifact: "output/storyboard/approved/ep002_storyboard.json" },
+      video: { status: "partial", artifact: "output/ep002/ep002_storyboard.json" },
+    })).toBe("output/ep002");
   });
 });

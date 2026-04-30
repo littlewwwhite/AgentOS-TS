@@ -50,12 +50,14 @@ describe("ChatPane chrome", () => {
       }),
     );
 
-    expect(html).toContain("导演指令");
-    expect(html).toContain("描述你要调整的镜头、分镜、素材或下一步制作任务…");
-    expect(html).toContain("输入 / 技能");
+    expect(html).toContain("说出要调整的镜头、分镜、素材或下一步…");
+    expect(html).toContain("aria-label=\"聊天输入\"");
+    expect(html).not.toContain("导演指令");
+    expect(html).not.toContain("输入 / 技能");
     expect(html).not.toContain("输入消息，或输入 / 调用 Claude Code 命令…");
     expect(html).not.toContain("输入 / 调用制作技能");
     expect(html).not.toContain("shadow-[0_10px_30px");
+    expect(html).not.toContain("mb-2 flex items-center justify-between");
     expect(html).not.toMatch(/<textarea[^>]*\sdisabled(?:=|\s|>)/);
   });
 
@@ -130,6 +132,33 @@ describe("ChatPane chrome", () => {
 
     expect(html).toContain("bg-[var(--color-chat-user)]");
     expect(html).toContain("bg-[var(--color-chat-assistant)]");
+  });
+
+  test("renders assistant markdown instead of plain markdown text", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ChatPane, {
+        isConnected: true,
+        isStreaming: false,
+        onSend: () => undefined,
+        messages: [
+          {
+            id: "a1",
+            role: "assistant",
+            content: "## 下一步\n\n- **校对**提示词\n- 运行 `/video-gen`\n\n```ts\nconst ok = true;\n```",
+            timestamp: 2,
+          },
+        ],
+        suggestions: [],
+      }),
+    );
+
+    expect(html).toContain("<h2");
+    expect(html).toContain("<ul");
+    expect(html).toContain("<strong");
+    expect(html).toContain("<code");
+    expect(html).not.toContain("## 下一步");
+    expect(html).not.toContain("- **校对**提示词");
+    expect(html).not.toContain("```ts");
   });
 
   test("submits the original composer input so transcript whitespace stays intact", () => {

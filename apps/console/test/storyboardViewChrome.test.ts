@@ -84,6 +84,17 @@ describe("StoryboardView chrome", () => {
     expect(source).toContain("!nextIsEpisodePlayback || isEpisodePlayback");
   });
 
+  test("does not render a dead video preview placeholder when media is missing", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/components/Viewer/views/StoryboardView.tsx"),
+      "utf-8",
+    );
+
+    expect(source).not.toContain("当前没有可播放的预览视频");
+    expect(source).not.toContain("视频生成后会在此预览；当前可先校对右侧提示词。");
+    expect(source).toContain("previewExists && (");
+  });
+
   test("prompt review text block fills the remaining panel height", () => {
     const source = readFileSync(
       join(import.meta.dir, "../src/components/Viewer/views/StoryboardView.tsx"),

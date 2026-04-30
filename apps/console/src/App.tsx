@@ -11,6 +11,7 @@ import { buildWorkflowStatus } from "./lib/workflowStatus";
 import { buildChatSuggestions } from "./lib/chatSuggestions";
 import { buildAgentMessage } from "./lib/scopedMessage";
 import { resolveProductionObjectFromPath } from "./lib/productionObject";
+import { resolveWsUrl } from "./lib/wsUrl";
 import {
   CHAT_PANEL_DEFAULT,
   CHAT_PANEL_STORYBOARD,
@@ -24,7 +25,7 @@ import {
   shouldRenderChatPane,
 } from "./lib/panelLayout";
 
-const WS_URL = "ws://localhost:3001/ws";
+const WS_URL = resolveWsUrl(window.location.protocol, window.location.host);
 const NAVIGATOR_WIDTH_STORAGE_KEY = "agentos:layout:navigator-width";
 const CHAT_WIDTH_STORAGE_KEYS = {
   default: "agentos:layout:chat-width:default",

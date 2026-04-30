@@ -160,12 +160,12 @@ describe("StoryboardView rendering", () => {
     expect(html).toContain("角色");
     expect(html).toContain("场景");
     expect(html).toContain("当前片段");
-    expect(html).toContain("视频片段轨");
+    expect(html).toContain("分镜片段轨");
     expect(html).not.toContain("整集时间轴");
     expect(html).not.toContain("通过");
     expect(html).not.toContain("锁版");
     expect(html).not.toContain("返修");
-    expect(html).not.toContain("片段轨</");
+    expect(html).not.toContain("视频片段轨</");
     expect(html).not.toContain("镜头轨");
     expect(html).not.toContain("点击任意片段或镜头即可跳转");
     expect(html).toContain("总时长");
@@ -282,7 +282,7 @@ describe("StoryboardView rendering", () => {
     expect(html).not.toContain("账房摊开银锭。");
     expect(html).not.toContain("剧本原文");
     expect(html).toContain("part_001");
-    expect(html).toContain("视频片段轨");
+    expect(html).toContain("分镜片段轨");
     expect(html).toContain("总体描述：第一段。");
     expect(html).not.toContain("镜头轨");
   });

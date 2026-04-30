@@ -1,126 +1,46 @@
 # AgentOS-TS
 
-一个给导演、编剧、制片团队使用的 **AI 视频生产技能仓库**。
+AgentOS-TS 是面向 AI 视频生产的 skill pack。它的核心价值不是启动一个完整平台，而是把编剧、视觉资产、分镜、视频生成、剪辑、配乐和字幕能力整理成 Claude Code / Codex 可以直接执行的工作流。
 
-你可以把它理解成一套已经整理好的“创作助手能力包”：
+仓库同时保留了一个轻量交互控制台 `apps/console/`，用于项目上传、状态浏览、对话推进和线上体验。控制台是可选入口，skills 仍是事实源。
 
-- 能写剧本 / 改编剧本
-- 能生成角色、场景、道具视觉资产
-- 能写分镜和镜头脚本
-- 能批量生成视频
-- 能做剪辑、配乐、字幕
+## 适用场景
 
-它不是那种“必须先启动整套平台才能工作”的业务系统；主价值是给 `Claude Code` / `Codex` 直接读取和执行的创作工作台。
+- 把小说、故事大纲或已有剧本推进为结构化短剧剧本
+- 从 `script.json` 继续生成角色、场景、道具等视觉资产
+- 将剧本和资产转成分镜、镜头脚本和视频生成任务
+- 对生成的视频做剪辑、配乐、字幕和交付整理
+- 通过控制台给非工程成员提供可体验的项目工作区
 
-仓库里**也保留了**一个可选的交互控制台 `apps/console/`，它基于 Claude Agent SDK，主要用于对话式调试、项目浏览和工作流验证；但对大多数 skills 流程来说，默认**不需要先启动它**。
-
-## 这个项目能帮你做什么
-
-如果你手里已经有小说、故事梗概、人物设定，或者已经有部分视频素材，这个仓库可以帮助你把内容继续往下推进。
-
-典型流程如下：
+## 生产流程
 
 ```text
-灵感 / 故事梗概 / 完整小说 / 剧本输入 → 上游创作或改编 → 剧本解析与映射 → 角色与场景资产 → 分镜 → 视频生成 → 剪辑 → 配乐 → 字幕 → 成片
+Novel / Story / Script
+  -> SCRIPT
+  -> VISUAL
+  -> STORYBOARD
+  -> VIDEO
+  -> EDITING
+  -> MUSIC
+  -> SUBTITLE
+  -> Final
 ```
 
-适合的工作场景：
-
-- 编剧想把小说改成结构化剧本
-- 团队想把剧本进一步推进到分镜和视频样片
-- 后期想继续补配乐、字幕和成片交付
-
-## 内置能力
-
-| 阶段 | 能力名 | 作用 |
+| Stage | Skill | 主要产物 |
 | --- | --- | --- |
-| 创作 | `script-writer` | 上游灵感创作、原创构思，或把短篇内容扩写成长剧草稿 |
-| 剧本 | `script-adapt` | 把长篇小说保骨架改成结构化剧本 |
-| 剧本 | `script-adapt` / 解析脚本 | 解析终版剧本文本、做映射分析并交付 `output/script.json` |
-| 视觉 | `asset-gen` | 生成角色、场景、道具视觉资产 |
-| 分镜 | `storyboard` | 生成分镜、镜头脚本、对白结构 |
-| 视频 | `video-gen` | 根据剧本 / 分镜批量生成视频 |
-| 剪辑 | `video-editing` | 对视频做筛选、拼接、优化 |
-| 配乐 | `music-matcher` | 自动匹配背景音乐并合成 |
-| 字幕 | `subtitle-maker` | 生成字幕、烧录字幕、导出字幕轨 |
+| SCRIPT | `script-adapt`, `script-writer` | `workspace/{name}/output/script.json` |
+| VISUAL | `asset-gen` | `output/actors`, `output/locations`, `output/props` |
+| STORYBOARD | `storyboard` | approved storyboard JSON |
+| VIDEO | `video-gen` | runtime storyboard, delivery JSON, videos |
+| EDITING | `video-editing` | selected / assembled videos |
+| MUSIC | `music-matcher` | scored videos with music |
+| SUBTITLE | `subtitle-maker` | final videos and subtitle tracks |
 
-## 怎么使用
+`pipeline-state.json` 是项目状态的唯一机器可读索引。继续执行、断点恢复和控制台状态展示都应先读取它。
 
-### 第一步：打开仓库
+## 快速使用
 
-把这个仓库交给 `Claude Code` 或 `Codex` 打开即可。
-
-你不需要先研究代码结构，也不需要先启动一个服务。
-
-### 第二步：准备你的素材
-
-常见输入包括：
-
-- 小说原文
-- 故事大纲
-- 人物小传
-- 现有剧本
-- 已经生成的视频片段
-
-你可以把素材放在：
-
-- `data/`：适合放原始文本、参考资料
-- `workspace/{项目名}/`：适合放某个项目的完整过程文件
-
-### 第三步：直接说你的目标
-
-最简单的方式，就是直接用自然语言告诉 Agent 你要做什么。
-
-例如：
-
-- `把 data/我的小说.txt 改编成适合短剧的剧本`
-- `根据现有剧本，先生成角色和场景设定图`
-- `继续把这个项目往下做成分镜`
-- `把第 1 集视频做剪辑，再补配乐和字幕`
-- `从故事梗概开始，帮我一路做到可交付样片`
-
-### 如果你要用可视化控制台
-
-如果你说的是 **Auggie / 浏览器控制台入口**，统一使用第三方地址：
-
-- `https://acemcp.heroman.wtf/console`
-
-如果你要跑仓库里保留的 **本地调试控制台**，目录在 `apps/console/`，适合你做这几件事：
-
-- 新建项目并上传源文档
-- 看当前流程状态与下一步
-- 浏览工作区中的输入、剧本、素材和分集视频
-- 通过对话继续推进当前项目
-
-启动方式：
-
-```bash
-cd apps/console
-bun run dev
-```
-
-当前控制台的 MVP 聚焦在：
-
-- 输入源
-- 剧本开发
-- 分镜
-- 批量视频生成
-
-剪辑、配乐、字幕等后期环节暂不作为主导航入口暴露。
-
-### 项目级 MCP 说明
-
-这个仓库的项目级 MCP 事实源只有仓库根目录的 `./.mcp.json`。
-
-当前仓库内只注册了一个项目级 MCP：
-
-- `wangwen`（当前暂停作为主流程入口；除非显式恢复市场调研路径，否则默认从完整小说 / 剧本输入开始）
-
-如果你在 Codex / OMX 启动时看到 `chrome-devtools`、`jina-mcp-server`、`Framelink Figma MCP`、`augment-context-engine`、`open-websearch`、`spec-workflow`、`codex_apps` 一类启动失败提示，那些**不是本仓库当前项目级配置**，应回到运行时或用户目录配置继续排查。
-
-## 结果会放在哪里
-
-如果你按项目方式使用，通常每个项目会放在：
+把素材放入项目工作区：
 
 ```text
 workspace/{name}/
@@ -130,48 +50,94 @@ workspace/{name}/
 └── output/
 ```
 
-你最关心的内容通常在：
+然后在 Claude Code / Codex 中直接描述目标，例如：
 
-- `workspace/{name}/output/`
+- `把 workspace/c1/source.txt 改编成短剧结构化剧本`
+- `继续 c1 的 SCRIPT 阶段，生成 output/script.json`
+- `根据 script.json 生成角色、场景、道具资产`
+- `把第 1 集 approved storyboard 生成视频`
 
-这里会逐步放出剧本、资产图、分镜结果、视频、字幕等产物。
+长篇小说保骨架直转优先使用 `script-adapt`；原创构思或短篇扩写优先使用 `script-writer`。
 
-## 适合谁看
+## 控制台
 
-这份仓库更偏向内容生产团队，而不是工程团队。
+本地调试控制台位于 `apps/console/`：
 
-如果你是下面这些角色，会比较适合直接使用：
+```bash
+cd apps/console
+bun install
+bun run dev
+```
 
-- 导演
-- 编剧
-- 制片
-- 视频后期
-- AI 内容制作团队
+控制台提供：
 
-## 你不需要关心的事
+- 项目创建与源文件上传
+- workspace 文件浏览
+- pipeline 状态查看
+- 对话式执行入口
+- `dist` 静态资源托管和 WebSocket 后端
 
-对大多数导演、编剧来说，下面这些不是第一优先级：
+线上体验当前部署在 `yc-hk` 服务器，服务端口为 `3001`。控制台依赖 Claude Agent SDK；当模型提供方不支持完整 SDK 工具链时，服务端会使用受限的 Messages API 工具适配层读取和写入当前项目 workspace。
 
-- 不需要先启动前端页面
-- 不需要先理解完整代码结构
-- 不需要自己手工串联所有流程
+## 仓库结构
 
-你更需要做的是：
+```text
+.
+├── .claude/skills/          # skills 事实源
+├── .agents/skills -> .claude/skills
+├── apps/console/            # 可选交互控制台
+├── aos-cli/                 # 模型能力边界与 provider 适配
+├── scripts/                 # pipeline / state / deployment helpers
+├── docs/                    # 架构与计划文档
+└── workspace/               # 本地项目工作区，不应作为代码发布内容
+```
 
-- 提供清晰的素材
-- 说明你现在处于哪个阶段
-- 直接告诉 Agent 你下一步想要什么结果
+维护约定：
 
-## 仓库说明（给需要维护的人）
+- 修改 skill 时只改 `.claude/skills/<skill-name>/`
+- `.agents/skills/` 只是 Codex 发现 skill 的映射层
+- 新的模型调用应走 `aos-cli model`，不要在 skill 脚本里新增直连 provider SDK
+- `workspace/`, `data/`, `output/`, `.env` 是运行态数据，不纳入部署同步
 
-- `./.claude/skills/` 是能力定义的事实源
-- `./.agents/skills/` 是给 `Codex` 用的入口映射
-- `AGENTS.md` 和 `CLAUDE.md` 是仓库级工作说明
-- `workspace/` 是项目工作目录
-- `docs/` 里放的是少量规范文档
+## 测试与构建
 
-如果你只是来使用它做项目，可以先忽略这些细节。
+控制台：
 
-## 一句话理解
+```bash
+cd apps/console
+bun test
+bun run build
+```
 
-> 这是一个让导演和编剧可以直接调用 AI 创作能力、把内容一路推进到视频成片的仓库。
+Python / aos-cli：
+
+```bash
+cd aos-cli
+uv run pytest
+```
+
+只改某个 skill 脚本时，优先运行该 skill 目录下的就近测试，再按影响面补跑 `aos-cli` 或 console 测试。
+
+## 部署
+
+仓库已迁移到 GitHub org：
+
+```text
+https://github.com/JiuZhou-ailab/AgentOS-TS
+```
+
+CI/CD 工作流位于 `.github/workflows/deploy-yc-hk.yml`。push 到 `master` 或手动触发 workflow 时：
+
+1. GitHub Actions 通过 `YC_HK_SSH_KEY` 登录 `yc-hk`
+2. 服务器维护干净 clone：`/home/zjding/agentos-console-repo`
+3. 服务器执行 `git fetch` + `git reset --hard`
+4. 在服务器上运行 console 测试与构建
+5. 同步到运行目录 `/home/zjding/agentos-console-deploy`
+6. 保留 `.env`, `workspace/`, `data/`, `output/`
+7. 重启 `apps/console/server.ts`
+
+如果仓库改为 private，服务器端 clone 需要额外配置 deploy key 或 GitHub token。
+
+## 一句话
+
+AgentOS-TS 是公司级 AI 视频生产能力仓库：skills 是核心，console 是体验入口，`pipeline-state.json` 是跨阶段协作契约。

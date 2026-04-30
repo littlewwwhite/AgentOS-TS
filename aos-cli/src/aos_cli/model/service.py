@@ -671,7 +671,7 @@ def _artifact_from_url(request: dict, url: str, index: int) -> dict:
 def _download_artifact(url: str, local_dir: Path, index: int) -> tuple[Path, str, int]:
     local_dir.mkdir(parents=True, exist_ok=True)
     suffix = Path(urlparse(url).path).suffix or ".bin"
-    path = local_dir / f"artifact-{index + 1}{suffix}"
+    path = local_dir / f"artifact-{os.getpid()}-{index + 1}{suffix}"
     try:
         with urllib.request.urlopen(url, timeout=180) as response, path.open("wb") as output:
             digest = hashlib.sha256()

@@ -63,11 +63,15 @@ export function ChatPane({
     return () => window.clearInterval(timer);
   }, [isStreaming]);
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function submitCurrentInput() {
     if (!input.trim() || !isConnected) return;
     onSend(input);
     setInput("");
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submitCurrentInput();
   }
 
   function insertCommand(command: string) {
@@ -98,7 +102,7 @@ export function ChatPane({
 
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e as unknown as React.FormEvent);
+      submitCurrentInput();
     }
   }
 
@@ -160,10 +164,10 @@ export function ChatPane({
       </div>
       <form
         onSubmit={handleSubmit}
-        className="relative border-t border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-4 py-3"
+        className="relative border-t border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2"
       >
         {commandOptions.length > 0 && (
-          <div className="absolute bottom-full left-4 right-4 mb-2 max-h-64 overflow-auto bg-[var(--color-paper)] py-1 shadow-[0_12px_36px_rgba(0,0,0,0.08)] ring-1 ring-[var(--color-rule)]">
+          <div className="absolute bottom-full left-3 right-3 mb-2 max-h-64 overflow-auto bg-[var(--color-paper)] py-1 shadow-[0_12px_36px_rgba(0,0,0,0.08)] ring-1 ring-[var(--color-rule)]">
             {commandOptions.map((option, index) => {
               const active = index === selectedCommandIndex;
               return (
@@ -188,33 +192,23 @@ export function ChatPane({
             })}
           </div>
         )}
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <label
-            htmlFor="agentos-chat-composer"
-            className="font-sans text-[10px] font-semibold tracking-[0.08em] text-[var(--color-ink-subtle)]"
-          >
-            导演指令
-          </label>
-          <div className="font-sans text-[10px] text-[var(--color-ink-faint)]">
-            输入 / 技能
-          </div>
-        </div>
-        <div className="flex items-end gap-2 border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2">
+        <div className="flex items-end gap-2">
           <textarea
             id="agentos-chat-composer"
+            aria-label="聊天输入"
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleComposerKeyDown}
-            placeholder={isConnected ? "描述你要调整的镜头、分镜、素材或下一步制作任务…" : "连接中…"}
+            placeholder={isConnected ? "说出要调整的镜头、分镜、素材或下一步…" : "连接中…"}
             disabled={!isConnected}
-            rows={2}
-            className="min-h-[48px] flex-1 resize-none border-0 bg-transparent px-0 py-0 text-[13px] leading-relaxed text-[var(--color-ink)] outline-none placeholder-[var(--color-ink-faint)] disabled:opacity-40"
+            rows={1}
+            className="max-h-[120px] min-h-[34px] flex-1 resize-none border border-[var(--color-rule)] bg-[var(--color-paper-soft)] px-3 py-2 text-[13px] leading-relaxed text-[var(--color-ink)] outline-none placeholder-[var(--color-ink-faint)] transition-colors focus:border-[var(--color-accent)] disabled:opacity-40"
           />
           <button
             type="submit"
             disabled={!input.trim() || !isConnected}
-            className="shrink-0 px-2 py-1.5 font-sans text-[11px] font-semibold text-[var(--color-ink)] transition-colors hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:text-[var(--color-ink-faint)]"
+            className="min-h-[34px] shrink-0 px-2.5 font-sans text-[11px] font-semibold text-[var(--color-ink)] transition-colors hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:text-[var(--color-ink-faint)]"
           >
             发送
           </button>
@@ -225,7 +219,7 @@ export function ChatPane({
               disabled={!isConnected || !onStop}
               aria-label="暂停生成"
               title="暂停生成"
-              className="shrink-0 px-1.5 py-1.5 font-mono text-[15px] leading-none text-[var(--color-ink-muted)] transition-colors hover:text-[var(--color-err)] disabled:cursor-not-allowed disabled:text-[var(--color-ink-faint)]"
+              className="min-h-[34px] shrink-0 px-1.5 font-mono text-[15px] leading-none text-[var(--color-ink-muted)] transition-colors hover:text-[var(--color-err)] disabled:cursor-not-allowed disabled:text-[var(--color-ink-faint)]"
             >
               ⏸
             </button>

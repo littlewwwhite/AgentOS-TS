@@ -46,6 +46,12 @@ describe("mimeFor", () => {
     expect(mimeFor("foo.mp4")).toBe("video/mp4");
     expect(mimeFor("x.json")).toBe("application/json");
   });
+  test("console static asset extensions", () => {
+    expect(mimeFor("dist/index.html")).toBe("text/html; charset=utf-8");
+    expect(mimeFor("dist/assets/index.js")).toBe("text/javascript; charset=utf-8");
+    expect(mimeFor("dist/assets/index.css")).toBe("text/css; charset=utf-8");
+    expect(mimeFor("dist/assets/font.woff2")).toBe("font/woff2");
+  });
   test("unknown defaults to octet-stream", () => {
     expect(mimeFor("x.xyz")).toBe("application/octet-stream");
     expect(mimeFor("noext")).toBe("application/octet-stream");

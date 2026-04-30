@@ -3,6 +3,7 @@
 // pos: storyboard prompt preview — review-first surface, no raw-ID drawer
 
 import { useCallback, useEffect, type ReactNode } from "react";
+import { assetKindFromId, type ProductionAssetKind } from "../../../lib/storyboard";
 
 export interface PromptCatalogEntry {
   id: string;
@@ -26,7 +27,6 @@ interface Props {
   onChange: (next: string) => void;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
-  selectedRefId?: string | null;
   selectedRefKey?: string | null;
   onSelectRef?: (ref: PromptRefSelection) => void;
   onClearSelectedRef?: () => void;
@@ -43,7 +43,7 @@ export interface PromptRefSelection {
   occurrenceKey?: string;
 }
 
-type PromptAssetKind = keyof PromptCatalog;
+type PromptAssetKind = ProductionAssetKind;
 
 function splitPartPrefix(text: string): { prefix: string; body: string } {
   const match = text.match(PART_PREFIX);
@@ -87,13 +87,6 @@ function refToneClassName(id: string, selected: boolean): string {
     : "border-[var(--color-rule)] bg-[var(--color-paper)] text-[var(--color-ink)]";
 }
 
-function assetKindFromPromptRef(id: string): PromptAssetKind | null {
-  if (id.startsWith("act_")) return "actor";
-  if (id.startsWith("loc_")) return "location";
-  if (id.startsWith("prp_") || id.startsWith("prop_")) return "prop";
-  return null;
-}
-
 function collectEditablePrompt(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
   if (!(node instanceof HTMLElement)) return "";
@@ -126,7 +119,6 @@ export function PromptRefText({
   catalog,
   actorStateOverrides,
   stateNameById = {},
-  selectedRefId,
   selectedRefKey,
   refIndexOffset = 0,
   onSelectRef,
@@ -137,7 +129,6 @@ export function PromptRefText({
   catalog?: PromptCatalog;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
-  selectedRefId?: string | null;
   selectedRefKey?: string | null;
   refIndexOffset?: number;
   onSelectRef?: (ref: PromptRefSelection) => void;
@@ -158,11 +149,9 @@ export function PromptRefText({
     const label = readableRefLabel(id, match[3], dict, actorStateOverrides, stateNameById) ?? raw;
     const absoluteIndex = refIndexOffset + match.index;
     const occurrenceKey = `${absoluteIndex}:${raw}`;
-    const selected = selectedRefKey
-      ? selectedRefKey === occurrenceKey
-      : selectedRefId === id;
+    const selected = selectedRefKey === occurrenceKey;
     const selection = { raw, id, stateId: match[3], index: absoluteIndex, occurrenceKey };
-    const kind = assetKindFromPromptRef(id);
+    const kind = assetKindFromId(id);
     const replacementOptions = kind && catalog && onReplaceRef
       ? catalog[kind].filter((entry) => entry.id !== id)
       : [];
@@ -237,7 +226,6 @@ export function PromptChipEditor({
   placeholder,
   onChange,
   readOnly,
-  selectedRefId,
   selectedRefKey,
   onSelectRef,
   onClearSelectedRef,
@@ -269,7 +257,7 @@ export function PromptChipEditor({
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest("[data-prompt-ref-interactive='true']")) return;
-      onClearSelectedRef?.();
+      onClearSelectedRef();
     };
 
     document.addEventListener("pointerdown", handlePointerDown, true);
@@ -307,7 +295,6 @@ export function PromptChipEditor({
           catalog={catalog}
           actorStateOverrides={actorStateOverrides}
           stateNameById={stateNameById}
-          selectedRefId={selectedRefId}
           selectedRefKey={selectedRefKey}
           refIndexOffset={prefix.length}
           onSelectRef={onSelectRef}

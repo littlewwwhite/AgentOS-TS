@@ -13,6 +13,7 @@ interface Props {
   availablePaths: Set<string>;
   episodeTime: number;
   totalDuration: number;
+  canPlayback?: boolean;
   onSelectClip: (clipKey: string) => void;
   onPlayAll: () => void;
   onInsertClipAfter?: (clipKey: string) => void;
@@ -36,37 +37,48 @@ export function SegmentTimeline({
   availablePaths,
   episodeTime,
   totalDuration,
+  canPlayback,
   onSelectClip,
   onPlayAll,
   onInsertClipAfter,
 }: Props) {
+  const hasPlayableMedia = canPlayback ?? clips.some((clip) => availablePaths.has(clip.videoPath));
+
   return (
     <section
-      aria-label="视频片段轨"
+      aria-label={hasPlayableMedia ? "视频片段轨" : "分镜片段轨"}
       className="min-h-0 overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper)] px-4 py-3"
     >
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="inline-flex h-7 items-center justify-center border border-[var(--color-rule)] px-2.5 font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink)] transition-colors hover:border-[var(--color-accent)]"
-            aria-label="播放全部"
-            onClick={onPlayAll}
-          >
-            <span aria-hidden className="mr-1">▶</span>
-            <span>播放全部</span>
-          </button>
+          {hasPlayableMedia ? (
+            <button
+              type="button"
+              className="inline-flex h-7 items-center justify-center border border-[var(--color-rule)] px-2.5 font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink)] transition-colors hover:border-[var(--color-accent)]"
+              aria-label="播放全部"
+              onClick={onPlayAll}
+            >
+              <span aria-hidden className="mr-1">▶</span>
+              <span>播放全部</span>
+            </button>
+          ) : (
+            <span className="font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink)]">
+              分镜片段轨
+            </span>
+          )}
           <span className="font-[Geist,sans-serif] text-[13px] text-[var(--color-ink-muted)]">
-            {timecodeLabel(episodeTime)} / {timecodeLabel(totalDuration)}
+            {hasPlayableMedia ? `${timecodeLabel(episodeTime)} / ${timecodeLabel(totalDuration)}` : `${clips.length} 段待生成`}
           </span>
         </div>
-        <button
-          type="button"
-          disabled
-          className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-faint)] disabled:cursor-not-allowed"
-        >
-          多选
-        </button>
+        {hasPlayableMedia && (
+          <button
+            type="button"
+            disabled
+            className="font-[Geist,sans-serif] text-[12px] text-[var(--color-ink-faint)] disabled:cursor-not-allowed"
+          >
+            多选
+          </button>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -100,16 +112,16 @@ export function SegmentTimeline({
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-[var(--color-paper-sunk)] font-mono text-[10px] text-[var(--color-ink-faint)]">
-                      片段 {index + 1}
+                      {hasPlayableMedia ? `片段 ${index + 1}` : `分镜 ${index + 1}`}
                     </div>
                   )}
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.02)_0%,rgba(0,0,0,0.38)_100%)]" />
                   <span className="absolute left-1.5 top-1.5 inline-flex h-5 min-w-5 items-center justify-center bg-black/55 px-1.5 font-mono text-[10px] text-white">
                     {index + 1}
                   </span>
-                  <span className="sr-only">片段 {index + 1}</span>
+                  <span className="sr-only">{hasPlayableMedia ? "片段" : "分镜"} {index + 1}</span>
                   <span className="absolute bottom-1.5 left-1.5 bg-black/55 px-1.5 py-0.5 font-mono text-[10px] text-white">
-                    {durationLabel(clip.totalDuration)}
+                    {exists ? durationLabel(clip.totalDuration) : "待生成"}
                   </span>
                 </button>
                 {onInsertClipAfter && index < clips.length - 1 && (

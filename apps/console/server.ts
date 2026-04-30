@@ -12,6 +12,8 @@ import { buildSourceUploadTargets } from "./src/lib/sourceUpload";
 import { buildProjectBootstrap } from "./src/lib/projectBootstrap";
 
 const WORKSPACE = join(import.meta.dir, "../../workspace");
+const DIST_ROOT = join(import.meta.dir, "dist");
+const PORT = Number(Bun.env.PORT ?? "3001");
 
 interface WsSlot {
   project: string | null;
@@ -217,8 +219,26 @@ function readPipelineState(projectRoot: string) {
   };
 }
 
+function shouldServeStatic(pathname: string, method: string): boolean {
+  if (method !== "GET" && method !== "HEAD") return false;
+  return !pathname.startsWith("/api/") && pathname !== "/api" && !pathname.startsWith("/files/") && pathname !== "/ws";
+}
+
+function staticAssetPath(pathname: string): string | null {
+  if (!existsSync(DIST_ROOT)) return null;
+  const relPath = pathname === "/" ? "index.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
+  try {
+    const abs = safeResolve(DIST_ROOT, relPath);
+    if (existsSync(abs)) return abs;
+  } catch {
+    return null;
+  }
+  const indexPath = join(DIST_ROOT, "index.html");
+  return existsSync(indexPath) ? indexPath : null;
+}
+
 Bun.serve({
-  port: 3001,
+  port: PORT,
 
   async fetch(req, server) {
     const url = new URL(req.url);
@@ -661,6 +681,15 @@ Bun.serve({
       return Response.json({ ok: true, bytes: Buffer.byteLength(text, "utf8") }, { status: 200, headers: corsWithMethods });
     }
 
+    if (shouldServeStatic(url.pathname, req.method)) {
+      const abs = staticAssetPath(url.pathname);
+      if (abs) {
+        return new Response(Bun.file(abs), {
+          headers: { "Content-Type": mimeFor(abs) },
+        });
+      }
+    }
+
     return Response.json({ error: "not found" }, { status: 404, headers: CORS });
   },
 
@@ -734,4 +763,4 @@ Bun.serve({
   },
 });
 
-console.log("API → http://localhost:3001  WS → ws://localhost:3001/ws");
+console.log(`Console → http://localhost:${PORT}  API → http://localhost:${PORT}/api  WS → ws://localhost:${PORT}/ws`);

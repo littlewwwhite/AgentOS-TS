@@ -19,16 +19,6 @@ interface Props {
   onSelectAsset?: (item: ProductionAssetRailItem) => void;
 }
 
-const ADD_ASSET_OPTIONS = [
-  { label: "添加角色", message: "添加一个新角色资产，并生成角色三视图。" },
-  { label: "添加场景", message: "添加一个新场景资产，并生成场景多视图拼接图。" },
-  { label: "添加道具", message: "添加一个新道具资产，并生成道具多角度细节拼接图。" },
-] as const;
-
-function sendAssetCommand(message: string) {
-  window.dispatchEvent(new CustomEvent("agentos:send-message", { detail: { message } }));
-}
-
 function scopeLabel(scope: ProductionAssetScope): string {
   if (scope === "current") return "当前片段";
   if (scope === "episode") return "本集";
@@ -146,6 +136,7 @@ export function ProductionAssetRail({
 }: Props) {
   const groups = [model.groups.actor, model.groups.location, model.groups.prop];
   const totalItems = groups.reduce((sum, group) => sum + group.items.length, 0);
+  const canSelectAssets = totalItems > 0 && typeof onSelectAsset === "function";
 
   return (
     <aside className="min-h-0 w-[220px] shrink-0 overflow-y-auto border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-3">
@@ -163,25 +154,48 @@ export function ProductionAssetRail({
         <div className="group relative">
           <button
             type="button"
-            aria-label="添加资产"
-            title="添加资产"
+            aria-label="选择已有资产"
+            title="选择已有资产"
+            disabled={!canSelectAssets}
             className="flex h-7 w-7 cursor-pointer list-none items-center justify-center border border-transparent font-mono text-[22px] leading-none text-[var(--color-ink)] transition-colors hover:border-[var(--color-rule)] hover:bg-[var(--color-paper-soft)] focus:outline-none focus-visible:border-[var(--color-accent)]"
           >
             +
           </button>
-          <div className="absolute right-0 top-8 z-20 hidden w-32 border border-[var(--color-rule)] bg-[var(--color-paper)] py-1 shadow-[0_14px_34px_rgba(0,0,0,0.10)] group-hover:block group-focus-within:block">
-            {ADD_ASSET_OPTIONS.map((option) => (
-              <button
-                key={option.label}
-                type="button"
-                title={option.message}
-                onClick={() => sendAssetCommand(option.message)}
-                className="block w-full px-3 py-2 text-left font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink)] hover:bg-[var(--color-paper-soft)] focus:outline-none focus-visible:bg-[var(--color-paper-soft)]"
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          {canSelectAssets && (
+            <div className="absolute right-0 top-8 z-20 hidden max-h-[360px] w-52 overflow-y-auto border border-[var(--color-rule)] bg-[var(--color-paper)] py-2 shadow-[0_14px_34px_rgba(0,0,0,0.10)] group-hover:block group-focus-within:block">
+              {groups.map((group) => (
+                group.items.length > 0 && (
+                  <section key={group.label} className="px-2 py-1">
+                    <div className="mb-1 px-1 font-[Geist,sans-serif] text-[10px] font-semibold text-[var(--color-ink-faint)]">
+                      {group.label}
+                    </div>
+                    <div className="grid gap-1">
+                      {group.items.map((item) => (
+                        <button
+                          key={`${item.kind}-${item.id}`}
+                          type="button"
+                          onClick={() => onSelectAsset?.(item)}
+                          className="grid w-full grid-cols-[28px_minmax(0,1fr)] items-center gap-2 px-1 py-1.5 text-left transition-colors hover:bg-[var(--color-paper-soft)] focus:outline-none focus-visible:bg-[var(--color-paper-soft)]"
+                        >
+                          <span className="h-7 overflow-hidden border border-[var(--color-rule)] bg-[var(--color-paper-sunk)]">
+                            <AssetThumb projectName={projectName} item={item} />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate font-[Geist,sans-serif] text-[12px] font-semibold text-[var(--color-ink)]">
+                              {item.label}
+                            </span>
+                            <span className="block truncate font-[Geist,sans-serif] text-[10px] text-[var(--color-ink-faint)]">
+                              {scopeLabel(item.scope)}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

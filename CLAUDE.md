@@ -2,6 +2,8 @@
 
 Respond in Chinese (简体中文). Structural keys and code in English.
 
+要时刻提醒自己会不会用到架构 sdk 本身会用到的原生逻辑，不用自己写
+
 ## Architecture
 
 Single-session + global MCP + flat skills. No agent isolation.

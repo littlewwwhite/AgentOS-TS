@@ -10,6 +10,20 @@ interface Props {
   markSeen?: (path: string) => void;
 }
 
+function episodeDirFromRuntimeStoryboard(path: string): string | null {
+  if (!/(?:^|\/)ep_?\d+_storyboard\.json$/i.test(path)) return null;
+  const dir = path.split("/").slice(0, -1).join("/");
+  return /(?:^|\/)ep_?\d+$/i.test(dir.split("/").pop() ?? "") ? dir : null;
+}
+
+export function episodeOpenPath(epId: string, ep: EpisodeState | undefined): string {
+  const videoArtifact = ep?.video?.artifact;
+  if (videoArtifact) {
+    return episodeDirFromRuntimeStoryboard(videoArtifact) ?? videoArtifact;
+  }
+  return `output/${epId}`;
+}
+
 export function EpisodeNode({ epId, ep, unread, markSeen }: Props) {
   const { openPath } = useTabs();
   const worstStatus = rollupEpisodeStatus(ep);
@@ -17,7 +31,7 @@ export function EpisodeNode({ epId, ep, unread, markSeen }: Props) {
 
   const storyboardPath =
     ep?.storyboard?.artifact ?? `output/${epId}/${epId}_storyboard.json`;
-  const videoPath = ep?.video?.artifact ?? `output/${epId}`;
+  const videoPath = episodeOpenPath(epId, ep);
 
   function openEpisode() {
     openPath(videoPath, resolveView(videoPath), epId, { pinned: true });

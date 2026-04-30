@@ -18,6 +18,22 @@ function extractPath(content: unknown): string | undefined {
   return m?.[1];
 }
 
+export function systemStatusMessage(subtype: string, data: unknown): string | null {
+  if (subtype !== "api_retry" || !data || typeof data !== "object") return null;
+  const retry = data as {
+    attempt?: unknown;
+    max_retries?: unknown;
+    error_status?: unknown;
+    error?: unknown;
+  };
+  const attempt = typeof retry.attempt === "number" ? retry.attempt : null;
+  const maxRetries = typeof retry.max_retries === "number" ? retry.max_retries : null;
+  const status = typeof retry.error_status === "number" ? retry.error_status : null;
+  const reason = typeof retry.error === "string" ? retry.error : "server_error";
+  const retryLabel = attempt !== null && maxRetries !== null ? `，正在重试 ${attempt}/${maxRetries}` : "，正在重试";
+  return `模型服务暂时不可用${status ? `（${status} ${reason}）` : ""}${retryLabel}`;
+}
+
 interface SendOptions {
   agentMessage?: string;
 }
@@ -120,6 +136,24 @@ export function useWebSocket(
       if (event.type === "system") {
         // Lossless passthrough; no UI surface yet. Keep for debugging.
         if (import.meta.env.DEV) console.debug("[ws] system", event.subtype, event.data);
+        const statusMessage = systemStatusMessage(event.subtype, event.data);
+        if (statusMessage) {
+          setIsStreaming(true);
+          const targetId = thinkingIdRef.current ?? uid();
+          thinkingIdRef.current = targetId;
+          setMessages((prev) => {
+            const hasTarget = prev.some((m) => m.id === targetId);
+            if (hasTarget) {
+              return prev.map((m) =>
+                m.id === targetId ? { ...m, kind: "thinking", content: statusMessage, isStreaming: true } : m
+              );
+            }
+            return [
+              ...prev,
+              { id: targetId, role: "assistant", kind: "thinking", content: statusMessage, isStreaming: true, timestamp: Date.now() },
+            ];
+          });
+        }
         return;
       }
 

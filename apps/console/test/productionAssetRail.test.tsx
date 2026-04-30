@@ -39,12 +39,12 @@ describe("ProductionAssetRail", () => {
     );
 
     expect(html).toContain("资产库");
-    expect(html).toContain("添加资产");
-    expect(html).toContain("添加角色");
-    expect(html).toContain("添加场景");
-    expect(html).toContain("添加道具");
-    expect(html).toContain("生成场景多视图拼接图");
-    expect(html).toContain("生成道具多角度细节拼接图");
+    expect(html).toContain("选择已有资产");
+    expect(html).not.toContain("添加角色");
+    expect(html).not.toContain("添加场景");
+    expect(html).not.toContain("添加道具");
+    expect(html).not.toContain("生成场景多视图拼接图");
+    expect(html).not.toContain("生成道具多角度细节拼接图");
     expect(html).toContain("w-[220px]");
     expect(html).toContain("角色");
     expect(html).toContain("林萧");

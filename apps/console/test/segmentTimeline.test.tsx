@@ -78,4 +78,43 @@ describe("SegmentTimeline", () => {
     expect(html).toContain("h-full");
     expect(html).toContain(">+<");
   });
+
+  test("renders a storyboard planning track without playback chrome when no media exists", () => {
+    const clips = [0, 1].map((index) => ({
+      key: `scn_001::part_00${index + 1}`,
+      sceneId: "scn_001",
+      sceneIndex: 0,
+      clipId: `part_00${index + 1}`,
+      clipIndex: index,
+      videoPath: `output/ep001/scn001/clip00${index + 1}.mp4`,
+      expectedDuration: null,
+      totalDuration: 1,
+      startOffset: index,
+      endOffset: index + 1,
+      shotCount: 1,
+      displayText: `分镜 ${index + 1}`,
+      shots: [],
+    }));
+
+    const html = renderToStaticMarkup(
+      React.createElement(SegmentTimeline, {
+        projectName: "demo",
+        clips,
+        currentClipKey: "scn_001::part_001",
+        availablePaths: new Set(),
+        episodeTime: 0,
+        totalDuration: 2,
+        canPlayback: false,
+        onSelectClip: () => undefined,
+        onPlayAll: () => undefined,
+        onInsertClipAfter: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("分镜片段轨");
+    expect(html).toContain("2 段待生成");
+    expect(html).not.toContain("播放全部");
+    expect(html).not.toContain("00:01");
+    expect(html).toContain("待生成");
+  });
 });

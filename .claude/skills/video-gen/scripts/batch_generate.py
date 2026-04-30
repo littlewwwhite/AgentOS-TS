@@ -71,6 +71,29 @@ MIN_GENERATION_ATTEMPTS = _gen_cfg.get("min_attempts", 1)
 MAX_GENERATION_ATTEMPTS = _gen_cfg.get("max_attempts", 2)
 
 
+def _video_generation_outcome(*, success_count: int, fail_count: int) -> dict:
+    if success_count <= 0 and fail_count > 0:
+        return {
+            "stage_status": "failed",
+            "episode_status": "failed",
+            "write_delivery": False,
+            "next_action": "retry VIDEO",
+        }
+    if fail_count == 0 and success_count > 0:
+        return {
+            "stage_status": "partial",
+            "episode_status": "completed",
+            "write_delivery": True,
+            "next_action": "review VIDEO",
+        }
+    return {
+        "stage_status": "partial",
+        "episode_status": "partial",
+        "write_delivery": True,
+        "next_action": "review VIDEO",
+    }
+
+
 # ============================================================
 # JSON Loading
 # ============================================================
@@ -1162,6 +1185,7 @@ def run_batch_generate(
 
     # Generate delivery.json — SKILL.md format
     delivery_path = output_root_path / f"ep{episode:03d}_delivery.json"
+    outcome = _video_generation_outcome(success_count=success_count, fail_count=fail_count)
 
     # Group results by scene_id -> clip_base -> pv
     from collections import defaultdict
@@ -1202,27 +1226,48 @@ def run_batch_generate(
         "episode_id": f"ep_{episode:03d}",
         "locations": locations,
     }
-    with open(delivery_path, 'w', encoding='utf-8') as f:
-        json.dump(delivery, f, ensure_ascii=False, indent=2)
-    print(f"[FILE] Delivery: {delivery_path}")
+    if outcome["write_delivery"]:
+        with open(delivery_path, 'w', encoding='utf-8') as f:
+            json.dump(delivery, f, ensure_ascii=False, indent=2)
+        print(f"[FILE] Delivery: {delivery_path}")
+    else:
+        print("[SKIP] Delivery not written: no generated clips succeeded")
 
     if not dry_run:
-        delivery_relative = delivery_path.resolve().relative_to(project_root).as_posix()
-        if fail_count == 0 and success_count > 0:
+        if outcome["write_delivery"]:
+            delivery_relative = delivery_path.resolve().relative_to(project_root).as_posix()
             update_episode(
                 str(project_root),
                 episode_key,
                 "video",
-                "completed",
+                outcome["episode_status"],
+                artifact=delivery_relative,
+                generated=success_count,
+                failed=fail_count,
+            )
+            update_stage(
+                str(project_root),
+                "VIDEO",
+                outcome["stage_status"],
+                next_action=outcome["next_action"],
                 artifact=delivery_relative,
             )
-        update_stage(
-            str(project_root),
-            "VIDEO",
-            "partial",
-            next_action="review VIDEO",
-            artifact=delivery_relative,
-        )
+        else:
+            update_episode(
+                str(project_root),
+                episode_key,
+                "video",
+                outcome["episode_status"],
+                generated=success_count,
+                failed=fail_count,
+            )
+            update_stage(
+                str(project_root),
+                "VIDEO",
+                outcome["stage_status"],
+                next_action=outcome["next_action"],
+                note=f"VIDEO generation failed: {fail_count} clips failed and no videos were generated",
+            )
 
     return results
 

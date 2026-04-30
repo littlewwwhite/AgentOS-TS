@@ -44,10 +44,36 @@ S2 | 00:03-00:06 | 特写/手持机位
         self.assertIn("00:00-00:03 全景/固定机位", compiled)
         self.assertIn("@act_001:st_002端托盘", compiled)
         self.assertIn("What are you looking for?", compiled)
-        self.assertIn("禁止文字", compiled)
+        self.assertIn("画面保持干净", compiled)
         self.assertNotIn("动作节拍 Beats", compiled)
         self.assertNotIn("PART1", compiled)
+        self.assertNotIn("主体/场景：", compiled)
+        self.assertNotIn("时间顺序：", compiled)
         self.assertLess(len(compiled), len(source))
+
+    def test_seedance_structure_preserves_asset_tokens_exactly(self):
+        from prompt_compiler import compile_video_prompt
+
+        source = """景别/机位 | 中景，低机位缓慢推进
+
+总体描述：@act_001:st_002 在 @loc_001 捡起 @prp_003，@act_002 站在门口。
+动作：@act_001:st_002 先看向地面，再迅速把 @prp_003 藏到身后；@act_002 向前一步。
+角色状态：@act_001:st_002 紧张但克制；@act_002 怀疑。
+音效：木门轻响，衣料摩擦声。
+对白：无
+"""
+
+        compiled = compile_video_prompt(source)
+
+        self.assertIn("@act_001:st_002 在 @loc_001 捡起 @prp_003，@act_002 站在门口。镜头采用中景，低机位缓慢推进", compiled)
+        self.assertIn("@act_001:st_002", compiled)
+        self.assertIn("@loc_001", compiled)
+        self.assertIn("@prp_003", compiled)
+        self.assertNotIn("主体/场景：", compiled)
+        self.assertNotIn("动作：", compiled)
+        self.assertNotIn("状态：", compiled)
+        self.assertNotIn("{act_001", compiled)
+        self.assertNotIn("Image 1", compiled)
 
     def test_plain_prompt_falls_back_to_whitespace_normalization(self):
         from prompt_compiler import compile_video_prompt
@@ -70,11 +96,13 @@ S2 | 00:03-00:06 | 特写/手持机位
 
         compiled = compile_video_prompt(source)
 
-        self.assertIn("镜头：中远景", compiled)
+        self.assertIn("镜头采用中远景", compiled)
         self.assertIn("@act_001:st_001 双手没入冰水", compiled)
-        self.assertIn("画面禁止文字", compiled)
+        self.assertIn("画面保持干净", compiled)
         self.assertNotIn("景别/机位 |", compiled)
         self.assertNotIn("总体描述：", compiled)
+        self.assertNotIn("动作：", compiled)
+        self.assertNotIn("状态：", compiled)
         self.assertNotIn("对白：无", compiled)
 
     def test_preserves_dialogue_without_truncating_quotes(self):

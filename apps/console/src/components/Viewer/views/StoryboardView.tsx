@@ -238,8 +238,6 @@ function PreviewStage({
   projectName,
   videoPath,
   clip,
-  exists,
-  placeholderTitle,
   videoRef,
   onLoadedMetadata,
   onTimeUpdate,
@@ -250,8 +248,6 @@ function PreviewStage({
   projectName: string;
   videoPath: string | null;
   clip: StoryboardEditorClip;
-  exists: boolean;
-  placeholderTitle: string;
   videoRef: RefObject<HTMLVideoElement | null>;
   onLoadedMetadata: () => void;
   onTimeUpdate: () => void;
@@ -263,32 +259,19 @@ function PreviewStage({
     <section className="flex min-h-0 min-w-0 items-center justify-center border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
       <div className="relative mx-auto aspect-[9/16] h-full max-h-[68vh] min-h-[360px] max-w-full overflow-hidden border border-[var(--color-rule)] bg-[var(--color-ink)]">
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08)_0%,rgba(0,0,0,0.42)_100%)]" />
-        {exists ? (
-          <video
-            key={videoPath ?? clip.key}
-            ref={videoRef}
-            controls
-            preload="metadata"
-            src={videoPath ? fileUrl(projectName, videoPath) : undefined}
-            className="relative z-10 h-full w-full object-contain bg-black"
-            onLoadedMetadata={onLoadedMetadata}
-            onTimeUpdate={onTimeUpdate}
-            onEnded={onEnded}
-            onPlay={onPlay}
-            onPause={onPause}
-          />
-        ) : (
-          <div className="relative z-10 flex h-full items-center justify-center px-6 text-center">
-            <div className="space-y-3">
-              <div className="font-serif text-[22px] italic text-white/88">
-                {placeholderTitle}
-              </div>
-              <div className="mx-auto max-w-[28rem] font-[Geist,sans-serif] text-[13px] leading-relaxed text-white/68">
-                视频生成后会在此预览；当前可先校对右侧提示词。
-              </div>
-            </div>
-          </div>
-        )}
+        <video
+          key={videoPath ?? clip.key}
+          ref={videoRef}
+          controls
+          preload="metadata"
+          src={videoPath ? fileUrl(projectName, videoPath) : undefined}
+          className="relative z-10 h-full w-full object-contain bg-black"
+          onLoadedMetadata={onLoadedMetadata}
+          onTimeUpdate={onTimeUpdate}
+          onEnded={onEnded}
+          onPlay={onPlay}
+          onPause={onPause}
+        />
       </div>
     </section>
   );
@@ -301,12 +284,6 @@ function ClipInfoPanel({
   dict,
   children,
   className = "",
-  actorStateOverrides,
-  stateNameById,
-  selectedRefId,
-  selectedRefKey,
-  onSelectRef,
-  onClearSelectedRef,
 }: {
   summary: ClipInspectorData;
   source: string;
@@ -314,12 +291,6 @@ function ClipInfoPanel({
   dict: Record<string, string>;
   children?: ReactNode;
   className?: string;
-  actorStateOverrides?: Map<string, string>;
-  stateNameById?: Record<string, string>;
-  selectedRefId?: string | null;
-  selectedRefKey?: string | null;
-  onSelectRef?: (ref: PromptRefSelection) => void;
-  onClearSelectedRef?: () => void;
 }) {
   const scriptBeats = splitStoryboardText(source, dict);
 
@@ -340,11 +311,6 @@ function ClipInfoPanel({
               <PromptRefText
                 text={selectedShot.prompt}
                 dict={dict}
-                actorStateOverrides={actorStateOverrides}
-                stateNameById={stateNameById}
-                selectedRefId={selectedRefId}
-                selectedRefKey={selectedRefKey}
-                onSelectRef={onSelectRef}
               />
             ) : (
               "（无镜头提示词）"
@@ -716,7 +682,6 @@ function StoryboardPromptEditor({
   catalog,
   actorStateOverrides,
   stateNameById,
-  selectedRefId,
   selectedRefKey,
   onSelectRef,
   onClearSelectedRef,
@@ -728,7 +693,6 @@ function StoryboardPromptEditor({
   catalog: PromptCatalog;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
-  selectedRefId?: string | null;
   selectedRefKey?: string | null;
   onSelectRef?: (ref: PromptRefSelection) => void;
   onClearSelectedRef?: () => void;
@@ -743,7 +707,6 @@ function StoryboardPromptEditor({
       placeholder="用一段自然语言描述这一镜头要拍什么"
       actorStateOverrides={actorStateOverrides}
       stateNameById={stateNameById}
-      selectedRefId={selectedRefId}
       selectedRefKey={selectedRefKey}
       onSelectRef={onSelectRef}
       onClearSelectedRef={onClearSelectedRef}
@@ -809,48 +772,6 @@ function ScriptActionGroup({
   );
 }
 
-function StoryboardPartBlock({
-  unit,
-  patch,
-  readOnly,
-  dict,
-  catalog,
-  actorStateOverrides,
-  stateNameById,
-  selectedRefId,
-  selectedRefKey,
-  onSelectRef,
-  onClearSelectedRef,
-}: {
-  unit: StoryboardGenerationUnit;
-  patch: JsonPatch;
-  readOnly: boolean;
-  dict: Record<string, string>;
-  catalog: PromptCatalog;
-  actorStateOverrides?: Map<string, string>;
-  stateNameById?: Record<string, string>;
-  selectedRefId?: string | null;
-  selectedRefKey?: string | null;
-  onSelectRef?: (ref: PromptRefSelection) => void;
-  onClearSelectedRef?: () => void;
-}) {
-  return (
-    <StoryboardPromptEditor
-      unit={unit}
-      patch={patch}
-      readOnly={readOnly}
-      dict={dict}
-      catalog={catalog}
-      actorStateOverrides={actorStateOverrides}
-      stateNameById={stateNameById}
-      selectedRefId={selectedRefId}
-      selectedRefKey={selectedRefKey}
-      onSelectRef={onSelectRef}
-      onClearSelectedRef={onClearSelectedRef}
-    />
-  );
-}
-
 function ReviewPromptPanel({
   storyboardPath,
   unit,
@@ -861,7 +782,6 @@ function ReviewPromptPanel({
   catalog,
   actorStateOverrides,
   stateNameById,
-  selectedRefId,
   selectedRefKey,
   onSelectRef,
   onClearSelectedRef,
@@ -875,7 +795,6 @@ function ReviewPromptPanel({
   catalog: PromptCatalog;
   actorStateOverrides?: Map<string, string>;
   stateNameById?: Record<string, string>;
-  selectedRefId?: string | null;
   selectedRefKey?: string | null;
   onSelectRef?: (ref: PromptRefSelection) => void;
   onClearSelectedRef?: () => void;
@@ -911,7 +830,6 @@ function ReviewPromptPanel({
           catalog={catalog}
           actorStateOverrides={actorStateOverrides}
           stateNameById={stateNameById}
-          selectedRefId={selectedRefId}
           selectedRefKey={selectedRefKey}
           onSelectRef={onSelectRef}
           onClearSelectedRef={onClearSelectedRef}
@@ -989,7 +907,7 @@ function StoryboardSceneGroup({
     : null;
 
   const renderPart = (unit: StoryboardGenerationUnit) => (
-    <StoryboardPartBlock
+    <StoryboardPromptEditor
       key={unit.key}
       unit={unit}
       patch={patch}
@@ -1329,7 +1247,6 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
   const currentClipExists = currentClip ? treePaths.has(currentClip.videoPath) : false;
   const previewVideoPath = isEpisodePlayback ? mergedEpisodeVideoPath : currentClip?.videoPath ?? null;
   const previewExists = isEpisodePlayback ? hasEpisodeVideo : currentClipExists;
-  const previewPlaceholderTitle = "当前没有可播放的预览视频";
   const currentScene = currentClip ? scenes[currentClip.sceneIndex] ?? null : null;
   const storedClipData = currentClip && currentScene
     ? currentScene.clips?.[currentClip.clipIndex] ?? null
@@ -1651,19 +1568,19 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
                 className="grid min-h-0 min-w-0 gap-2 overflow-y-auto overscroll-contain lg:gap-3"
                 style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))" }}
               >
-                <PreviewStage
-                  projectName={projectName}
-                  videoPath={previewVideoPath}
-                  clip={currentClip}
-                  exists={previewExists}
-                  placeholderTitle={previewPlaceholderTitle}
-                  videoRef={videoRef}
-                  onLoadedMetadata={handleLoadedMetadata}
-                  onTimeUpdate={handleTimeUpdate}
-                  onEnded={handleEnded}
-                  onPlay={handlePlay}
-                  onPause={handlePause}
-                />
+                {previewExists && (
+                  <PreviewStage
+                    projectName={projectName}
+                    videoPath={previewVideoPath}
+                    clip={currentClip}
+                    videoRef={videoRef}
+                    onLoadedMetadata={handleLoadedMetadata}
+                    onTimeUpdate={handleTimeUpdate}
+                    onEnded={handleEnded}
+                    onPlay={handlePlay}
+                    onPause={handlePause}
+                  />
+                )}
 
                 {currentUnit ? (
                   <ReviewPromptPanel
@@ -1676,7 +1593,6 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
                     catalog={assetRailPromptCatalog}
                     actorStateOverrides={currentUnitActorStateLookup}
                     stateNameById={stateNameById}
-                    selectedRefId={selectedPromptRef?.id ?? null}
                     selectedRefKey={selectedPromptRef?.occurrenceKey ?? null}
                     onSelectRef={setSelectedPromptRef}
                     onClearSelectedRef={() => setSelectedPromptRef(null)}
@@ -1748,6 +1664,7 @@ export function StoryboardView({ projectName, path }: { projectName: string; pat
                 availablePaths={treePaths}
                 episodeTime={episodeTime}
                 totalDuration={editorModel.totalDuration}
+                canPlayback={hasEpisodeVideo || playableClipPaths.length > 0}
                 onSelectClip={handleSelectClip}
                 onPlayAll={handlePlayAll}
                 onInsertClipAfter={locked ? undefined : handleInsertClipAfter}

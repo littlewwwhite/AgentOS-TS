@@ -2,7 +2,7 @@
 // output: routed viewer surface with optional review-artifact path normalization
 // pos: main artifact viewer switchboard inside the console workspace
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTabs } from "../../contexts/TabsContext";
 import { useProject } from "../../contexts/ProjectContext";
 import { TabBar } from "./TabBar";
@@ -20,6 +20,7 @@ import { ProjectOnboardingView } from "./views/ProjectOnboardingView";
 import { ObjectHeader } from "./ObjectHeader";
 import { resolveReviewArtifactPath } from "./resolveView";
 import type { ViewKind } from "../../types";
+import type { Tab } from "../../types";
 import { getEditPolicy } from "../../lib/editPolicy";
 import { resolveProductionObjectFromPath } from "../../lib/productionObject";
 
@@ -48,12 +49,40 @@ function renderView(kind: ViewKind, projectName: string, path: string) {
   }
 }
 
+export function viewerScrollResetKey(
+  projectName: string | null,
+  active: Pick<Tab, "id" | "path" | "view"> | null | undefined,
+  revisionKey = "",
+): string {
+  return [
+    projectName ?? "",
+    active?.id ?? "",
+    active?.path ?? "",
+    active?.view ?? "",
+    revisionKey,
+  ].join("\u0000");
+}
+
 export function Viewer() {
   const { tabs, activeId, openPath } = useTabs();
-  const { name, setName, refresh } = useProject();
+  const { name, state, setName, refresh } = useProject();
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const active = tabs.find((t) => t.id === activeId);
+  const scrollResetKey = viewerScrollResetKey(
+    name,
+    active,
+    active?.view === "overview" ? state?.updated_at ?? "" : "",
+  );
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    content.scrollTop = 0;
+    content.scrollLeft = 0;
+  }, [scrollResetKey]);
+
   if (!name) {
     return (
       <ProjectOnboardingView
@@ -112,7 +141,7 @@ export function Viewer() {
           viewKind={active.view}
         />
       )}
-      <div className={contentClass}>
+      <div ref={contentRef} className={contentClass}>
         {renderView(active.view, name, active.path)}
       </div>
     </div>

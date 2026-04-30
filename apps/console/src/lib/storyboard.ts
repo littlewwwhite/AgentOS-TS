@@ -686,8 +686,8 @@ function addAssetRef(
 ) {
   if (!id) return;
   const existing = refs.get(id);
-  if (existing === "current") return;
-  refs.set(id, scope === "current" ? "current" : existing ?? scope);
+  if (existing === "current" || (existing === "episode" && scope === "project")) return;
+  refs.set(id, scope === "current" || scope === "episode" ? scope : existing ?? scope);
 }
 
 function sceneAssetIds(scene: StoryboardSceneLike, kind: ProductionAssetKind): string[] {
@@ -705,6 +705,13 @@ export function assetKindFromId(id: string): ProductionAssetKind | null {
   if (id.startsWith("loc_")) return "location";
   if (id.startsWith("prp_") || id.startsWith("prop_")) return "prop";
   return null;
+}
+
+function knownAssetIds(dict: Record<string, string>, kind: ProductionAssetKind): string[] {
+  return Object.keys(dict)
+    .map((id) => id.toLowerCase())
+    .filter((id) => assetKindFromId(id) === kind)
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function extractAssetRefsFromText(text: string): Array<{ kind: ProductionAssetKind; id: string }> {
@@ -782,6 +789,9 @@ export function buildProductionAssetRailModel(input: {
           }
         }
       }
+      for (const id of knownAssetIds(input.dict, kind)) {
+        addAssetRef(refs, id, "project");
+      }
 
       const items = Array.from(refs.entries())
         .map(([id, scope]) => {
@@ -795,7 +805,8 @@ export function buildProductionAssetRailModel(input: {
           };
         })
         .sort((left, right) => {
-          if (left.scope !== right.scope) return left.scope === "current" ? -1 : 1;
+          const scopeRank: Record<ProductionAssetScope, number> = { current: 0, episode: 1, project: 2 };
+          if (left.scope !== right.scope) return scopeRank[left.scope] - scopeRank[right.scope];
           return left.id.localeCompare(right.id);
         });
 

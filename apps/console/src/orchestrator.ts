@@ -3,11 +3,18 @@
 // pos: sole adapter between the WS layer and the Claude Agent SDK's streaming query
 
 import type { WsEvent } from "./types";
-import { query, type SDKUserMessage, type Query } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type Query,
+  type SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import { join } from "path";
 import { PushQueue } from "./lib/pushQueue";
+import { loadEnvFileIfMissing } from "./lib/serverEnv";
+import { buildAgentHooks } from "./lib/agentHooks";
 
 const PROJECT_ROOT = join(import.meta.dirname, "../../..");
+loadEnvFileIfMissing(join(PROJECT_ROOT, ".env"));
 
 export interface AgentSession {
   push(message: string): void;
@@ -35,6 +42,68 @@ function stringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
+export function sdkResumeId(resumeId?: string): string | undefined {
+  if (!resumeId || resumeId.startsWith("messages_")) return undefined;
+  return resumeId;
+}
+
+export function buildAgentSystemPrompt(project?: string | null): string {
+  return [
+    "You are the AgentOS Console runtime for an AI video production pipeline.",
+    "Respond in Simplified Chinese. Keep code, file paths, JSON keys, and command names in English.",
+    `Active project: ${project ?? "none"}.`,
+    `Repository root: ${PROJECT_ROOT}.`,
+    project
+      ? `Current project workspace: ${join(PROJECT_ROOT, "workspace", project)}.`
+      : "Current project workspace: none.",
+    "Before answering operational questions, read and follow the repository CLAUDE.md contract.",
+    "For project execution state, read pipeline-state.json in the current project workspace first.",
+    "Before answering progress or next-step questions, you must call Read on pipeline-state.json.",
+    "Never ask the user to paste pipeline-state.json; the SDK session has local Read access.",
+    "If pipeline-state.json exists, do not report every stage as pending confirmation.",
+    "Default to continuing from current_stage and next_action unless pipeline-state.json explicitly blocks progress.",
+    "Do not end operational replies by asking whether to continue when next_action is known.",
+    "For status-only questions, report the concise next action instead of asking a confirmation question.",
+    "AgentOS pipeline: SCRIPT -> VISUAL -> STORYBOARD -> VIDEO -> EDITING -> MUSIC -> SUBTITLE.",
+    "If the user says start/continue/next/开始执行/继续/下一步, inspect pipeline-state.json, source.txt, and output/ before deciding the next stage.",
+    "Never invent external CG/Maya/Deadline/Houdini/Nuke production pipelines.",
+    "Do not claim you have no access to the local pipeline when running through Claude Agent SDK tools; use the available file and command tools.",
+  ].join("\n");
+}
+
+export function buildSdkQueryOptions(projectKey: string | null, cwd: string, resumeId?: string) {
+  const resume = sdkResumeId(resumeId);
+  const hooks = buildAgentHooks(projectKey ? cwd : null);
+  return {
+    cwd,
+    model: process.env.ANTHROPIC_MODEL,
+    env: process.env,
+    systemPrompt: {
+      type: "preset" as const,
+      preset: "claude_code" as const,
+      append: buildAgentSystemPrompt(projectKey),
+    },
+    tools: ["Bash", "Read", "Edit", "Write", "Glob", "Grep"],
+    allowedTools: ["Bash", "Read", "Edit", "Write", "Glob", "Grep"],
+    mcpServers: {},
+    strictMcpConfig: true,
+    plugins: [],
+    settingSources: [],
+    permissionMode: "bypassPermissions" as const,
+    allowDangerouslySkipPermissions: true,
+    includePartialMessages: true,
+    thinking: { type: "adaptive" as const },
+    settings: {
+      showThinkingSummaries: true,
+      alwaysThinkingEnabled: true,
+    },
+    ...(hooks ? { hooks } : {}),
+    ...(resume ? { resume } : {}),
+  };
+}
+
+export { buildAgentHooks };
+
 // ---------------------------------------------------------------------------
 // Real session — wraps SDK query() in streaming input mode
 // ---------------------------------------------------------------------------
@@ -48,18 +117,7 @@ export function createSession(project?: string, resumeId?: string): AgentSession
 
   const sdkQuery: Query = query({
     prompt: inputQueue,
-    options: {
-      cwd,
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      includePartialMessages: true,
-      thinking: { type: "adaptive" },
-      settings: {
-        showThinkingSummaries: true,
-        alwaysThinkingEnabled: true,
-      },
-      ...(resumeId ? { resume: resumeId } : {}),
-    },
+    options: buildSdkQueryOptions(projectKey, cwd, resumeId),
   });
 
   let textEmittedThisTurn = false;
@@ -309,4 +367,6 @@ export function createMockSession(project?: string): AgentSession {
 // Active export — swap createMockSession → createSession here
 // ---------------------------------------------------------------------------
 
-export const createAgentSession = createSession;
+export function createAgentSession(project?: string, resumeId?: string): AgentSession {
+  return createSession(project, resumeId);
+}

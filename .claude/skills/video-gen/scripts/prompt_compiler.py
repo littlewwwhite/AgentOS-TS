@@ -17,6 +17,12 @@ _BULLET_RE = re.compile(r"^-\s*([^：:]+)[：:]\s*(.*?)\s*$")
 _FIELD_RE = re.compile(r"^(总体描述|动作|角色状态|音效|对白)[：:]\s*(.*?)\s*$")
 _NOISE_RE = re.compile(r"\s+")
 
+_STYLE_DIRECTIVE = (
+    "写实电影短剧视频，资产引用token用于锁定角色、场景和道具外观，"
+    "整体动作连续清晰，节奏明确，镜头稳定。"
+)
+_IMAGE_CONSTRAINT = "画面保持干净，不出现字幕、水印、LOGO、UI或屏幕文字，不添加未提及角色。"
+
 
 @dataclass
 class Segment:
@@ -103,42 +109,41 @@ def _segment_to_line(segment: Segment) -> str:
 
     parts = [f"{segment.time_range} {segment.setup}"]
     if action:
-        parts.append(f"动作：{action}")
+        parts.append(action)
     if camera:
-        parts.append(f"镜头：{camera}")
+        parts.append(f"镜头{camera}")
     if state and len(parts) < 4:
-        parts.append(f"状态：{state}")
+        parts.append(state)
     if sfx and sfx != "无":
-        parts.append(f"音：{sfx}")
+        parts.append(f"伴随{sfx}")
     if dialogue and dialogue != "无":
-        parts.append(f"对白：{dialogue}")
+        parts.append(dialogue)
 
-    return "；".join(parts)
+    return "，".join(parts).rstrip("。") + "。"
 
 
 def _compile_simple_block(setup: str, fields: Dict[str, str]) -> str:
-    output: List[str] = [
-        "电影级真实短剧，多镜头切换，动作清晰干净；画面禁止文字、字幕、水印、LOGO、UI；无BGM，仅写实对白、环境音和拟音。",
-    ]
-    if setup:
-        output.append(f"镜头：{_clip(setup, 80)}。")
     overview = fields.get("总体描述", "")
     action = fields.get("动作", "")
     state = fields.get("角色状态", "")
     sfx = fields.get("音效", "")
     dialogue = fields.get("对白", "")
+    sentences: List[str] = [_STYLE_DIRECTIVE]
 
     if overview:
-        output.append(_clip(overview, 180))
+        sentences.append(_clip(overview, 220).rstrip("。") + "。")
+    if setup:
+        sentences.append(f"镜头采用{_clip(setup, 100).rstrip('。')}。")
     if action:
-        output.append(f"动作：{_clip(action, 180)}")
+        sentences.append(_clip(action, 180).rstrip("。") + "。")
     if state:
-        output.append(f"状态：{_clip(state, 120)}")
+        sentences.append(_clip(state, 120).rstrip("。") + "。")
     if sfx and sfx != "无":
-        output.append(f"音频：{_clip(sfx, 60)}")
+        sentences.append(f"声音以{_clip(sfx, 60).rstrip('。')}为主。")
     if dialogue and dialogue != "无":
-        output.append(f"对白：{_clean(dialogue)}")
-    return "\n".join(output)
+        sentences.append(_clean(dialogue))
+    sentences.append(_IMAGE_CONSTRAINT)
+    return "".join(sentences)
 
 
 def compile_video_prompt(storyboard_prompt: str) -> str:
@@ -162,15 +167,14 @@ def compile_video_prompt(storyboard_prompt: str) -> str:
     overview = _extract_prefixed_line(non_empty_lines, "总体描述：")
     summary = _extract_prefixed_line(non_empty_lines, "剧情摘要：")
 
-    output: List[str] = [
-        "电影级真实短剧，多镜头切换，动作清晰干净；画面禁止文字、字幕、水印、LOGO、UI；无BGM，仅写实对白、环境音和拟音。",
-    ]
+    output: List[str] = [_STYLE_DIRECTIVE]
     if overview:
-        output.append(f"场景与氛围：{_clip(overview, 180)}")
+        output.append(_clip(overview, 220).rstrip("。") + "。")
     if summary:
-        output.append(f"剧情目标：{_clip(summary, 130)}")
+        output.append(_clip(summary, 130).rstrip("。") + "。")
 
-    output.append("按以下时间顺序生成：")
+    output.append("按时间连续生成：")
     output.extend(_segment_to_line(segment) for segment in segments)
+    output.append(_IMAGE_CONSTRAINT)
 
     return "\n".join(line for line in output if line.strip())
