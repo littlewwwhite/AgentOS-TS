@@ -1,0 +1,85 @@
+name: Deploy AgentOS Console to yc-hk
+
+on:
+  push:
+    branches:
+      - master
+      - lite
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-yc-hk
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DEPLOY_HOST: 149.104.24.201
+      DEPLOY_USER: zjding
+      DEPLOY_PATH: /home/zjding/agentos-console-deploy
+      REPO_PATH: /home/zjding/agentos-console-repo
+      DEPLOY_PORT: "3001"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.YC_HK_SSH_KEY }}" > ~/.ssh/yc_hk_deploy_key
+          chmod 600 ~/.ssh/yc_hk_deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Pull, build, and restart on yc-hk
+        run: |
+          ssh -i ~/.ssh/yc_hk_deploy_key \
+            -o BatchMode=yes \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=2 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -euo pipefail
+             repo_url='https://github.com/${{ github.repository }}.git'
+             deploy_ref='${{ github.ref_name }}'
+             if [ ! -d '$REPO_PATH/.git' ]; then
+               rm -rf '$REPO_PATH'
+               git clone --branch \"\$deploy_ref\" \"\$repo_url\" '$REPO_PATH'
+             fi
+             cd '$REPO_PATH'
+             git remote set-url origin \"\$repo_url\"
+             git fetch --prune origin \"\$deploy_ref\"
+             git reset --hard FETCH_HEAD
+             git clean -fd \
+               -e apps/console/node_modules \
+               -e apps/console/dist
+             cd apps/console
+             /home/zjding/.bun/bin/bun install --frozen-lockfile
+             /home/zjding/.bun/bin/bun test
+             /home/zjding/.bun/bin/bun run build
+             /home/zjding/.bun/bin/bun install --production --frozen-lockfile
+             cd '$REPO_PATH'
+             rsync -az --delete \
+               --exclude '.git/' \
+               --exclude '.DS_Store' \
+               --exclude '.env' \
+               --exclude 'node_modules/' \
+               --exclude 'workspace/' \
+               --exclude 'data/' \
+               --exclude 'output/' \
+               --exclude '.claude/worktrees/' \
+               --exclude '.claude/scheduled_tasks.lock' \
+               --exclude '.venv/' \
+               --exclude '__pycache__/' \
+               --exclude '*.pyc' \
+               ./ '$DEPLOY_PATH/'
+             cd '$DEPLOY_PATH'
+             old=\$(cat apps/console/agentos-console.pid 2>/dev/null || true)
+             if [ -n \"\$old\" ]; then kill \"\$old\" 2>/dev/null || true; fi
+             sleep 1
+             PORT='$DEPLOY_PORT' nohup /home/zjding/.bun/bin/bun apps/console/server.ts >> apps/console/agentos-console.log 2>&1 < /dev/null &
+             echo \$! > apps/console/agentos-console.pid
+             sleep 2
+             curl -fsS http://127.0.0.1:'$DEPLOY_PORT'/api/projects >/dev/null"
