@@ -8,6 +8,26 @@ import {
   getProductionObjectScope,
   type ProductionObject,
 } from "./productionObject";
+import { FALLBACK_SLASH_COMMANDS } from "./slashCommands";
+
+const KNOWN_SKILL_COMMANDS = new Set(FALLBACK_SLASH_COMMANDS.map((command) => command.slice(1)));
+
+function normalizeSkillInvocation(message: string): string | null {
+  const trimmedStart = message.trimStart();
+  if (trimmedStart.startsWith("/")) return trimmedStart;
+
+  const markdownMention = trimmedStart.match(/^\[\$([A-Za-z][\w-]*)\]\([^)]+\)(.*)$/s);
+  if (markdownMention && KNOWN_SKILL_COMMANDS.has(markdownMention[1])) {
+    return `/${markdownMention[1]}${markdownMention[2] ?? ""}`.trimEnd();
+  }
+
+  const dollarMention = trimmedStart.match(/^\$([A-Za-z][\w-]*)(.*)$/s);
+  if (dollarMention && KNOWN_SKILL_COMMANDS.has(dollarMention[1])) {
+    return `/${dollarMention[1]}${dollarMention[2] ?? ""}`.trimEnd();
+  }
+
+  return null;
+}
 
 export function buildScopedAgentMessage(message: string, object: ProductionObject): string {
   const scope = getProductionObjectScope(object);
@@ -34,7 +54,7 @@ export function buildScopedAgentMessage(message: string, object: ProductionObjec
 }
 
 export function buildAgentMessage(message: string, object: ProductionObject): string {
-  const trimmedStart = message.trimStart();
-  if (trimmedStart.startsWith("/")) return trimmedStart;
+  const commandMessage = normalizeSkillInvocation(message);
+  if (commandMessage) return commandMessage;
   return buildScopedAgentMessage(message, object);
 }

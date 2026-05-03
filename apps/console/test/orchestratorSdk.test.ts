@@ -40,7 +40,7 @@ describe("orchestrator SDK mode", () => {
     expect(source).toContain("return createSession(project, resumeId)");
   });
 
-  test("uses an isolated SDK tool surface instead of loading every local plugin tool", () => {
+  test("uses an isolated SDK tool surface while still loading project skills", () => {
     const options = buildSdkQueryOptions("c1", "/tmp/c1");
 
     expect(options.tools).toEqual(["Bash", "Read", "Edit", "Write", "Glob", "Grep"]);
@@ -48,7 +48,7 @@ describe("orchestrator SDK mode", () => {
     expect(options.mcpServers).toEqual({});
     expect(options.strictMcpConfig).toBe(true);
     expect(options.plugins).toEqual([]);
-    expect(options.settingSources).toEqual([]);
+    expect(options.settingSources).toEqual(["project"]);
   });
 
   test("adds a UserPromptSubmit hook that injects server-verified project state", async () => {

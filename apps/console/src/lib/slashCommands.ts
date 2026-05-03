@@ -2,7 +2,7 @@
 // output: filtered command suggestions and keyboard selection helpers
 // pos: normalizes Claude Code slash commands before ChatPane renders them
 
-const FALLBACK_SLASH_COMMANDS = [
+export const FALLBACK_SLASH_COMMANDS = [
   "/script-adapt",
   "/script-writer",
   "/storyboard",

@@ -88,7 +88,7 @@ export function buildSdkQueryOptions(projectKey: string | null, cwd: string, res
     mcpServers: {},
     strictMcpConfig: true,
     plugins: [],
-    settingSources: [],
+    settingSources: ["project" as const],
     permissionMode: "bypassPermissions" as const,
     allowDangerouslySkipPermissions: true,
     includePartialMessages: true,

@@ -43,4 +43,21 @@ describe("buildAgentMessage", () => {
     expect(agentMessage).toBe("/storyboard ep001");
     expect(agentMessage).not.toContain("[AgentOS Console Context");
   });
+
+  test("normalizes dollar-prefixed skill mentions into SDK slash commands", () => {
+    const agentMessage = buildAgentMessage("$script-adapt 执行 source.txt", shotObject);
+
+    expect(agentMessage).toBe("/script-adapt 执行 source.txt");
+    expect(agentMessage).not.toContain("[AgentOS Console Context");
+  });
+
+  test("normalizes markdown skill links into SDK slash commands", () => {
+    const agentMessage = buildAgentMessage(
+      "[$script-adapt](/Users/dingzhijian/lingjing/AgentOS-TS/.claude/skills/script-adapt/SKILL.md) 执行 source.txt",
+      shotObject,
+    );
+
+    expect(agentMessage).toBe("/script-adapt 执行 source.txt");
+    expect(agentMessage).not.toContain("[AgentOS Console Context");
+  });
 });
