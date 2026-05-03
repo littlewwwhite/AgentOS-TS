@@ -7,6 +7,7 @@
 import { query, type SDKUserMessage, type Query } from "@anthropic-ai/claude-agent-sdk";
 import { join } from "path";
 import { readFileSync, existsSync } from "fs";
+import { resolveClaudeCodeExecutable } from "./src/lib/claudeExecutable";
 
 const PROJECT_ROOT = join(import.meta.dirname, "../..");
 const DEFAULT_MAX_TURNS = 60;
@@ -121,6 +122,7 @@ async function main() {
   const cwd = join(PROJECT_ROOT, "workspace", project);
   const stateFile = join(cwd, "pipeline-state.json");
   const promptText = readFileSync(promptFile, "utf-8");
+  const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable(PROJECT_ROOT);
 
   emit({ type: "headless_start", project, cwd, promptFile, resume: resume ?? null, maxTurns });
 
@@ -140,6 +142,7 @@ async function main() {
         showThinkingSummaries: false,
         alwaysThinkingEnabled: true,
       },
+      ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
       ...(resume ? { resume } : {}),
     },
   });

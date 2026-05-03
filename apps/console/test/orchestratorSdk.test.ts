@@ -3,6 +3,10 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { buildAgentHooks } from "../src/lib/agentHooks";
 import {
+  claudeNativePackageOrder,
+  resolveClaudeCodeExecutable,
+} from "../src/lib/claudeExecutable";
+import {
   buildAgentSystemPrompt,
   buildSdkQueryOptions,
   sdkResumeId,
@@ -12,6 +16,32 @@ const ORCHESTRATOR_PATH = join(import.meta.dir, "../src/orchestrator.ts");
 const HOOK_FIX = "/tmp/console-agent-sdk-hooks";
 
 describe("orchestrator SDK mode", () => {
+  test("prefers the glibc Claude Code binary over musl on linux", () => {
+    expect(claudeNativePackageOrder("linux", "x64").slice(0, 2)).toEqual([
+      "@anthropic-ai/claude-agent-sdk-linux-x64/claude",
+      "@anthropic-ai/claude-agent-sdk-linux-x64-musl/claude",
+    ]);
+  });
+
+  test("resolves an explicit Claude Code executable from installed native packages", () => {
+    const root = "/tmp/console-claude-executable";
+    rmSync(root, { recursive: true, force: true });
+    const glibcPath = join(
+      root,
+      "apps/console/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude",
+    );
+    const muslPath = join(
+      root,
+      "apps/console/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64-musl/claude",
+    );
+    mkdirSync(join(glibcPath, ".."), { recursive: true });
+    mkdirSync(join(muslPath, ".."), { recursive: true });
+    writeFileSync(glibcPath, "");
+    writeFileSync(muslPath, "");
+
+    expect(resolveClaudeCodeExecutable(root, {}, "linux", "x64")).toBe(glibcPath);
+  });
+
   test("builds an AgentOS runtime contract for SDK project sessions", () => {
     const prompt = buildAgentSystemPrompt("c1");
 

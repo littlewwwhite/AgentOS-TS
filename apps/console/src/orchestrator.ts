@@ -12,6 +12,7 @@ import { join } from "path";
 import { PushQueue } from "./lib/pushQueue";
 import { loadEnvFileIfMissing } from "./lib/serverEnv";
 import { buildAgentHooks } from "./lib/agentHooks";
+import { resolveClaudeCodeExecutable } from "./lib/claudeExecutable";
 
 const PROJECT_ROOT = join(import.meta.dirname, "../../..");
 loadEnvFileIfMissing(join(PROJECT_ROOT, ".env"));
@@ -74,6 +75,7 @@ export function buildAgentSystemPrompt(project?: string | null): string {
 export function buildSdkQueryOptions(projectKey: string | null, cwd: string, resumeId?: string) {
   const resume = sdkResumeId(resumeId);
   const hooks = buildAgentHooks(projectKey ? cwd : null);
+  const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable(PROJECT_ROOT);
   return {
     cwd,
     model: process.env.ANTHROPIC_MODEL,
@@ -97,6 +99,7 @@ export function buildSdkQueryOptions(projectKey: string | null, cwd: string, res
       showThinkingSummaries: true,
       alwaysThinkingEnabled: true,
     },
+    ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
     ...(hooks ? { hooks } : {}),
     ...(resume ? { resume } : {}),
   };
