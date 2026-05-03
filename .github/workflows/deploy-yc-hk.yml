@@ -78,6 +78,8 @@ jobs:
              cd '$DEPLOY_PATH'
              old=\$(cat apps/console/agentos-console.pid 2>/dev/null || true)
              if [ -n \"\$old\" ]; then kill \"\$old\" 2>/dev/null || true; fi
+             port_pids=\$(ss -ltnp \"sport = :$DEPLOY_PORT\" 2>/dev/null | sed -n 's/.*pid=\\([0-9][0-9]*\\).*/\\1/p' | sort -u || true)
+             if [ -n \"\$port_pids\" ]; then kill \$port_pids 2>/dev/null || true; fi
              sleep 1
              PORT='$DEPLOY_PORT' nohup /home/zjding/.bun/bin/bun apps/console/server.ts >> apps/console/agentos-console.log 2>&1 < /dev/null &
              echo \$! > apps/console/agentos-console.pid

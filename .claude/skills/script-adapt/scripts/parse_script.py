@@ -1206,6 +1206,20 @@ def parse_episodes(project_path: Path, output_path: Optional[Path] = None) -> Di
 
     # ---------- Post-parse validation ----------
 
+    if ep_files and total_scenes == 0:
+        validation_issues.append({
+            'code': 'NO_SCENES_PARSED',
+            'severity': 'blocking',
+            'summary': (
+                f"Found {len(ep_files)} ep*.md file(s), but none matched the required "
+                "scene format: {ep}-{scene} {time} {内/外} {location}"
+            ),
+            'repair_hint': (
+                "Rewrite draft/episodes/ep*.md using the script-adapt format: 第1集, "
+                "1-1 日 内 地点, 人物：角色, ▲动作, 角色（情绪）：台词"
+            ),
+        })
+
     # Missing char lines
     for ep in episodes:
         for scene in ep['scenes']:
@@ -1320,7 +1334,7 @@ def parse_episodes(project_path: Path, output_path: Optional[Path] = None) -> Di
         artifact_path,
         'canonical',
         'writer',
-        'completed',
+        'completed' if validation_passed else 'in_review',
     )
     update_stage(
         str(project_path),

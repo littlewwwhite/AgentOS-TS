@@ -124,6 +124,83 @@ class ScriptStagePipelineStateBridgeTest(unittest.TestCase):
             self.assertEqual(state["stages"]["SCRIPT"]["status"], "validated")
             self.assertEqual(state["artifacts"]["output/script.json"]["status"], "completed")
 
+    def test_parse_script_blocks_markdown_episode_that_yields_no_scenes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            draft_dir = project_dir / "draft"
+            episodes_dir = draft_dir / "episodes"
+            output_dir = project_dir / "output"
+            episodes_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            (draft_dir / "design.json").write_text(
+                json.dumps(
+                    {
+                        "title": "测试项目",
+                        "style": "modern",
+                        "worldview": "现实都市",
+                        "bilingual": False,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (draft_dir / "catalog.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "act_001", "name": "林夏"}],
+                        "locations": [{"id": "loc_001", "name": "客厅"}],
+                        "props": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (episodes_dir / "ep001.md").write_text(
+                "\n".join(
+                    [
+                        "# Episode 1 — Wrong Format",
+                        "## Scene 1",
+                        "- **LOC**: 客厅（内景）| 日",
+                        "- **ACTION**: 林夏站在客厅中央。",
+                        "- **DIALOGUE**:",
+                        "  - 林夏: \"我们开始吧。\"",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            script_path = Path(__file__).resolve().parent / "parse_script.py"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(script_path),
+                    "--project-path",
+                    str(project_dir),
+                    "--output-path",
+                    str(output_dir),
+                    "--validate",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=script_path.parent,
+            )
+
+            self.assertNotEqual(
+                result.returncode,
+                0,
+                msg=f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}",
+            )
+            payload = json.loads(result.stdout)
+            self.assertFalse(payload["validation"]["passed"])
+            self.assertTrue(payload["validation"]["has_blocking"])
+            self.assertEqual(payload["validation"]["issues"][0]["code"], "NO_SCENES_PARSED")
+
+            state = json.loads((project_dir / "pipeline-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["stages"]["SCRIPT"]["status"], "partial")
+            self.assertEqual(state["next_action"], "review SCRIPT")
+            self.assertEqual(state["artifacts"]["output/script.json"]["status"], "in_review")
+
 
 if __name__ == "__main__":
     unittest.main()
